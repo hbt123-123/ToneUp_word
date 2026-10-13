@@ -1,6 +1,8 @@
 # 一潼上岸·单词 · ToneUp Word
 
-[![CI](https://github.com/ChihoYiu/CetVocab/actions/workflows/ci.yml/badge.svg)](https://github.com/ChihoYiu/CetVocab/actions/workflows/ci.yml)
+> 本仓库 fork 自 [https://github.com/ChihoYiu/CetVocab.git](https://github.com/ChihoYiu/CetVocab.git)，在其基础上更名为「一潼上岸·单词 · ToneUp Word」。
+
+[![CI](https://github.com/hbt123-123/ToneUp_word/actions/workflows/ci.yml/badge.svg)](https://github.com/hbt123-123/ToneUp_word/actions/workflows/ci.yml)
 ![platform](https://img.shields.io/badge/platform-Android-3DDC84?logo=android&logoColor=white)
 ![minSdk](https://img.shields.io/badge/minSdk-26-blue)
 ![Kotlin](https://img.shields.io/badge/Kotlin-2.4-7F52FF?logo=kotlin&logoColor=white)
@@ -21,7 +23,7 @@
 > 你也可以导入自己拥有合法使用权的 JSON / CSV 词库。
 > 第三方内容的许可见 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)。
 
-**快速入口**：[使用指南](docs/USER_GUIDE.md) · [下载安装包](https://github.com/ChihoYiu/CetVocab/releases) ·
+**快速入口**：[使用指南](docs/USER_GUIDE.md) · [下载安装包](https://github.com/hbt123-123/ToneUp_word/releases) ·
 [自己构建](#如何运行) · [贡献指南](CONTRIBUTING.md) · [发布签名](docs/RELEASE_SIGNING.md) · [行为准则](CODE_OF_CONDUCT.md)
 
 ### 验证状态

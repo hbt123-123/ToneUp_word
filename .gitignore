@@ -27,3 +27,8 @@ keystore.properties
 *.keystore
 *.p12
 *.pfx
+
+# 本地 IDE / 工具索引目录
+.codegraph/
+.omo/
+.trae/

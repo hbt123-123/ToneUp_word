@@ -10,7 +10,7 @@
 
 ### 方式一：下载现成的安装包
 
-去 [Releases](https://github.com/ChihoYiu/CetVocab/releases) 下载 `ToneUpWord-*-debug.apk`：
+去 [Releases](https://github.com/hbt123-123/ToneUp_word/releases) 下载 `ToneUpWord-*-debug.apk`：
 
 1. 手机上允许「安装未知来源应用」（设置里搜「未知来源」或「特殊权限」）
 2. 打开 APK 安装；若提示「应用未通过安全检测」，选择继续安装
@@ -22,8 +22,8 @@
 需要 JDK 17+ 与 Android SDK（platform 36、build-tools 36.0.0）：
 
 ```bash
-git clone https://github.com/ChihoYiu/CetVocab.git
-cd ToneUpWord
+git clone https://github.com/hbt123-123/ToneUp_word.git
+cd ToneUp_word
 ./gradlew :app:assembleDebug
 # 产物：app/build/outputs/apk/debug/app-debug.apk
 ```
@@ -204,7 +204,7 @@ cd ToneUpWord
 
 ## 9. 反馈问题
 
-请在 [Issues](https://github.com/ChihoYiu/CetVocab/issues) 里反馈，并尽量附上：
+请在 [Issues](https://github.com/hbt123-123/ToneUp_word/issues) 里反馈，并尽量附上：
 
 * 手机型号与 Android 版本
 * 应用版本（「我的 → 关于」里可见）
