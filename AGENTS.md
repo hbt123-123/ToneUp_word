@@ -1,0 +1,104 @@
+# PROJECT KNOWLEDGE BASE
+
+**Generated:** 2026-10-13
+**Commit:** e98ea83
+**Branch:** main
+
+## OVERVIEW
+CET-4/CET-6 单词记忆 Android 应用（fork 自 CetVocab，更名为「一潼上岸·单词 · ToneUp Word」）。Kotlin 2.4 + Jetpack Compose + Material 3 + Room + DataStore + WorkManager，Gradle 单模块 `:app`。minSdk 26 / targetSdk 36，**完全离线：不申请 INTERNET 权限**，无账号/广告/埋点。附带 `tools/` Python 离线数据流水线（词库/提示语生成，独立于构建）。
+
+## STRUCTURE
+```
+ToneUp_word/
+├── app/                    # 唯一 Gradle 模块；schemas/ 为 Room 导出 schema（迁移测试依据）
+│   └── src/main/java/top/toneup/word/
+│       ├── core/           # Outcome 结果类型、StudyDay(04:00 学习日边界)、JsonCodec
+│       ├── domain/         # 纯 Kotlin 业务引擎（10 子包，零 Android 依赖）
+│       ├── data/           # Room + Repository + DataStore + SAF + TTS（8 子包）
+│       ├── ui/             # Compose 屏幕/组件/主题/导航 + ViewModels.kt 单文件
+│       └── work/           # WorkManager 学习提醒
+├── tools/                  # Python 流水线：wordpack 词库、motivation 提示语、pronunciation(历史)
+├── docs/                   # 文档树；dev/ 为迭代记录（含已被推翻的结论，读时注意时效）
+├── gradle/libs.versions.toml   # 依赖版本唯一来源
+├── build.gradle.kts        # 根脚本：仅声明插件 apply false（AGP 9 内置 Kotlin）
+└── keystore.properties.example # 签名模板；真实密钥绝不入库
+```
+
+## WHERE TO LOOK
+| 任务 | 位置 | 备注 |
+|------|------|------|
+| 业务规则/算法改动 | `app/src/main/java/top/toneup/word/domain/` | 纯 Kotlin，改必配单测 |
+| 数据库 schema/迁移/DAO | `data/local/`（10 表 1 视图 8 DAO） | 升版流程见 data/AGENTS.md |
+| 仓库/事务/播种 | `data/repository/` + `data/seed/` | 事务只在 Repository 层 |
+| 页面/组件/主题 | `ui/screens/`、`ui/components/`、`ui/theme/` | 新屏幕接入 `ui/navigation/ToneUpWordNavHost.kt` |
+| 依赖装配 | 根 `AppContainer.kt` | 手写构造器注入，**无 Hilt** |
+| 词库资产生成 | `tools/wordpack/` → `app/src/main/assets/wordpacks/` | 流水线顺序见 tools/AGENTS.md |
+| 提示语资产 | `tools/motivation/` → `assets/motivation/tips.json` | 398 条，禁用词表在脚本内 |
+| 测试写法/运行 | `app/src/test/` | 见 app/src/test/AGENTS.md |
+| 构建/签名/发布 | `gradle/libs.versions.toml`、`docs/RELEASE_SIGNING.md` | 命令见 COMMANDS |
+
+## CODE MAP
+启动链：`ToneUpWordApplication.onCreate` → `AppContainer`（对象图根）→ `MainActivity.setContent` → `MainViewModel.init` 调 `container.prepare()`（词库播种+提醒调度）→ `ToneUpWordApp`（ready 门控 + 开屏 overlay）→ `ToneUpWordNavHost`（17 路由，起始 HOME/ONBOARDING）→ Screen → `ViewModelFactories` → Repository → DAO / domain 引擎。
+后台链：`ReminderScheduler` → WorkManager → `StudyReminderWorker.doWork()` → 通知 → MainActivity。
+
+| Symbol | Type | Location | Refs | Role |
+|--------|------|----------|------|------|
+| `AppContainer` | object/DI 根 | `AppContainer.kt` | 全局 | 唯一装配点；`prepare()` 冷启动任务 |
+| `ViewModelFactories` | object | `ui/ViewModels.kt:91` | 各 Screen | UI 侧 VM 工厂（10 个） |
+| `Word` | data class | `domain/model/Word.kt:10` | 21 | 词库核心模型（有测试） |
+| `WordProgress` | data class | `domain/srs/WordProgress.kt:59` | 19 | 学习进度模型（有测试） |
+| `WordDao` | @Dao | `data/local/dao/WordDao.kt:18` | 1（DB） | ⚠️ 无直接测试，经 DatabaseTest 间接覆盖 |
+| `SpacedRepetition` | object | `domain/srs/SpacedRepetition.kt` | — | SM-2 调度纯函数（26 测试） |
+| `ProgressRecorder` | class | `data/repository/ProgressRecorder.kt` | — | 全 app 唯一答题事务写入口 |
+
+## CONVENTIONS（仅偏离标准处）
+- **无 ktlint/detekt/spotless/.editorconfig**：格式靠 IDE `kotlin.code.style=official`；`.gitattributes` 强制全部源码/文档 LF 入库。
+- 架构：Composable 不接触 DAO/DataStore/文件系统；ViewModel 只依赖 Repository 接口、暴露不可变 `StateFlow`；`NavController` 不传入页面；页面经回调触发 VM 事件。
+- domain 层零 `android.*` import；**时间以参数注入**（`nowMillis`/`today: LocalDate`），不读系统时钟；确定性优先（seed 注入 Random、哈希选句）。
+- 失败是值不是异常：文件/IO/DB 失败返回 `Outcome<T>`/`AppError`（`core/result/`）；统计无数据用 `null` 而非 0%。
+- 枚举以稳定字符串入库、在 `data/mapper/Mappers.kt` 显式映射，**不走 TypeConverter**。
+- 测试：JUnit4 + Truth + Robolectric（Compose 测试在 JVM 跑，**无 androidTest**）；方法名反引号英文；固定时间戳防 flaky；minSdk 路径用 `@Config(sdk=[26])`。
+- 版本只改 `gradle/libs.versions.toml`；仓库集中声明于 `settings.gradle.kts`（`FAIL_ON_PROJECT_REPOS`）。
+- 根 `build.gradle.kts` 故意不应用 `org.jetbrains.kotlin.android`（AGP 9 内置 Kotlin）——**勿"修复"**。
+
+## ANTI-PATTERNS (THIS PROJECT)
+- **禁止**新增 `INTERNET`/`ACCESS_NETWORK_STATE` 权限、统计 SDK、任何联网能力（产品硬约束，docs/dev/PRODUCT_OPTIMIZATION_PLAN.md）。
+- **禁止**对 `word` 表用 `Insert(REPLACE)`：会删行重建、CASCADE 连带清空 progress/事件/错题/考试快照。用 `@Update` 或身份映射 insert-then-update。
+- **禁止**破坏性数据库迁移：升版必须手写 Migration 入 `ALL_MIGRATIONS` + 同步 `version` 字面量与 `Migrations.CURRENT_VERSION`（有测试断言）+ 导出 `app/schemas/` 快照。
+- **禁止**提交密钥：`keystore.properties`/`*.jks`/`*.keystore` 已 gitignore；泄露即作废重新生成。
+- **禁止**在 domain 读系统时钟/未注入的随机数；**禁止** Composable 直连 DAO。
+- **禁止**按 `docs/PRONUNCIATION_VERIFICATION.md` 实现功能——真人录音模块已废弃（迭代 3 起改系统 TTS），文档仅历史证据。
+- **禁止**引入外部名言/语录库（版权不确定一律原创）；mahavivo、KyleBing 数据源已被否决勿复活。
+- 文案禁用词（测试守护）：提示语禁「熬夜/拼命/落后/淘汰/废物/不配/必须/内卷/碾压…」（`tools/motivation/validate_tips.py` BANNED + StartupTipTest）；洞察文案禁「分数/提分/必过/保过/考试/倒数…」（InsightEngineTest）。
+- 考试页不可朗读（测试守护）；TTS 读取系统设置失败**不得**覆盖引擎默认值。
+- 应用内不出现「美式/英式」字样。
+
+## UNIQUE STYLES
+- **单文件聚合约定**：11 个 ViewModel 全在 `ui/ViewModels.kt`（~1609 行，`// ----` 分节，节间无共享状态）；`WordCard.kt` 被 Study/Exam/Review 三屏共用；一文件多屏（ExamScreens 三态、ProfileScreens 双屏）。
+- 开屏提示语是 **overlay 而非导航目的地**（每进程一次）；闪屏与词库播种进度共用一屏。
+- 激励/提示语**确定性选择**（多项式哈希，不用时钟/随机）；中文文案内嵌 domain 枚举/`describe()` 使其可测。
+- 演示词库只能清进度不能删除（WordRepository）；试卷开考即快照、防重复提交、saveAnswer 不判对错（防答案键泄露）。
+- 数据不足时 InsightEngine 只说「数据有限」不给判断（"焦虑机器"原则）。
+
+## COMMANDS
+```bash
+.\gradlew.bat :app:assembleDebug          # 调试 APK → app\build\outputs\apk\debug\
+.\gradlew.bat :app:installDebug           # 安装到设备/模拟器
+.\gradlew.bat :app:testDebugUnitTest      # 全部单测（404 用例 / 26 类）
+.\gradlew.bat :app:testDebugUnitTest --tests "*.SpacedRepetitionTest*"   # 单类
+.\gradlew.bat :app:assembleRelease -x lintVitalRelease   # R8 发布包（本机约定跳过 lint）
+.\gradlew.bat :app:lintVitalRelease       # Android Lint（唯一静态检查；低内存机会 OOM）
+python tools/motivation/validate_tips.py  # 提示语校验（纯标准库）
+python tools/wordpack/validate_packs.py   # 词库校验（依赖 cache/ecdict.csv）
+```
+
+## NOTES
+- **README 有死链/过期**：`.github/workflows/`、`CONTRIBUTING.md`、`CODE_OF_CONDUCT.md` 被引用但**本地不存在**（fork 未带上 CI），CI 徽章失效；README 模块图写 `com/toneup/app/` 而实际包是 `top.toneup.word`——**以代码为准**。
+- **Windows 路径必须纯 ASCII**：AGP 遇非 ASCII 路径直接终止构建（当前 `E:\project\ToneUp_word` 合规）。
+- PowerShell 写词库文件**禁用** `Set-Content`/`Out-File`（破坏 UTF-8）；先 `$env:PYTHONIOENCODING="utf-8"`。
+- 构建前提：`local.properties` 配 `sdk.dir`（不入库）；JDK 17+；SDK API 36。
+- 测试 JVM 堆被限制 512m + SerialGC（app/build.gradle.kts testOptions）——内存问题会响亮失败而非 swap。
+- `tools/*/cache/` gitignored 且本地不存在——复现流水线先 `download.py`；Tatoeba .bz2 需手工下载。
+- `attach_examples.py` 重复执行会在 PACK_INFO.json `transformNotes` 累加重复段（现状已有痕迹）——勿反复追跑。
+- 签名双通道：环境变量 `TONEUP_KEYSTORE_*` 优先，其次根 `keystore.properties`；都没有时 release 产出**未签名包而非失败**。
+- Kotlin LSP（kotlin-ls）未安装，符号导航靠 codegraph/grep。
