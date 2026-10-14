@@ -82,18 +82,18 @@ interface ExamDao {
                SUM(CASE WHEN q.is_correct = 1 THEN 1 ELSE 0 END) AS correct
         FROM exam_question q
         INNER JOIN exam_session s ON s.id = q.exam_id
-        WHERE s.level = :level AND s.status = 'SUBMITTED'
+        WHERE s.pack_id = :packId AND s.status = 'SUBMITTED'
           AND q.is_correct IS NOT NULL AND q.answered_at >= :since
         GROUP BY q.type
         """,
     )
-    suspend fun typeAccuracySince(level: String, since: Long): List<ExamTypeAccuracyRow>
+    suspend fun typeAccuracySince(packId: String, since: Long): List<ExamTypeAccuracyRow>
 
-    @Query("SELECT AVG(accuracy_percent) FROM exam_session WHERE status = 'SUBMITTED' AND level = :level")
-    fun observeAverageAccuracy(level: String): Flow<Double?>
+    @Query("SELECT AVG(accuracy_percent) FROM exam_session WHERE status = 'SUBMITTED' AND pack_id = :packId")
+    fun observeAverageAccuracy(packId: String): Flow<Double?>
 
-    @Query("SELECT AVG(accuracy_percent) FROM exam_session WHERE status = 'SUBMITTED' AND level = :level")
-    suspend fun averageAccuracy(level: String): Double?
+    @Query("SELECT AVG(accuracy_percent) FROM exam_session WHERE status = 'SUBMITTED' AND pack_id = :packId")
+    suspend fun averageAccuracy(packId: String): Double?
 
     @Query("UPDATE exam_session SET status = 'ABANDONED', submitted_at = :now WHERE id = :id")
     suspend fun abandon(id: Long, now: Long)

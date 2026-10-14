@@ -18,6 +18,8 @@ data class WrongAnswerRow(
     @ColumnInfo(name = "meanings") val meanings: String,
     @ColumnInfo(name = "example_sentence") val exampleSentence: String,
     @ColumnInfo(name = "level") val level: String,
+    /** `wrong_answer.pack_id` — the pack scope this mistake belongs to (schema v2). */
+    @ColumnInfo(name = "pack_id") val packId: String,
     @ColumnInfo(name = "wrong_count") val wrongCount: Int,
     @ColumnInfo(name = "fuzzy_count") val fuzzyCount: Int,
     @ColumnInfo(name = "first_wrong_at") val firstWrongAt: Long,

@@ -84,3 +84,25 @@ data class ImportResult(
 enum class DuplicatePolicy(val label: String) {
     KEEP_ROW_ID_UPDATE_CONTENT("保留学习进度，更新词条内容"),
 }
+
+/**
+ * What pasted plain text will produce before anything is written to the database
+ * (M3 paste import; also reused by the M5 clipboard / Share sheet).
+ *
+ * Unlike [ImportPreview] this holds bare words with no meanings: the rows enter the pack as
+ * `lookup_state='PENDING'` and the gateway fills content later. Every count here is what the
+ * confirmation screen shows — "可导入 N · 过滤 M · 重复 K".
+ */
+data class PlainTextImportPreview(
+    /** Valid words in first-seen order, original casing kept. */
+    val words: List<String>,
+    /** Tokens dropped because they are not word-shaped (URLs, CJK, digits, over-long …). */
+    val dropped: Int,
+    /** Valid tokens dropped as case-insensitive duplicates of an earlier token. */
+    val duplicates: Int,
+    /** Every non-empty token the splitter produced, before any validation. */
+    val totalTokens: Int,
+) {
+    val importableCount: Int get() = words.size
+    val isEmpty: Boolean get() = words.isEmpty()
+}

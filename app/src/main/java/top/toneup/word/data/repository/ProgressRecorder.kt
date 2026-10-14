@@ -11,6 +11,7 @@ import top.toneup.word.data.mapper.newProgressFor
 import top.toneup.word.data.mapper.toDomain
 import top.toneup.word.data.mapper.toEntity
 import top.toneup.word.data.mapper.toId
+import top.toneup.word.data.settings.PackIds
 import top.toneup.word.domain.model.CetLevel
 import top.toneup.word.domain.srs.ReviewGrade
 import top.toneup.word.domain.srs.SpacedRepetition
@@ -69,6 +70,7 @@ class ProgressRecorder(
         val updated = SpacedRepetition.apply(previous, grade, now)
 
         db.progressDao().upsert(updated.toEntity(now))
+        val packId = scopeOf(wordId)
         db.reviewEventDao().insert(
             ReviewEventEntity(
                 wordId = wordId,
@@ -77,7 +79,8 @@ class ProgressRecorder(
                 source = source.id,
                 answeredAt = now,
                 dayKey = dayKey,
-                level = levelIdFor(wordId),
+                level = PackIds.levelForPackId(packId).id,
+                packId = packId,
                 previousIntervalDays = previous.intervalDays,
                 newIntervalDays = updated.intervalDays,
                 responseTimeMs = responseTimeMs,
@@ -87,7 +90,7 @@ class ProgressRecorder(
         updateMistakeBook(wordId, grade, source, now)
         bumpDailySummary(
             dayKey = dayKey,
-            levelId = levelIdFor(wordId),
+            packId = packId,
             grade = grade,
             firstTouchToday = isFirstAnswerForWordToday,
             isNewWord = isNewWord,
@@ -96,9 +99,18 @@ class ProgressRecorder(
         updated
     }
 
-    private suspend fun levelIdFor(wordId: Long): String {
-        val entity = db.wordDao().byId(wordId) ?: return CetLevel.CET4.id
-        return entity.level
+    /**
+     * Pack scope of a word (schema v2, D1): read from `word.pack_id`, which migration 1→2
+     * guarantees to be non-empty for every row. The fallbacks only cover a word row that has
+     * disappeared mid-transaction (FK CASCADE makes that impossible in practice) — keeping a
+     * deterministic `builtin-cet4`/level-derived bucket instead of dropping the answer.
+     */
+    private suspend fun scopeOf(wordId: Long): String {
+        val entity = db.wordDao().byId(wordId)
+            ?: return PackIds.defaultPackIdFor(CetLevel.CET4)
+        val packId = entity.packId
+        if (!packId.isNullOrEmpty()) return packId
+        return PackIds.defaultPackIdFor(CetLevel.fromId(entity.level))
     }
 
     /**
@@ -115,7 +127,8 @@ class ProgressRecorder(
         now: Long,
     ) {
         val existing = db.mistakeBookDao().byWordId(wordId)
-        val levelId = levelIdFor(wordId)
+        val packId = scopeOf(wordId)
+        val levelId = PackIds.levelForPackId(packId).id
         when (grade) {
             ReviewGrade.UNKNOWN -> {
                 val wrong = existing?.copy(
@@ -126,6 +139,7 @@ class ProgressRecorder(
                     resolvedAt = null,
                     level = levelId,
                     updatedAt = now,
+                    packId = packId,
                 ) ?: WrongAnswerEntity(
                     wordId = wordId,
                     wrongCount = 1,
@@ -138,6 +152,7 @@ class ProgressRecorder(
                     isFavorite = false,
                     level = levelId,
                     updatedAt = now,
+                    packId = packId,
                 )
                 db.mistakeBookDao().upsert(wrong)
             }
@@ -183,15 +198,16 @@ class ProgressRecorder(
      */
     private suspend fun bumpDailySummary(
         dayKey: String,
-        levelId: String,
+        packId: String,
         grade: ReviewGrade,
         firstTouchToday: Boolean,
         isNewWord: Boolean,
         now: Long,
     ) {
-        val existing = db.dailySummaryDao().get(dayKey, levelId) ?: DailyStudySummaryEntity(
+        val existing = db.dailySummaryDao().get(dayKey, packId) ?: DailyStudySummaryEntity(
             dayKey = dayKey,
-            level = levelId,
+            packId = packId,
+            level = PackIds.levelForPackId(packId).id,
         )
         db.dailySummaryDao().upsert(
             existing.copy(
@@ -208,14 +224,15 @@ class ProgressRecorder(
     }
 
     /** Adds the time spent in a finished session to the day it started on. */
-    suspend fun addStudyDuration(startedAtMillis: Long, durationMillis: Long, levelId: String) {
+    suspend fun addStudyDuration(startedAtMillis: Long, durationMillis: Long, packId: String) {
         if (durationMillis <= 0) return
         db.withTransaction {
             val now = time.nowMillis()
             val dayKey = StudyDay.dayKey(startedAtMillis, time.zone())
-            val existing = db.dailySummaryDao().get(dayKey, levelId) ?: DailyStudySummaryEntity(
+            val existing = db.dailySummaryDao().get(dayKey, packId) ?: DailyStudySummaryEntity(
                 dayKey = dayKey,
-                level = levelId,
+                packId = packId,
+                level = PackIds.levelForPackId(packId).id,
             )
             db.dailySummaryDao().upsert(
                 existing.copy(
@@ -230,16 +247,17 @@ class ProgressRecorder(
     /** Adds an exam to the daily rollup (completed count and raw question score). */
     suspend fun addExamResult(
         submittedAtMillis: Long,
-        levelId: String,
+        packId: String,
         correct: Int,
         total: Int,
         durationMillis: Long,
     ) {
         db.withTransaction {
             val dayKey = StudyDay.dayKey(submittedAtMillis, time.zone())
-            val existing = db.dailySummaryDao().get(dayKey, levelId) ?: DailyStudySummaryEntity(
+            val existing = db.dailySummaryDao().get(dayKey, packId) ?: DailyStudySummaryEntity(
                 dayKey = dayKey,
-                level = levelId,
+                packId = packId,
+                level = PackIds.levelForPackId(packId).id,
             )
             db.dailySummaryDao().upsert(
                 existing.copy(

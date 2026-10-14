@@ -31,8 +31,10 @@ import top.toneup.word.ui.screens.ExamResultScreen
 import top.toneup.word.ui.screens.ExamRunScreen
 import top.toneup.word.ui.screens.ExamSetupScreen
 import top.toneup.word.ui.screens.HomeScreen
+import top.toneup.word.ui.screens.ImportWordsScreen
 import top.toneup.word.ui.screens.LicensesScreen
 import top.toneup.word.ui.screens.OnboardingScreen
+import top.toneup.word.ui.screens.PackListScreen
 import top.toneup.word.ui.screens.ProfileScreen
 import top.toneup.word.ui.screens.ReviewCenterScreen
 import top.toneup.word.ui.screens.SettingsScreen
@@ -236,8 +238,29 @@ fun ToneUpWordNavHost(
                     onOpenSettings = { navController.navigate(Routes.SETTINGS) },
                     onOpenDataTransfer = { navController.navigate(Routes.DATA_TRANSFER) },
                     onOpenWordBrowser = { navController.navigate(Routes.WORD_BROWSER) },
+                    onOpenPacks = { navController.navigate(Routes.PACKS) },
                     onOpenAbout = { navController.navigate(Routes.ABOUT) },
                     onOpenLicenses = { navController.navigate(Routes.LICENSES) },
+                )
+            }
+
+            composable(Routes.PACKS) {
+                PackListScreen(
+                    container = container,
+                    onBack = { navController.popBackStack() },
+                    onOpenImport = { packId -> navController.navigate(Routes.importWords(packId)) },
+                )
+            }
+
+            composable(
+                route = Routes.IMPORT_WORDS,
+                arguments = listOf(navArgument(Routes.ARG_PACK_ID) { type = NavType.StringType }),
+            ) { entry ->
+                val packId = entry.arguments?.getString(Routes.ARG_PACK_ID).orEmpty()
+                ImportWordsScreen(
+                    container = container,
+                    packId = packId,
+                    onBack = { navController.popBackStack() },
                 )
             }
 

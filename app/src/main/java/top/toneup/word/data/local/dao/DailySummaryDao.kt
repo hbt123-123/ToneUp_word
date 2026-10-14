@@ -13,12 +13,15 @@ import kotlinx.coroutines.flow.Flow
  * Rows are written with `INSERT OR REPLACE` because a day bucket is a leaf aggregate with no
  * children; the repository always reads-modifies-writes inside a transaction, so concurrent
  * answers cannot lose an increment.
+ *
+ * Scope is the **pack id** since schema v2: the primary key is `(day_key, pack_id)`, so a
+ * learner studying two packs on the same day gets one bucket per pack (D1).
  */
 @Dao
 interface DailySummaryDao {
 
-    @Query("SELECT * FROM daily_study_summary WHERE day_key = :dayKey AND level = :level")
-    suspend fun get(dayKey: String, level: String): DailyStudySummaryEntity?
+    @Query("SELECT * FROM daily_study_summary WHERE day_key = :dayKey AND pack_id = :packId")
+    suspend fun get(dayKey: String, packId: String): DailyStudySummaryEntity?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(summary: DailyStudySummaryEntity)
@@ -26,29 +29,29 @@ interface DailySummaryDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertAll(summaries: List<DailyStudySummaryEntity>)
 
-    @Query("SELECT * FROM daily_study_summary WHERE day_key = :dayKey AND level = :level")
-    fun observe(dayKey: String, level: String): Flow<DailyStudySummaryEntity?>
+    @Query("SELECT * FROM daily_study_summary WHERE day_key = :dayKey AND pack_id = :packId")
+    fun observe(dayKey: String, packId: String): Flow<DailyStudySummaryEntity?>
 
     @Query(
         """
         SELECT * FROM daily_study_summary
-        WHERE level = :level AND day_key >= :fromDay
+        WHERE pack_id = :packId AND day_key >= :fromDay
         ORDER BY day_key ASC
         """,
     )
-    fun observeSince(level: String, fromDay: String): Flow<List<DailyStudySummaryEntity>>
+    fun observeSince(packId: String, fromDay: String): Flow<List<DailyStudySummaryEntity>>
 
     @Query(
         """
         SELECT * FROM daily_study_summary
-        WHERE level = :level AND day_key >= :fromDay
+        WHERE pack_id = :packId AND day_key >= :fromDay
         ORDER BY day_key ASC
         """,
     )
-    suspend fun since(level: String, fromDay: String): List<DailyStudySummaryEntity>
+    suspend fun since(packId: String, fromDay: String): List<DailyStudySummaryEntity>
 
-    @Query("SELECT * FROM daily_study_summary WHERE level = :level ORDER BY day_key ASC")
-    suspend fun allForLevel(level: String): List<DailyStudySummaryEntity>
+    @Query("SELECT * FROM daily_study_summary WHERE pack_id = :packId ORDER BY day_key ASC")
+    suspend fun allForPack(packId: String): List<DailyStudySummaryEntity>
 
     @Query(
         """
@@ -65,10 +68,10 @@ interface DailySummaryDao {
             SUM(exam_total) AS exam_total,
             COUNT(*) AS active_days
         FROM daily_study_summary
-        WHERE level = :level AND day_key >= :fromDay
+        WHERE pack_id = :packId AND day_key >= :fromDay
         """,
     )
-    suspend fun totals(level: String, fromDay: String): SummaryTotalsRow
+    suspend fun totals(packId: String, fromDay: String): SummaryTotalsRow
 
     /**
      * Study days with any activity, newest first. The consecutive-day streak is computed
@@ -78,11 +81,11 @@ interface DailySummaryDao {
     @Query(
         """
         SELECT day_key FROM daily_study_summary
-        WHERE level = :level AND (studied_words > 0 OR review_events > 0 OR exams_completed > 0)
+        WHERE pack_id = :packId AND (studied_words > 0 OR review_events > 0 OR exams_completed > 0)
         ORDER BY day_key DESC
         """,
     )
-    suspend fun activeDayKeys(level: String): List<String>
+    suspend fun activeDayKeys(packId: String): List<String>
 
     @Query("DELETE FROM daily_study_summary")
     suspend fun deleteAll()

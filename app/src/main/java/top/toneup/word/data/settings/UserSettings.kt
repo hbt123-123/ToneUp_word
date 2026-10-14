@@ -1,5 +1,6 @@
 package top.toneup.word.data.settings
 
+import top.toneup.word.data.gateway.GatewayDefaults
 import top.toneup.word.data.speech.SpeechRateMode
 import top.toneup.word.domain.model.CetLevel
 
@@ -26,6 +27,13 @@ enum class ThemeMode(val id: String, val label: String) {
 data class UserSettings(
     val onboardingCompleted: Boolean = false,
     val level: CetLevel = CetLevel.CET4,
+    /**
+     * Pack the learner is studying, `""` until a pack is chosen explicitly (schema v2, D1).
+     *
+     * Empty is a legitimate state: it means "derive from [level]" so a pre-upgrade install
+     * keeps studying exactly what it studied before without any migration of its own.
+     */
+    val activePackId: String = "",
     val dailyNewWordGoal: Int = DEFAULT_NEW_WORDS,
     val dailyReviewLimit: Int = DEFAULT_REVIEW_LIMIT,
     val reminderEnabled: Boolean = false,
@@ -64,6 +72,21 @@ data class UserSettings(
     val celebratedStreak: Int = 0,
     /** Highest vocabulary milestone already celebrated. */
     val celebratedMilestone: Int = 0,
+    // --- 释义补全网关 (M4, plan §10) — appended; defaults live in data/gateway/GatewayDefaults ---
+    /** Gateway base URL; the client rejects `http://` with `AppError.config` (plan D7). */
+    val gatewayBaseUrl: String = GatewayDefaults.BASE_URL,
+    /** Gateway key; the hard-coded default can be overridden here (plan Q3). Never logged. */
+    val gatewayKey: String = GatewayDefaults.KEY,
+    /** ECDICT path, query parameter `word`. */
+    val dictPath: String = GatewayDefaults.DICT_PATH,
+    /** FreeDictionary path; `{word}` is the token placeholder. */
+    val enPath: String = GatewayDefaults.EN_PATH,
+    /** LLM fallback path (OpenAI compatible). */
+    val mtPath: String = GatewayDefaults.MT_PATH,
+    /** 「仅 Wi-Fi 补全」— constrains the `meaning-sync` worker (plan D5). */
+    val syncOnlyUnmetered: Boolean = false,
+    /** 「剪贴板识别」— consumed by M5; the key lands in M4 so both lanes agree on its name. */
+    val clipboardDetectEnabled: Boolean = true,
 ) {
     companion object {
         const val DEFAULT_NEW_WORDS = 20
@@ -84,4 +107,18 @@ data class UserSettings(
     /** Reminder time formatted as `HH:mm` for display. */
     val reminderLabel: String
         get() = "%02d:%02d".format(reminderHour, reminderMinute)
+
+    /**
+     * The pack every query must scope by: the explicit choice, or the builtin pack matching
+     * [level] when none was made yet. Never `""` — callers can pass it straight to a DAO.
+     */
+    val effectivePackId: String
+        get() = activePackId.ifEmpty { PackIds.defaultPackIdFor(level) }
+
+    /**
+     * Display level of [effectivePackId]. UI labels (四级/六级/自定义) read this, never the raw
+     * [level], so an explicit pack choice always wins over the onboarding default.
+     */
+    val effectiveLevel: CetLevel
+        get() = PackIds.levelForPackId(effectivePackId)
 }

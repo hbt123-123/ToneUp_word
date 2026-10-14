@@ -30,6 +30,12 @@ data class AppError(
     val code: ErrorCode,
     val message: String,
     val debugDetail: String? = null,
+    /**
+     * True when retrying the very same operation later can plausibly succeed (timeout, 5xx,
+     * connection refused). The meaning-sync worker keeps such a word `PENDING` instead of
+     * marking it `FAILED`, so a flaky network never burns the three-attempt budget.
+     */
+    val retryable: Boolean = false,
 ) {
     companion object {
         fun io(detail: String? = null) = AppError(ErrorCode.IO, "读写失败，请重试或检查存储空间。", detail)
@@ -38,7 +44,19 @@ data class AppError(
         fun empty() = AppError(ErrorCode.EMPTY, "文件中没有可用的单词记录。")
         fun database(detail: String? = null) = AppError(ErrorCode.DATABASE, "本地数据操作失败，请重试。", detail)
         fun unknown(detail: String? = null) = AppError(ErrorCode.UNKNOWN, "操作失败，请稍后再试。", detail)
+
+        // --- gateway (释义补全网关, plan §7.1) -------------------------------------------
+        /** Configuration problem: http base URL, malformed URL or HTTP 401 from the gateway. */
+        fun config(detail: String? = null) = AppError(ErrorCode.CONFIG, "网关配置有误，请检查网关地址与密钥。", detail)
+
+        /** Transport-level failure (timeout / 5xx / no connection): always worth one more try. */
+        fun network(detail: String? = null) =
+            AppError(ErrorCode.NETWORK, "网络请求失败，请检查网络后重试。", detail, retryable = true)
+
+        /** Every source answered "no such word" — the cascade is exhausted (negative cache). */
+        fun notFound(detail: String? = null) =
+            AppError(ErrorCode.NOT_FOUND, "网关未查到该词的释义，可手动补充。", detail)
     }
 }
 
-enum class ErrorCode { IO, PARSE, TOO_LARGE, EMPTY, DATABASE, UNKNOWN }
+enum class ErrorCode { IO, PARSE, TOO_LARGE, EMPTY, DATABASE, UNKNOWN, CONFIG, NETWORK, NOT_FOUND }

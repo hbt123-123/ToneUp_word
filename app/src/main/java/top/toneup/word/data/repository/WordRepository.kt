@@ -30,6 +30,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.yield
+import kotlin.random.Random
 
 /**
  * Vocabulary content: the built-in demo packs plus everything the user imported.
@@ -44,32 +45,74 @@ interface WordRepository {
     /** Seeds the built-in demo packs once; a no-op afterwards. */
     suspend fun ensureBuiltInPacks()
 
-    fun observeWordCount(level: CetLevel): Flow<Int>
+    fun observeWordCount(packId: String): Flow<Int>
 
     fun observePacks(): Flow<List<WordPackEntity>>
 
+    /** Single pack lookup (import screen title, repository-side guards). */
+    suspend fun packById(packId: String): WordPackEntity?
+
     fun observeImportHistory(limit: Int = 20): Flow<List<ImportHistoryEntity>>
 
-    suspend fun hasWords(level: CetLevel): Boolean
+    suspend fun hasWords(packId: String): Boolean
 
     suspend fun wordDetail(wordId: Long): WordWithProgress?
 
     /** Snapshot of the words used to build an exam paper. */
-    suspend fun examSources(level: CetLevel): List<ExamWordSource>
+    suspend fun examSources(packId: String): List<ExamWordSource>
 
-    /** All words of a level, for export. */
-    suspend fun allWords(level: CetLevel): List<Word>
+    /** All words of a pack, for export. */
+    suspend fun allWords(packId: String): List<Word>
 
     /**
      * Writes a validated preview.
      *
      * @param packId stable id of the pack (derived from the file name), so importing the same
-     *   file twice updates rather than duplicates.
+     *   file twice updates rather than duplicates. Word identity inside the transaction is
+     *   `(pack_id, normalized_word)` (D2) — the same word in another pack is a different row.
      */
     suspend fun importPack(preview: ImportPreview, packId: String): Outcome<ImportResult>
 
     /** Removes the words of an imported pack (built-in packs are refused). */
-    suspend fun deleteImportedPack(packId: String, level: CetLevel): Outcome<Unit>
+    suspend fun deleteImportedPack(packId: String): Outcome<Unit>
+
+    // --- Pack management (M2) + plain-text import (M3) --------------------------------------
+
+    /**
+     * Creates an empty user pack.
+     *
+     * The id is `"user-<now>-<random>"`: time alone would collide on a double tap, and a
+     * full UUID would be unreadable in backups — six random hex digits on top of the timestamp
+     * is enough for a single-device app.
+     *
+     * @param name learner-supplied display name; trimmed and required to be non-blank.
+     * @return the new pack id, so the caller can navigate straight into the import screen.
+     */
+    suspend fun createPack(name: String, now: Long): Outcome<String>
+
+    /** Renames a user pack (built-in packs keep their shipped name and are refused). */
+    suspend fun renamePack(packId: String, name: String): Outcome<Unit>
+
+    /**
+     * Deletes a pack and every word in it; progress, review events, mistakes and exam
+     * snapshots follow the foreign keys (CASCADE). Built-in packs are refused — they may be
+     * cleared of progress but not removed.
+     */
+    suspend fun deletePack(packId: String): Outcome<Unit>
+
+    /**
+     * Adds bare words to an existing pack in one transaction (M3 paste import).
+     *
+     * `(pack_id, normalized_word)` already present → skipped (never [androidx.room.OnConflictStrategy.REPLACE]:
+     * that would delete the word row and CASCADE away the learner's progress). New rows enter
+     * with empty content and `lookup_state='PENDING'` for the gateway to fill later (D4) —
+     * importing never requires the network. The pack's `word_count` is refreshed in the same
+     * transaction.
+     *
+     * @param words validated, de-duplicated word tokens (from `PlainTextWordParser`); the
+     *   repository still normalises defensively because it is the last line before SQL.
+     */
+    suspend fun addWordsToPack(packId: String, words: List<String>, now: Long): Outcome<PackAddResult>
 
     /**
      * Vocabulary lookup for the word browser.
@@ -77,19 +120,19 @@ interface WordRepository {
      * Matches the English word and the Chinese meanings; prefix matches on the word sort first so
      * typing "ab" surfaces `abandon` before a word that merely contains "ab" in a meaning.
      */
-    suspend fun search(level: CetLevel, query: String, limit: Int = SEARCH_LIMIT): List<WordWithProgress>
+    suspend fun search(packId: String, query: String, limit: Int = SEARCH_LIMIT): List<WordWithProgress>
 
     /**
      * Close spellings of [query] — the "你是不是想找" list.
      *
      * Only consulted when the exact search came up short (see [APPROX_STRICT_THRESHOLD]): a learner
      * who already found what they wanted must not be handed a list of unrelated words. Returns an
-     * empty list for a query that is not a plain English word, for a level whose length band holds
+     * empty list for a query that is not a plain English word, for a pack whose length band holds
      * nothing, and for anything the edit distance rejects — never a guess about a word that does
      * not exist in the local vocabulary.
      */
     suspend fun searchApproximate(
-        level: CetLevel,
+        packId: String,
         query: String,
         strictMatchCount: Int,
         limit: Int = APPROX_LIMIT,
@@ -129,6 +172,16 @@ data class SeedProgress(
     val fraction: Float get() = if (total <= 0) 0f else (processed.toFloat() / total).coerceIn(0f, 1f)
 }
 
+/** Result of one plain-text import: what landed, what was already there, what was asked for. */
+data class PackAddResult(
+    /** Words that became new rows. */
+    val inserted: Int,
+    /** Words already present in this pack (`(pack_id, normalized_word)` identity, D2). */
+    val skipped: Int,
+    /** Words the caller submitted. */
+    val total: Int,
+)
+
 class DefaultWordRepository(
     private val db: ToneUpWordDatabase,
     private val time: TimeProvider,
@@ -147,7 +200,7 @@ class DefaultWordRepository(
      *  * the word list is now thousands of entries, so the work is chunked (with a `yield()`
      *    between chunks so the loading screen keeps drawing) instead of one long transaction;
      *  * re-seeding must never destroy learning data. Existing rows are matched on
-     *    `(level, normalized_word)` and **updated in place**, which keeps the row id every
+     *    `(pack_id, normalized_word)` and **updated in place**, which keeps the row id every
      *    progress/mistake/event row points at. Nothing is ever deleted here.
      */
     override suspend fun ensureBuiltInPacks() {
@@ -159,7 +212,7 @@ class DefaultWordRepository(
 
         definitions.forEach { definition ->
             val existingPack = db.wordDao().packById(definition.id)
-            val storedCount = db.wordDao().countInPack(definition.level.id, definition.id)
+            val storedCount = db.wordDao().countInPack(definition.id)
             val upToDate = existingPack != null &&
                 existingPack.version == definition.version.toString() &&
                 (definition.expectedWordCount <= 0 || storedCount >= definition.expectedWordCount)
@@ -180,8 +233,8 @@ class DefaultWordRepository(
         val records = preview.records
         val now = time.nowMillis()
 
-        // One identity lookup for the whole level instead of a query per word.
-        val existingIds: Map<String, Long> = db.wordDao().idByNormalized(level.id)
+        // One identity lookup for the whole pack instead of a query per word.
+        val existingIds: Map<String, Long> = db.wordDao().idByNormalized(definition.id)
             .associate { it.normalizedWord to it.id }
 
         var processed = 0
@@ -232,7 +285,7 @@ class DefaultWordRepository(
                 license = records.firstOrNull()?.license.orEmpty().ifBlank { BuiltInWordPacks.LICENSE },
                 version = definition.version.toString(),
                 isBuiltIn = true,
-                wordCount = db.wordDao().countInPack(level.id, definition.id),
+                wordCount = db.wordDao().countInPack(definition.id),
                 createdAt = existingPack?.createdAt ?: now,
                 updatedAt = now,
             ),
@@ -250,7 +303,7 @@ class DefaultWordRepository(
         BuiltInWordPacks.all.forEach { (packId, words) ->
             val level = if (packId.contains("cet6")) CetLevel.CET6 else CetLevel.CET4
             val existingPack = db.wordDao().packById(packId)
-            val existingIds: Map<String, Long> = db.wordDao().idByNormalized(level.id)
+            val existingIds: Map<String, Long> = db.wordDao().idByNormalized(packId)
                 .associate { it.normalizedWord to it.id }
             val missing = words.filter { Word.normalizeWordKey(it.word) !in existingIds }
             if (missing.isEmpty() && existingPack != null) return@forEach
@@ -290,7 +343,7 @@ class DefaultWordRepository(
                         license = BuiltInWordPacks.LICENSE,
                         version = BuiltInWordPacks.VERSION.toString(),
                         isBuiltIn = true,
-                        wordCount = db.wordDao().countInPack(level.id, packId),
+                        wordCount = db.wordDao().countInPack(packId),
                         createdAt = existingPack?.createdAt ?: now,
                         updatedAt = now,
                     ),
@@ -300,18 +353,18 @@ class DefaultWordRepository(
     }
 
     override suspend fun search(
-        level: CetLevel,
+        packId: String,
         query: String,
         limit: Int,
     ): List<WordWithProgress> {
         val trimmed = query.trim()
         val like = likePattern(trimmed)
         val prefix = prefixPattern(trimmed)
-        return db.wordDao().search(level.id, trimmed, like, prefix, limit).map { it.toWordWithProgress() }
+        return db.wordDao().search(packId, trimmed, like, prefix, limit).map { it.toWordWithProgress() }
     }
 
     override suspend fun searchApproximate(
-        level: CetLevel,
+        packId: String,
         query: String,
         strictMatchCount: Int,
         limit: Int,
@@ -324,7 +377,7 @@ class DefaultWordRepository(
         val maxDistance = ApproximateWordMatcher.maxDistanceFor(needle.length)
 
         val rows = db.wordDao().byWordLengthBand(
-            level = level.id,
+            packId = packId,
             minLength = (needle.length - maxDistance).coerceAtLeast(1),
             maxLength = needle.length + maxDistance,
             limit = WordRepository.APPROX_CANDIDATE_LIMIT,
@@ -362,32 +415,25 @@ class DefaultWordRepository(
         return "$escaped%"
     }
 
-    private companion object {
-        /**
-         * Rows per seeding transaction. Large enough to keep the insert count low, small enough
-         * that a `yield()` between chunks lets the loading screen draw and that a cancellation
-         * loses at most one chunk.
-         */
-        const val SEED_CHUNK_SIZE = 400
-    }
-
-    override fun observeWordCount(level: CetLevel): Flow<Int> = db.wordDao().observeCount(level.id)
+    override fun observeWordCount(packId: String): Flow<Int> = db.wordDao().observeCount(packId)
 
     override fun observePacks(): Flow<List<WordPackEntity>> = db.wordDao().observePacks()
+
+    override suspend fun packById(packId: String): WordPackEntity? = db.wordDao().packById(packId)
 
     override fun observeImportHistory(limit: Int): Flow<List<ImportHistoryEntity>> =
         db.importHistoryDao().observeRecent(limit)
 
-    override suspend fun hasWords(level: CetLevel): Boolean = db.wordDao().hasWords(level.id)
+    override suspend fun hasWords(packId: String): Boolean = db.wordDao().hasWords(packId)
 
     override suspend fun wordDetail(wordId: Long): WordWithProgress? =
         db.progressDao().wordWithProgress(wordId)?.toWordWithProgress()
 
-    override suspend fun examSources(level: CetLevel): List<ExamWordSource> =
-        db.wordDao().liteForLevel(level.id).map { it.toExamSource() }
+    override suspend fun examSources(packId: String): List<ExamWordSource> =
+        db.wordDao().liteForPack(packId).map { it.toExamSource() }
 
-    override suspend fun allWords(level: CetLevel): List<Word> =
-        db.wordDao().allForLevel(level.id).map { it.toDomain() }
+    override suspend fun allWords(packId: String): List<Word> =
+        db.wordDao().allForPack(packId).map { it.toDomain() }
 
     override suspend fun importPack(preview: ImportPreview, packId: String): Outcome<ImportResult> {
         val now = time.nowMillis()
@@ -396,7 +442,10 @@ class DefaultWordRepository(
                 var inserted = 0
                 var updated = 0
                 preview.records.forEach { record ->
-                    val existing = db.wordDao().byNormalized(record.level.id, Word.normalizeWordKey(record.word))
+                    val normalized = Word.normalizeWordKey(record.word)
+                    // D2: identity is (pack_id, normalized_word) — the same word in another
+                    // pack is a different row with its own progress.
+                    val existing = db.wordDao().byNormalized(packId, normalized)
                     if (existing == null) {
                         db.wordDao().insert(record.toEntity(packId, now))
                         inserted++
@@ -405,10 +454,10 @@ class DefaultWordRepository(
                         // review event and exam snapshot) is preserved.
                         db.wordDao().update(
                             existing.copy(
-                                packId = existing.packId ?: packId,
+                                packId = packId,
                                 externalId = record.externalId ?: existing.externalId,
                                 word = record.word,
-                                normalizedWord = Word.normalizeWordKey(record.word),
+                                normalizedWord = normalized,
                                 phonetic = record.phonetic,
                                 partOfSpeech = record.partOfSpeech,
                                 meanings = JsonCodec.encodeStrings(record.meanings),
@@ -437,7 +486,7 @@ class DefaultWordRepository(
                         license = preview.records.firstOrNull()?.license.orEmpty(),
                         version = "1.0",
                         isBuiltIn = false,
-                        wordCount = db.wordDao().countInPack(level.id, packId),
+                        wordCount = db.wordDao().countInPack(packId),
                         createdAt = existingPack?.createdAt ?: now,
                         updatedAt = now,
                     ),
@@ -498,7 +547,9 @@ class DefaultWordRepository(
         }
     }
 
-    override suspend fun deleteImportedPack(packId: String, level: CetLevel): Outcome<Unit> = try {
+    override suspend fun deleteImportedPack(packId: String): Outcome<Unit> = deletePack(packId)
+
+    override suspend fun deletePack(packId: String): Outcome<Unit> = try {
         val pack = db.wordDao().packById(packId)
         when {
             pack == null -> Outcome.Failure(AppError(ErrorCode.DATABASE, "词库不存在或已被删除。"))
@@ -509,13 +560,146 @@ class DefaultWordRepository(
             else -> {
                 db.withTransaction {
                     // Progress, review events and exam snapshots follow the foreign keys.
-                    db.wordDao().deletePackWords(level.id, packId)
+                    db.wordDao().deleteForPack(packId)
+                    // Then the pack row itself — a deleted pack must disappear from the list.
+                    db.wordDao().deletePackRow(packId)
                 }
                 Outcome.Success(Unit)
             }
         }
     } catch (throwable: Throwable) {
         Outcome.Failure(AppError.database(throwable.javaClass.simpleName))
+    }
+
+    override suspend fun createPack(name: String, now: Long): Outcome<String> = try {
+        val trimmed = name.trim()
+        if (trimmed.isEmpty()) {
+            return Outcome.Failure(AppError(ErrorCode.EMPTY, "词库名称不能为空。"))
+        }
+        if (trimmed.length > MAX_PACK_NAME_LENGTH) {
+            return Outcome.Failure(
+                AppError(ErrorCode.TOO_LARGE, "词库名称过长，请控制在 $MAX_PACK_NAME_LENGTH 个字符内。"),
+            )
+        }
+        // Timestamp + short random suffix: a double tap must not collide, and the id stays
+        // short enough to read in a backup file.
+        val id = "user-$now-${Random.nextInt(0x1000000).toString(16).padStart(6, '0')}"
+        db.wordDao().upsertPack(
+            WordPackEntity(
+                id = id,
+                name = trimmed,
+                level = CetLevel.OTHER.id,
+                description = "",
+                isBuiltIn = false,
+                wordCount = 0,
+                createdAt = now,
+                updatedAt = now,
+            ),
+        )
+        Outcome.Success(id)
+    } catch (throwable: Throwable) {
+        Outcome.Failure(AppError.database(throwable.javaClass.simpleName))
+    }
+
+    override suspend fun renamePack(packId: String, name: String): Outcome<Unit> = try {
+        val trimmed = name.trim()
+        when {
+            trimmed.isEmpty() -> Outcome.Failure(AppError(ErrorCode.EMPTY, "词库名称不能为空。"))
+            trimmed.length > MAX_PACK_NAME_LENGTH -> Outcome.Failure(
+                AppError(ErrorCode.TOO_LARGE, "词库名称过长，请控制在 $MAX_PACK_NAME_LENGTH 个字符内。"),
+            )
+
+            else -> {
+                val pack = db.wordDao().packById(packId)
+                when {
+                    pack == null -> Outcome.Failure(AppError(ErrorCode.DATABASE, "词库不存在或已被删除。"))
+                    pack.isBuiltIn -> Outcome.Failure(
+                        AppError(ErrorCode.DATABASE, "内置演示词库不能重命名。"),
+                    )
+
+                    else -> {
+                        // `upsertPack` writes by primary key; the pack row carries no children
+                        // (word rows do not reference it with a foreign key), so replacing it
+                        // touches nothing else.
+                        db.wordDao().upsertPack(
+                            pack.copy(name = trimmed, updatedAt = time.nowMillis()),
+                        )
+                        Outcome.Success(Unit)
+                    }
+                }
+            }
+        }
+    } catch (throwable: Throwable) {
+        Outcome.Failure(AppError.database(throwable.javaClass.simpleName))
+    }
+
+    override suspend fun addWordsToPack(
+        packId: String,
+        words: List<String>,
+        now: Long,
+    ): Outcome<PackAddResult> = try {
+        val pack = db.wordDao().packById(packId)
+            ?: return Outcome.Failure(AppError(ErrorCode.DATABASE, "词库不存在或已被删除。"))
+        if (words.isEmpty()) {
+            return Outcome.Failure(AppError.empty())
+        }
+        db.withTransaction {
+            // One identity lookup for the whole batch instead of a query per word.
+            val existing: Set<String> = db.wordDao().idByNormalized(packId)
+                .mapTo(HashSet()) { it.normalizedWord }
+            val seenInBatch = HashSet<String>()
+            val toInsert = ArrayList<WordEntity>(words.size)
+            var skipped = 0
+            words.forEach { raw ->
+                val trimmed = raw.trim()
+                val normalized = Word.normalizeWordKey(trimmed)
+                // D2 identity: already in this pack, or already submitted in this very batch —
+                // either way skip. Never REPLACE: that would delete the row and CASCADE away
+                // progress, mistakes and exam snapshots.
+                if (trimmed.isEmpty() || normalized in existing || !seenInBatch.add(normalized)) {
+                    skipped++
+                    return@forEach
+                }
+                toInsert += WordEntity(
+                    packId = packId,
+                    externalId = null,
+                    word = trimmed,
+                    normalizedWord = normalized,
+                    phonetic = "",
+                    partOfSpeech = "",
+                    meanings = "[]",
+                    level = pack.level,
+                    source = "",
+                    license = "",
+                    audioUri = null,
+                    createdAt = now,
+                    updatedAt = now,
+                    // D4: waiting for the gateway; the import itself never needs the network.
+                    lookupState = "PENDING",
+                    meaningSource = "",
+                )
+            }
+            // IGNORE (not REPLACE): a race with a concurrent write keeps the existing row —
+            // and its progress — instead of destroying it.
+            val rowIds = if (toInsert.isEmpty()) emptyList() else db.wordDao().insertAll(toInsert)
+            val inserted = rowIds.count { it >= 0 }
+            db.wordDao().updatePackWordCount(packId, db.wordDao().countInPack(packId), now)
+            Outcome.Success(PackAddResult(inserted = inserted, skipped = skipped, total = words.size))
+        }
+    } catch (throwable: Throwable) {
+        Outcome.Failure(AppError.database(throwable.javaClass.simpleName))
+    }
+
+    private companion object {
+        /**
+         * Rows per seeding transaction. Large enough to keep the insert count low, small enough
+         * that a `yield()` between chunks lets the loading screen draw and that a cancellation
+         * loses at most one chunk.
+         */
+        const val SEED_CHUNK_SIZE = 400
+
+        /** Generous for a pack name; long enough to describe, short enough to render. */
+        const val MAX_PACK_NAME_LENGTH = 40
     }
 }
 

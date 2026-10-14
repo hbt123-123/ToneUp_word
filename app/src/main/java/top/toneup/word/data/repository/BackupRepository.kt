@@ -9,6 +9,7 @@ import top.toneup.word.core.time.TimeProvider
 import top.toneup.word.data.local.ToneUpWordDatabase
 import top.toneup.word.data.local.entity.DailyStudySummaryEntity
 import top.toneup.word.data.mapper.toDomain
+import top.toneup.word.data.settings.PackIds
 import top.toneup.word.domain.importer.CsvCodec
 import top.toneup.word.domain.model.CetLevel
 import top.toneup.word.domain.model.Word
@@ -46,15 +47,21 @@ data class RestoreResult(
  *
  * Writing is always done through the Storage Access Framework by the caller: this class only
  * produces and consumes *text*, so it never needs a storage permission and never decides
- * where a file goes. Restoring replaces study data for the levels present in the backup,
+ * where a file goes. Restoring replaces study data for the **packs** present in the backup,
  * which is stated in the confirmation dialog before it runs.
+ *
+ * Schema v2 (D1/D2): every export is scoped by pack id, and every DTO carries an optional
+ * `packId` (default `""` so v1 backup files still parse). On restore an empty `packId` is
+ * resolved with `defaultPackIdFor(level)` — the exact inverse of what migration 1→2 did to
+ * live rows — and word identity is `(pack_id, normalized_word)` with a legacy
+ * `(level, normalized_word)` fallback for rows written by a pre-v2 restore.
  */
 interface BackupRepository {
 
-    suspend fun export(scope: ExportScope, level: CetLevel): Outcome<String>
+    suspend fun export(scope: ExportScope, packId: String): Outcome<String>
 
     /** File name suggestion shown in the system save dialog. */
-    fun suggestedFileName(scope: ExportScope, level: CetLevel): String
+    fun suggestedFileName(scope: ExportScope, packId: String): String
 
     suspend fun restore(content: String): Outcome<RestoreResult>
 
@@ -70,24 +77,27 @@ class DefaultBackupRepository(
     private val time: TimeProvider,
 ) : BackupRepository {
 
-    override fun suggestedFileName(scope: ExportScope, level: CetLevel): String {
+    override fun suggestedFileName(scope: ExportScope, packId: String): String {
         val stamp = DateTimeFormatter.ofPattern("yyyyMMdd-HHmm")
             .withZone(ZoneId.systemDefault())
             .format(Instant.ofEpochMilli(time.nowMillis()))
+        // Pack ids are already filename-safe slugs (`builtin-cet4`, `imported-…`); normalise
+        // anyway so an exotic imported id can never produce an invalid file name.
+        val slug = packId.lowercase().replace(NON_SLUG, "-").trim('-').ifEmpty { "pack" }
         return when (scope) {
-            ExportScope.WORD_LIST -> "toneup-${level.id.lowercase()}-words-$stamp.csv"
-            ExportScope.STUDY_RECORDS -> "toneup-${level.id.lowercase()}-records-$stamp.json"
+            ExportScope.WORD_LIST -> "toneup-$slug-words-$stamp.csv"
+            ExportScope.STUDY_RECORDS -> "toneup-$slug-records-$stamp.json"
             ExportScope.FULL_BACKUP -> "toneup-backup-$stamp.json"
         }
     }
 
-    override suspend fun export(scope: ExportScope, level: CetLevel): Outcome<String> = try {
+    override suspend fun export(scope: ExportScope, packId: String): Outcome<String> = try {
         val now = time.nowMillis()
         val payload = when (scope) {
-            ExportScope.WORD_LIST -> exportWordListCsv(level)
+            ExportScope.WORD_LIST -> exportWordListCsv(packId)
             ExportScope.STUDY_RECORDS -> JsonCodec.prettyJson.encodeToString(
                 StudyRecordsExport.serializer(),
-                buildStudyRecords(level, now),
+                buildStudyRecords(packId, now),
             )
 
             ExportScope.FULL_BACKUP -> JsonCodec.prettyJson.encodeToString(
@@ -100,14 +110,14 @@ class DefaultBackupRepository(
         Outcome.Failure(AppError.io(throwable.javaClass.simpleName))
     }
 
-    private suspend fun exportWordListCsv(level: CetLevel): String {
+    private suspend fun exportWordListCsv(packId: String): String {
         val header = listOf(
             "id", "word", "phonetic", "partOfSpeech", "meanings",
             "exampleSentence", "exampleTranslation", "collocations",
             "level", "source", "license", "audioUri",
         )
         val rows = mutableListOf(header)
-        db.wordDao().allForLevel(level.id).forEach { entity ->
+        db.wordDao().allForPack(packId).forEach { entity ->
             val word = entity.toDomain()
             rows += listOf(
                 word.id.toString(),
@@ -127,13 +137,14 @@ class DefaultBackupRepository(
         return CsvCodec.write(rows)
     }
 
-    private suspend fun buildStudyRecords(level: CetLevel, now: Long): StudyRecordsExport {
-        val progress = db.progressDao().wordsByIds(db.wordDao().idsForLevel(level.id))
+    private suspend fun buildStudyRecords(packId: String, now: Long): StudyRecordsExport {
+        val progress = db.progressDao().wordsByIds(db.wordDao().idsForPack(packId))
             .filter { it.status != null }
             .map { row ->
                 ProgressExport(
                     word = row.word,
                     level = row.level,
+                    packId = row.packId ?: packId,
                     status = row.status.orEmpty(),
                     masteryLevel = row.masteryLevel ?: 0,
                     repetitions = row.repetitions ?: 0,
@@ -149,7 +160,7 @@ class DefaultBackupRepository(
                     isFavorite = (row.isFavorite ?: 0) == 1,
                 )
             }
-        val mistakes = db.wordDao().idsForLevel(level.id).mapNotNull { wordId ->
+        val mistakes = db.wordDao().idsForPack(packId).mapNotNull { wordId ->
             val entity = db.mistakeBookDao().byWordId(wordId) ?: return@mapNotNull null
             MistakeExport(
                 wrongCount = entity.wrongCount,
@@ -162,15 +173,17 @@ class DefaultBackupRepository(
                 isFavorite = entity.isFavorite,
                 word = db.wordDao().byId(wordId)?.word.orEmpty(),
                 level = entity.level,
+                packId = entity.packId.ifEmpty { packId },
             )
         }
-        val days = db.dailySummaryDao().allForLevel(level.id).map { it.toDayExport() }
+        val days = db.dailySummaryDao().allForPack(packId).map { it.toDayExport() }
         return StudyRecordsExport(
             format = FORMAT_STUDY_RECORDS,
             version = BACKUP_VERSION,
             exportedAtMillis = now,
             exportedAtIso = Instant.ofEpochMilli(now).toString(),
-            level = level.id,
+            level = PackIds.levelForPackId(packId).id,
+            packId = packId,
             progress = progress,
             mistakes = mistakes,
             days = days,
@@ -178,10 +191,10 @@ class DefaultBackupRepository(
     }
 
     private suspend fun buildFullBackup(now: Long): FullBackup {
-        val levels = db.wordDao().observeLevels().first()
+        val packIds = db.wordDao().observePackIds().first()
         val words = mutableListOf<WordExport>()
-        levels.forEach { levelId ->
-            db.wordDao().allForLevel(levelId).forEach { entity ->
+        packIds.forEach { packId ->
+            db.wordDao().allForPack(packId).forEach { entity ->
                 val word = entity.toDomain()
                 words += WordExport(
                     word = word.word,
@@ -192,6 +205,7 @@ class DefaultBackupRepository(
                     exampleTranslation = word.exampleTranslation,
                     collocations = word.collocations,
                     level = word.level.id,
+                    packId = packId,
                     source = word.source,
                     license = word.license,
                     audioUri = word.audioUri,
@@ -201,18 +215,19 @@ class DefaultBackupRepository(
 
         val progress = mutableListOf<ProgressExport>()
         val mistakes = mutableListOf<MistakeExport>()
-        levels.forEach { levelId ->
-            val records = buildStudyRecords(CetLevel.fromId(levelId), now)
+        packIds.forEach { packId ->
+            val records = buildStudyRecords(packId, now)
             progress += records.progress
             mistakes += records.mistakes
         }
 
         val events = db.reviewEventDao().let { dao ->
-            levels.flatMap { levelId -> dao.allForLevel(levelId) }
+            packIds.flatMap { packId -> dao.allForPack(packId) }
         }.map { entity ->
             EventExport(
                 word = db.wordDao().byId(entity.wordId)?.word.orEmpty(),
                 level = entity.level,
+                packId = entity.packId,
                 grade = entity.grade,
                 source = entity.source,
                 answeredAt = entity.answeredAt,
@@ -222,7 +237,7 @@ class DefaultBackupRepository(
             )
         }
 
-        val days = levels.flatMap { levelId -> db.dailySummaryDao().allForLevel(levelId) }
+        val days = packIds.flatMap { packId -> db.dailySummaryDao().allForPack(packId) }
             .map { it.toDayExport() }
 
         return FullBackup(
@@ -253,14 +268,17 @@ class DefaultBackupRepository(
         val now = time.nowMillis()
         return try {
             val result = db.withTransaction {
-                // 1. Words: matched by level + normalised text so ids stay stable.
+                // 1. Words: matched by (pack_id, normalised text) so ids stay stable; a v1
+                //    backup resolves its pack from the level, and a row written by a pre-v2
+                //    restore (`restored-*` pack) is found through the legacy level match.
                 backup.words.forEach { word ->
                     val level = CetLevel.fromId(word.level)
+                    val packId = word.packId.ifEmpty { PackIds.defaultPackIdFor(level) }
                     val normalized = Word.normalizeWordKey(word.word)
-                    if (db.wordDao().byNormalized(level.id, normalized) == null) {
+                    if (findWordId(packId, level.id, normalized) == null) {
                         db.wordDao().insert(
                             top.toneup.word.data.local.entity.WordEntity(
-                                packId = "restored-${level.id.lowercase()}",
+                                packId = packId,
                                 externalId = null,
                                 word = word.word,
                                 normalizedWord = normalized,
@@ -281,22 +299,27 @@ class DefaultBackupRepository(
                     }
                 }
 
-                // 2. Replace study data for the levels present in the backup so a restore is
+                // 2. Replace study data for the packs present in the backup so a restore is
                 //    idempotent (restoring twice does not double the counters).
-                val levelsInBackup = (backup.progress.map { it.level } + backup.mistakes.map { it.level })
-                    .distinct()
-                levelsInBackup.forEach { levelId ->
-                    db.mistakeBookDao().deleteEverythingForLevel(levelId)
-                    db.reviewEventDao().deleteLevel(levelId)
-                    db.progressDao().deleteForLevel(levelId)
+                val packsInBackup = (
+                    backup.progress.map { it.resolvedPackId() } +
+                        backup.mistakes.map { it.resolvedPackId() } +
+                        backup.events.map { it.resolvedPackId() }
+                    ).distinct()
+                packsInBackup.forEach { packId ->
+                    db.mistakeBookDao().deleteEverythingForPack(packId)
+                    db.reviewEventDao().deleteForPack(packId)
+                    db.progressDao().deleteForPack(packId)
                 }
 
                 var restoredProgress = 0
                 var skipped = 0
                 backup.progress.forEach { record ->
-                    val wordId = db.wordDao()
-                        .byNormalized(CetLevel.fromId(record.level).id, Word.normalizeWordKey(record.word))
-                        ?.id
+                    val wordId = findWordId(
+                        packId = record.resolvedPackId(),
+                        level = CetLevel.fromId(record.level).id,
+                        normalized = Word.normalizeWordKey(record.word),
+                    )
                     if (wordId == null) {
                         skipped++
                     } else {
@@ -326,9 +349,12 @@ class DefaultBackupRepository(
 
                 var restoredMistakes = 0
                 backup.mistakes.forEach { record ->
-                    val wordId = db.wordDao()
-                        .byNormalized(CetLevel.fromId(record.level).id, Word.normalizeWordKey(record.word))
-                        ?.id ?: return@forEach
+                    val packId = record.resolvedPackId()
+                    val wordId = findWordId(
+                        packId = packId,
+                        level = CetLevel.fromId(record.level).id,
+                        normalized = Word.normalizeWordKey(record.word),
+                    ) ?: return@forEach
                     db.mistakeBookDao().upsert(
                         top.toneup.word.data.local.entity.WrongAnswerEntity(
                             wordId = wordId,
@@ -342,6 +368,7 @@ class DefaultBackupRepository(
                             isFavorite = record.isFavorite,
                             level = record.level,
                             updatedAt = now,
+                            packId = packId,
                         ),
                     )
                     restoredMistakes++
@@ -349,9 +376,12 @@ class DefaultBackupRepository(
 
                 var restoredEvents = 0
                 backup.events.forEach { event ->
-                    val wordId = db.wordDao()
-                        .byNormalized(CetLevel.fromId(event.level).id, Word.normalizeWordKey(event.word))
-                        ?.id ?: return@forEach
+                    val packId = event.resolvedPackId()
+                    val wordId = findWordId(
+                        packId = packId,
+                        level = CetLevel.fromId(event.level).id,
+                        normalized = Word.normalizeWordKey(event.word),
+                    ) ?: return@forEach
                     db.reviewEventDao().insert(
                         top.toneup.word.data.local.entity.ReviewEventEntity(
                             wordId = wordId,
@@ -361,6 +391,7 @@ class DefaultBackupRepository(
                             answeredAt = event.answeredAt,
                             dayKey = event.dayKey,
                             level = event.level,
+                            packId = packId,
                             previousIntervalDays = event.previousIntervalDays,
                             newIntervalDays = event.newIntervalDays,
                             responseTimeMs = null,
@@ -370,9 +401,11 @@ class DefaultBackupRepository(
                 }
 
                 backup.days.forEach { day ->
+                    val packId = day.resolvedPackId()
                     db.dailySummaryDao().upsert(
                         DailyStudySummaryEntity(
                             dayKey = day.dayKey,
+                            packId = packId,
                             level = day.level,
                             studiedWords = day.studiedWords,
                             newWords = day.newWords,
@@ -408,18 +441,23 @@ class DefaultBackupRepository(
 
     private suspend fun restoreRecords(records: StudyRecordsExport): Outcome<RestoreResult> {
         val now = time.nowMillis()
+        // v1 files have no packId on the envelope: derive it exactly like migration 1→2 did.
+        val packId = records.packId.ifEmpty { PackIds.defaultPackIdFor(CetLevel.fromId(records.level)) }
         return try {
             val result = db.withTransaction {
                 var restoredProgress = 0
                 var skipped = 0
                 var restoredMistakes = 0
 
-                db.progressDao().deleteForLevel(records.level)
-                db.mistakeBookDao().deleteEverythingForLevel(records.level)
+                db.progressDao().deleteForPack(packId)
+                db.mistakeBookDao().deleteEverythingForPack(packId)
 
                 records.progress.forEach { record ->
-                    val wordId = db.wordDao()
-                        .byNormalized(records.level, Word.normalizeWordKey(record.word))?.id
+                    val wordId = findWordId(
+                        packId = record.packId.ifEmpty { packId },
+                        level = CetLevel.fromId(record.level).id,
+                        normalized = Word.normalizeWordKey(record.word),
+                    )
                     if (wordId == null) {
                         skipped++
                     } else {
@@ -447,8 +485,12 @@ class DefaultBackupRepository(
                     }
                 }
                 records.mistakes.forEach { record ->
-                    val wordId = db.wordDao()
-                        .byNormalized(records.level, Word.normalizeWordKey(record.word))?.id ?: return@forEach
+                    val recordPackId = record.packId.ifEmpty { packId }
+                    val wordId = findWordId(
+                        packId = recordPackId,
+                        level = CetLevel.fromId(record.level).id,
+                        normalized = Word.normalizeWordKey(record.word),
+                    ) ?: return@forEach
                     db.mistakeBookDao().upsert(
                         top.toneup.word.data.local.entity.WrongAnswerEntity(
                             wordId = wordId,
@@ -460,16 +502,19 @@ class DefaultBackupRepository(
                             correctSinceWrong = record.correctSinceWrong,
                             resolvedAt = record.resolvedAt,
                             isFavorite = record.isFavorite,
-                            level = records.level,
+                            level = record.level,
                             updatedAt = now,
+                            packId = recordPackId,
                         ),
                     )
                     restoredMistakes++
                 }
                 records.days.forEach { day ->
+                    val dayPackId = day.packId.ifEmpty { packId }
                     db.dailySummaryDao().upsert(
                         DailyStudySummaryEntity(
                             dayKey = day.dayKey,
+                            packId = dayPackId,
                             level = day.level,
                             studiedWords = day.studiedWords,
                             newWords = day.newWords,
@@ -516,17 +561,24 @@ class DefaultBackupRepository(
     override suspend fun clearAllData() {
         db.withTransaction {
             clearStudyProgress()
-            db.wordDao().let { dao ->
-                listOf(CetLevel.CET4, CetLevel.CET6, CetLevel.OTHER).forEach { level ->
-                    dao.deleteLevel(level.id)
-                }
-            }
+            // Every row of every pack: built-in packs are re-seeded on the next cold start.
+            db.wordDao().deleteAll()
         }
     }
+
+    /**
+     * Word identity on restore: `(pack_id, normalized_word)` first (D2), then the legacy
+     * `(level, normalized_word)` match so a file written before schema v2 — or rows a pre-v2
+     * restore parked under a `restored-*` pack — still finds its row instead of being skipped.
+     */
+    private suspend fun findWordId(packId: String, level: String, normalized: String): Long? =
+        db.wordDao().byNormalized(packId, normalized)?.id
+            ?: db.wordDao().byNormalizedInLevel(level, normalized)?.id
 
     private fun DailyStudySummaryEntity.toDayExport(): DayExport = DayExport(
         dayKey = dayKey,
         level = level,
+        packId = packId,
         studiedWords = studiedWords,
         newWords = newWords,
         reviewWords = reviewWords,
@@ -553,6 +605,8 @@ class DefaultBackupRepository(
         val exampleTranslation: String = "",
         val collocations: List<String> = emptyList(),
         val level: String = CetLevel.CET4.id,
+        /** Empty in v1 backups → resolved from [level] on restore. */
+        val packId: String = "",
         val source: String = "",
         val license: String = "",
         val audioUri: String? = null,
@@ -562,6 +616,8 @@ class DefaultBackupRepository(
     private data class ProgressExport(
         val word: String,
         val level: String,
+        /** Empty in v1 backups → resolved from [level] on restore. */
+        val packId: String = "",
         val status: String,
         val masteryLevel: Int,
         val repetitions: Int,
@@ -591,12 +647,16 @@ class DefaultBackupRepository(
         val isFavorite: Boolean = false,
         val word: String = "",
         val level: String = CetLevel.CET4.id,
+        /** Empty in v1 backups → resolved from [level] on restore. */
+        val packId: String = "",
     )
 
     @Serializable
     private data class EventExport(
         val word: String,
         val level: String,
+        /** Empty in v1 backups → resolved from [level] on restore. */
+        val packId: String = "",
         val grade: String,
         val source: String,
         val answeredAt: Long,
@@ -609,6 +669,8 @@ class DefaultBackupRepository(
     private data class DayExport(
         val dayKey: String,
         val level: String,
+        /** Empty in v1 backups → resolved from [level] on restore. */
+        val packId: String = "",
         val studiedWords: Int = 0,
         val newWords: Int = 0,
         val reviewWords: Int = 0,
@@ -630,6 +692,8 @@ class DefaultBackupRepository(
         val exportedAtMillis: Long,
         val exportedAtIso: String,
         val level: String,
+        /** Empty in v1 backups → resolved from [level] on restore. */
+        val packId: String = "",
         val progress: List<ProgressExport> = emptyList(),
         val mistakes: List<MistakeExport> = emptyList(),
         val days: List<DayExport> = emptyList(),
@@ -653,5 +717,25 @@ class DefaultBackupRepository(
         const val BACKUP_VERSION = 1
         const val FORMAT_STUDY_RECORDS = "ToneUpWord 学习记录 (JSON)"
         const val FORMAT_FULL_BACKUP = "ToneUpWord 完整备份 (JSON)"
+
+        /** File-name slug normaliser for pack ids. */
+        private val NON_SLUG = Regex("[^a-z0-9]+")
     }
+
+    /**
+     * Pack id of a v2 DTO; a v1 file (no `packId` field) resolves exactly the way migration
+     * 1→2 resolved its own rows — builtin packs for CET levels, `legacy-other` for anything
+     * else — so restoring an old backup lands in the same pack the old `level` scope had.
+     */
+    private fun ProgressExport.resolvedPackId(): String =
+        packId.ifEmpty { PackIds.defaultPackIdFor(CetLevel.fromId(level)) }
+
+    private fun MistakeExport.resolvedPackId(): String =
+        packId.ifEmpty { PackIds.defaultPackIdFor(CetLevel.fromId(level)) }
+
+    private fun EventExport.resolvedPackId(): String =
+        packId.ifEmpty { PackIds.defaultPackIdFor(CetLevel.fromId(level)) }
+
+    private fun DayExport.resolvedPackId(): String =
+        packId.ifEmpty { PackIds.defaultPackIdFor(CetLevel.fromId(level)) }
 }

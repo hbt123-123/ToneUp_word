@@ -234,8 +234,8 @@ class BuiltInPackAssetTest {
 
             val first = kotlin.system.measureTimeMillis { repository.ensureBuiltInPacks() }
 
-            val cet4Rows = database.wordDao().count(CetLevel.CET4.id)
-            val cet6Rows = database.wordDao().count(CetLevel.CET6.id)
+            val cet4Rows = database.wordDao().count(top.toneup.word.data.settings.PackIds.BUILTIN_CET4)
+            val cet6Rows = database.wordDao().count(top.toneup.word.data.settings.PackIds.BUILTIN_CET6)
             assertThat(cet4Rows).isAtLeast(3800)
             assertThat(cet6Rows).isAtLeast(5400)
 
@@ -248,15 +248,15 @@ class BuiltInPackAssetTest {
 
             // A word from the list is found by prefix and by meaning, i.e. the browser works on
             // the real data.
-            val byPrefix = repository.search(CetLevel.CET4, "abandon", 5).map { it.word.word }
+            val byPrefix = repository.search(top.toneup.word.data.settings.PackIds.BUILTIN_CET4, "abandon", 5).map { it.word.word }
             assertThat(byPrefix).contains("abandon")
-            val byMeaning = repository.search(CetLevel.CET6, "放弃", 50).map { it.word.word }
+            val byMeaning = repository.search(top.toneup.word.data.settings.PackIds.BUILTIN_CET6, "放弃", 50).map { it.word.word }
             assertThat(byMeaning).isNotEmpty()
 
             // Re-running must not duplicate anything (and must be cheap).
             val second = kotlin.system.measureTimeMillis { repository.ensureBuiltInPacks() }
-            assertThat(database.wordDao().count(CetLevel.CET4.id)).isEqualTo(cet4Rows)
-            assertThat(database.wordDao().count(CetLevel.CET6.id)).isEqualTo(cet6Rows)
+            assertThat(database.wordDao().count(top.toneup.word.data.settings.PackIds.BUILTIN_CET4)).isEqualTo(cet4Rows)
+            assertThat(database.wordDao().count(top.toneup.word.data.settings.PackIds.BUILTIN_CET6)).isEqualTo(cet6Rows)
             // The second run sees a stored version and skips parsing the 3 MB of JSON entirely.
             assertThat(second).isAtMost(first.coerceAtLeast(1L))
             assertThat(second).isLessThan(2_000L)

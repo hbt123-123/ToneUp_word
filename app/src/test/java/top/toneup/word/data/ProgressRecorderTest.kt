@@ -8,6 +8,7 @@ import top.toneup.word.data.local.ToneUpWordDatabase
 import top.toneup.word.data.local.entity.WordEntity
 import top.toneup.word.data.repository.AnswerSource
 import top.toneup.word.data.repository.ProgressRecorder
+import top.toneup.word.data.settings.PackIds
 import top.toneup.word.domain.model.CetLevel
 import top.toneup.word.domain.model.Word
 import top.toneup.word.domain.srs.MasteryStatus
@@ -78,7 +79,7 @@ class ProgressRecorderTest {
     private suspend fun insertWord(word: String, level: CetLevel = CetLevel.CET4): Long =
         database.wordDao().insert(
             WordEntity(
-                packId = "test-pack",
+                packId = PackIds.defaultPackIdFor(level),
                 word = word,
                 normalizedWord = Word.normalizeWordKey(word),
                 meanings = """["释义"]""",
@@ -89,7 +90,7 @@ class ProgressRecorderTest {
         )
 
     private suspend fun summary(level: CetLevel = CetLevel.CET4) =
-        database.dailySummaryDao().get(dayKey, level.id)
+        database.dailySummaryDao().get(dayKey, PackIds.defaultPackIdFor(level))
 
     // --- One answer ------------------------------------------------------------------------
 
@@ -111,7 +112,7 @@ class ProgressRecorderTest {
         assertThat(stored!!.status).isEqualTo("LEARNING")
         assertThat(stored.wrongCount).isEqualTo(1)
 
-        val events = database.reviewEventDao().allForLevel(CetLevel.CET4.id)
+        val events = database.reviewEventDao().allForPack(PackIds.BUILTIN_CET4)
         assertThat(events).hasSize(1)
         assertThat(events.single().wordId).isEqualTo(wordId)
         assertThat(events.single().grade).isEqualTo("UNKNOWN")
@@ -175,7 +176,7 @@ class ProgressRecorderTest {
             responseTimeMs = 4_200L,
         )
 
-        val event = database.reviewEventDao().allForLevel(CetLevel.CET4.id).single()
+        val event = database.reviewEventDao().allForPack(PackIds.BUILTIN_CET4).single()
         assertThat(event.sessionId).isEqualTo(77L)
         assertThat(event.responseTimeMs).isEqualTo(4_200L)
         assertThat(event.answeredAt).isEqualTo(start)
@@ -205,7 +206,7 @@ class ProgressRecorderTest {
         assertThat(day.reviewWords).isEqualTo(0)
         // Nothing was recorded under the other level, so the per-(day, level) accounting of the
         // same word cannot leak across levels.
-        assertThat(database.dailySummaryDao().get(dayKey, CetLevel.CET6.id)).isNull()
+        assertThat(database.dailySummaryDao().get(dayKey, PackIds.BUILTIN_CET6)).isNull()
     }
 
     @Test
@@ -234,9 +235,9 @@ class ProgressRecorderTest {
 
         assertThat(summary()!!.studiedWords).isEqualTo(1)
         assertThat(StudyDay.dayKey(time.nowMillis(), time.zone())).isEqualTo("2026-01-16")
-        assertThat(database.dailySummaryDao().get("2026-01-16", CetLevel.CET4.id)!!.studiedWords)
+        assertThat(database.dailySummaryDao().get("2026-01-16", PackIds.BUILTIN_CET4)!!.studiedWords)
             .isEqualTo(1)
-        assertThat(database.dailySummaryDao().allForLevel(CetLevel.CET4.id)).hasSize(2)
+        assertThat(database.dailySummaryDao().allForPack(PackIds.BUILTIN_CET4)).hasSize(2)
     }
 
     @Test
@@ -276,7 +277,7 @@ class ProgressRecorderTest {
         time.advanceBy(24L * 60 * 60 * 1000)
         recorder.record(wordId, ReviewGrade.MASTERED, AnswerSource.STUDY)
 
-        val secondDay = database.dailySummaryDao().get("2026-01-16", CetLevel.CET4.id)!!
+        val secondDay = database.dailySummaryDao().get("2026-01-16", PackIds.BUILTIN_CET4)!!
         assertThat(secondDay.studiedWords).isEqualTo(1)
         assertThat(secondDay.newWords).isEqualTo(0)
         assertThat(secondDay.reviewWords).isEqualTo(1)
@@ -306,7 +307,7 @@ class ProgressRecorderTest {
         val resolved = database.mistakeBookDao().byWordId(wordId)!!
         assertThat(resolved.correctSinceWrong).isEqualTo(ProgressRecorder.AUTO_RESOLVE_STREAK)
         assertThat(resolved.resolvedAt).isEqualTo(start)
-        assertThat(database.mistakeBookDao().activeCount(CetLevel.CET4.id)).isEqualTo(0)
+        assertThat(database.mistakeBookDao().activeCount(PackIds.BUILTIN_CET4)).isEqualTo(0)
         assertThat(database.mistakeBookDao().byWordId(wordId)).isNotNull()
     }
 
@@ -376,8 +377,8 @@ class ProgressRecorderTest {
         assertThat(cet6Summary.unknownCount).isEqualTo(0)
         assertThat(cet6Summary.masteredCount).isEqualTo(1)
 
-        assertThat(database.dailySummaryDao().allForLevel(CetLevel.CET4.id)).hasSize(1)
-        assertThat(database.dailySummaryDao().allForLevel(CetLevel.CET6.id)).hasSize(1)
+        assertThat(database.dailySummaryDao().allForPack(PackIds.BUILTIN_CET4)).hasSize(1)
+        assertThat(database.dailySummaryDao().allForPack(PackIds.BUILTIN_CET6)).hasSize(1)
     }
 
     @Test
@@ -388,9 +389,9 @@ class ProgressRecorderTest {
         time.advanceBy(SpacedRepetitionDays.ONE_DAY + 60_000L)
         recorder.record(wordId, ReviewGrade.MASTERED, AnswerSource.STUDY)
 
-        assertThat(database.dailySummaryDao().allForLevel(CetLevel.CET4.id).map { it.dayKey })
+        assertThat(database.dailySummaryDao().allForPack(PackIds.BUILTIN_CET4).map { it.dayKey })
             .containsExactly("2026-01-15", "2026-01-16").inOrder()
-        assertThat(database.dailySummaryDao().get("2026-01-16", CetLevel.CET4.id)!!.masteredCount)
+        assertThat(database.dailySummaryDao().get("2026-01-16", PackIds.BUILTIN_CET4)!!.masteredCount)
             .isEqualTo(1)
     }
 
@@ -402,7 +403,7 @@ class ProgressRecorderTest {
 
         assertThat(progress.wordId).isEqualTo(wordId)
         assertThat(progress.status).isEqualTo(MasteryStatus.REVIEW)
-        assertThat(database.reviewEventDao().allForLevel(CetLevel.CET4.id).single().source)
+        assertThat(database.reviewEventDao().allForPack(PackIds.BUILTIN_CET4).single().source)
             .isEqualTo(AnswerSource.EXAM.id)
         assertThat(summary(CetLevel.CET4)!!.reviewEvents).isEqualTo(1)
     }
@@ -411,8 +412,8 @@ class ProgressRecorderTest {
 
     @Test
     fun `study duration and session count are added to the day the session started on`() = runTest {
-        recorder.addStudyDuration(startedAtMillis = start, durationMillis = 600_000L, levelId = CetLevel.CET4.id)
-        recorder.addStudyDuration(startedAtMillis = start, durationMillis = 300_000L, levelId = CetLevel.CET4.id)
+        recorder.addStudyDuration(startedAtMillis = start, durationMillis = 600_000L, packId = PackIds.BUILTIN_CET4)
+        recorder.addStudyDuration(startedAtMillis = start, durationMillis = 300_000L, packId = PackIds.BUILTIN_CET4)
 
         val day = summary()!!
         assertThat(day.studyDurationMs).isEqualTo(900_000L)
@@ -421,8 +422,8 @@ class ProgressRecorderTest {
 
     @Test
     fun `a zero or negative duration is ignored`() = runTest {
-        recorder.addStudyDuration(start, 0L, CetLevel.CET4.id)
-        recorder.addStudyDuration(start, -1_000L, CetLevel.CET4.id)
+        recorder.addStudyDuration(start, 0L, PackIds.BUILTIN_CET4)
+        recorder.addStudyDuration(start, -1_000L, PackIds.BUILTIN_CET4)
 
         assertThat(summary()).isNull()
     }
@@ -431,7 +432,7 @@ class ProgressRecorderTest {
     fun `exam results are added to the daily rollup`() = runTest {
         recorder.addExamResult(
             submittedAtMillis = start,
-            levelId = CetLevel.CET4.id,
+            packId = PackIds.BUILTIN_CET4,
             correct = 7,
             total = 10,
             durationMillis = 420_000L,
@@ -461,7 +462,7 @@ class ProgressRecorderTest {
         assertThat(second.masteryLevel).isEqualTo(2)
         assertThat(database.progressDao().byWordId(wordId)!!.intervalDays).isEqualTo(3)
 
-        val events = database.reviewEventDao().allForLevel(CetLevel.CET4.id)
+        val events = database.reviewEventDao().allForPack(PackIds.BUILTIN_CET4)
         assertThat(events.map { it.newIntervalDays }).containsExactly(1, 3).inOrder()
     }
 

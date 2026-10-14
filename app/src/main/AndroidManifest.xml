@@ -3,17 +3,23 @@
 
     <!--
       Permissions, and why each one exists:
+      * INTERNET — **only** for the self-hosted definition-completion gateway (ECDICT /
+        FreeDict / LLM forwarding) that fills in meanings, phonetics and parts of speech for
+        user-imported words. Everything else — learning, review, the mistake book, closed-book
+        exams, statistics, import/export and TTS read-aloud (device's own speech service) —
+        still works with no network at all. No account system, analytics, ads, cloud sync or
+        third-party audio download is bundled; clipboard/share text never leaves the device
+        (only the individual word token being queried is uploaded).
+        Hard constraint source: docs/dev/PLAN_CUSTOM_PACKS_GATEWAY.md §1; AGENTS.md ANTI-PATTERNS.
       * POST_NOTIFICATIONS — study reminders on Android 13+ only; Android 8-12 need nothing.
 
-      There is deliberately **no** INTERNET permission: reading aloud is done by the device's own
-      text-to-speech service, so every feature — learning, review, the mistake book, closed-book
-      exams, statistics and import/export — works with no network at all. No account system,
-      analytics, ads, cloud sync or third-party audio download is bundled.
-
       ACCESS_NETWORK_STATE is not declared here either. It appears in the merged manifest only
-      because androidx.work (study reminders) declares it for its network constraints; the app
-      itself never reads connectivity.
+      because androidx.work (study reminders, and later the meaning-sync worker) declares it
+      for its network constraints; a WorkManager NetworkType constraint (CONNECTED /
+      UNMETERED "Wi-Fi only") needs no permission from us, and the app itself never reads
+      connectivity state.
     -->
+    <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application

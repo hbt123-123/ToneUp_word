@@ -201,6 +201,7 @@ fun WrongAnswerRow.toEntity(nowMillis: Long): WrongAnswerEntity = WrongAnswerEnt
     isFavorite = (isFavorite ?: 0) == 1,
     level = level,
     updatedAt = nowMillis,
+    packId = packId,
 )
 
 fun RecentEventRow.toReviewEventDisplay(): top.toneup.word.domain.study.RecentEvent = top.toneup.word.domain.study.RecentEvent(
@@ -215,7 +216,9 @@ fun RecentEventRow.toReviewEventDisplay(): top.toneup.word.domain.study.RecentEv
 fun StudySessionEntity.toState(reasons: Map<Long, top.toneup.word.domain.study.QueueReason>): StudySessionState =
     StudySessionState(
         sessionId = id,
-        levelId = level,
+        // The study scope is the pack id since v2; the field keeps its legacy name so the
+        // domain engine and its tests stay untouched (D1).
+        levelId = packId,
         queue = JsonCodec.decodeLongs(queue),
         reasons = reasons,
         newWordIds = emptySet(),

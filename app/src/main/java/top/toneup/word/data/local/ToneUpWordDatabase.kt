@@ -8,6 +8,7 @@ import androidx.room.TypeConverters
 import top.toneup.word.data.local.dao.DailySummaryDao
 import top.toneup.word.data.local.dao.ExamDao
 import top.toneup.word.data.local.dao.ImportHistoryDao
+import top.toneup.word.data.local.dao.MeaningCacheDao
 import top.toneup.word.data.local.dao.MistakeBookDao
 import top.toneup.word.data.local.dao.ProgressDao
 import top.toneup.word.data.local.dao.ReviewEventDao
@@ -18,6 +19,7 @@ import top.toneup.word.data.local.entity.DailyStudySummaryEntity
 import top.toneup.word.data.local.entity.ExamQuestionEntity
 import top.toneup.word.data.local.entity.ExamSessionEntity
 import top.toneup.word.data.local.entity.ImportHistoryEntity
+import top.toneup.word.data.local.entity.MeaningCacheEntity
 import top.toneup.word.data.local.entity.ReviewEventEntity
 import top.toneup.word.data.local.entity.StudySessionEntity
 import top.toneup.word.data.local.entity.UserWordProgressEntity
@@ -45,11 +47,12 @@ import top.toneup.word.data.local.entity.WrongAnswerEntity
         ExamQuestionEntity::class,
         DailyStudySummaryEntity::class,
         ImportHistoryEntity::class,
+        MeaningCacheEntity::class,
     ],
     views = [WordWithProgressView::class],
     // Kept as a literal: the annotation processor requires a compile-time constant, while
     // `Migrations.CURRENT_VERSION` mirrors it and a test asserts the two stay equal.
-    version = 1,
+    version = 2,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -63,6 +66,7 @@ abstract class ToneUpWordDatabase : RoomDatabase() {
     abstract fun examDao(): ExamDao
     abstract fun dailySummaryDao(): DailySummaryDao
     abstract fun importHistoryDao(): ImportHistoryDao
+    abstract fun meaningCacheDao(): MeaningCacheDao
 
     companion object {
         const val NAME = "toneup_word.db"

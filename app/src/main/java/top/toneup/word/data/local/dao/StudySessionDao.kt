@@ -29,11 +29,11 @@ interface StudySessionDao {
     @Query(
         """
         SELECT * FROM study_session
-        WHERE level = :level AND status = 'ACTIVE'
+        WHERE pack_id = :packId AND status = 'ACTIVE'
         ORDER BY updated_at DESC LIMIT 1
         """,
     )
-    suspend fun activeForLevel(level: String): StudySessionEntity?
+    suspend fun activeForPack(packId: String): StudySessionEntity?
 
     @Query("UPDATE study_session SET status = :status, ended_at = :endedAt, updated_at = :endedAt WHERE id = :id")
     suspend fun close(id: Long, status: String, endedAt: Long)

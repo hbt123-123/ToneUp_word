@@ -74,6 +74,7 @@ fun ProfileScreen(
     onOpenSettings: () -> Unit,
     onOpenDataTransfer: () -> Unit,
     onOpenWordBrowser: () -> Unit,
+    onOpenPacks: () -> Unit,
     onOpenAbout: () -> Unit,
     onOpenLicenses: () -> Unit,
 ) {
@@ -153,6 +154,14 @@ fun ProfileScreen(
                     subtitle = "按单词或中文释义查找当前词库中的任意单词",
                     onClick = onOpenWordBrowser,
                     testTag = "profile_word_browser",
+                )
+            }
+            item {
+                SettingsEntry(
+                    title = "词库管理",
+                    subtitle = "新建、重命名、删除词库，切换当前学习的词库",
+                    onClick = onOpenPacks,
+                    testTag = "profile_packs",
                 )
             }
             item { SettingsEntry(title = "词库导入与数据导出", subtitle = "导入 JSON / CSV 词库，导出学习记录或完整备份", onClick = onOpenDataTransfer) }

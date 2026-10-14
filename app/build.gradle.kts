@@ -180,9 +180,18 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.serialization.json)
 
+    // Gateway network stack — ONLY for the self-hosted definition-completion gateway
+    // (ECDICT/FreeDict/LLM forwarding); every other feature stays offline. See AGENTS.md
+    // ANTI-PATTERNS and docs/dev/PLAN_CUSTOM_PACKS_GATEWAY.md §7.1.
+    implementation(libs.okhttp)
+    implementation(libs.okhttp.logging.interceptor)   // debug-only request logging (M4 wires it)
+    implementation(libs.retrofit)
+    implementation(libs.retrofit.converter.kotlinx.serialization)
+
     testImplementation(libs.junit)
     testImplementation(libs.truth)
     testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.okhttp.mockwebserver)     // gateway tests (M4)
     testImplementation(libs.robolectric)
     testImplementation(libs.androidx.test.core)
     testImplementation(libs.androidx.test.ext.junit)

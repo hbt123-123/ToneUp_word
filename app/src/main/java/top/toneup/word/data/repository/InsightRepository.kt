@@ -27,8 +27,8 @@ import java.time.ZoneId
  *    that reads it (the "not enough data yet" gate, which needs 3 days) that is exact.
  */
 interface InsightRepository {
-    /** Reads every signal for [level]; [snapshot] is passed in so the trends are not recomputed. */
-    suspend fun signals(level: CetLevel, snapshot: StatsSnapshot): LearningSignals
+    /** Reads every signal for [packId]; [snapshot] is passed in so the trends are not recomputed. */
+    suspend fun signals(packId: String, snapshot: StatsSnapshot): LearningSignals
 }
 
 class DefaultInsightRepository(
@@ -36,7 +36,7 @@ class DefaultInsightRepository(
     private val time: TimeProvider,
 ) : InsightRepository {
 
-    override suspend fun signals(level: CetLevel, snapshot: StatsSnapshot): LearningSignals {
+    override suspend fun signals(packId: String, snapshot: StatsSnapshot): LearningSignals {
         val zone: ZoneId = time.zone()
         val now = time.nowMillis()
         // Today in the learner's own zone: the trend rows are keyed by study day, so the window
@@ -45,15 +45,14 @@ class DefaultInsightRepository(
 
         val trend = SignalsCalculator.fromTrend(snapshot.monthly, today)
 
-        val levelId = level.id
         val firstExposureLast7 = db.reviewEventDao()
-            .countFirstExposureAnswersSince(levelId, now - SEVEN_DAYS_MILLIS)
+            .countFirstExposureAnswersSince(packId, now - SEVEN_DAYS_MILLIS)
         val lapsedMastered = db.reviewEventDao()
-            .countLapsesOfMasteredWords(levelId, now - FOURTEEN_DAYS_MILLIS)
+            .countLapsesOfMasteredWords(packId, now - FOURTEEN_DAYS_MILLIS)
         val weakestIds = db.progressDao()
-            .weakestWordIds(levelId, minWrongCount = WEAK_WORD_MIN_WRONG, limit = WEAK_WORD_LIMIT)
+            .weakestWordIds(packId, minWrongCount = WEAK_WORD_MIN_WRONG, limit = WEAK_WORD_LIMIT)
         val examTypes = db.examDao()
-            .typeAccuracySince(levelId, now - THIRTY_DAYS_MILLIS)
+            .typeAccuracySince(packId, now - THIRTY_DAYS_MILLIS)
             .map { row ->
                 val attempts = row.attempts
                 val correct = row.correct ?: 0
@@ -74,7 +73,7 @@ class DefaultInsightRepository(
             activeDaysLast7Days = trend.activeDaysLast7Days,
             activeDaysPrevious14Days = trend.activeDaysPrevious14Days,
             medianMinutesPerDayLast7Days = trend.medianMinutesPerDayLast7Days,
-            dueToday = dueTodayFor(level),
+            dueToday = dueTodayFor(packId),
             fragileCount = snapshot.fragileCount,
             masteredCount = snapshot.masteredCount,
             masteredLapsedLast14Days = lapsedMastered,
@@ -93,10 +92,10 @@ class DefaultInsightRepository(
      * Words that are due right now.
      *
      * Counted from the progress rows rather than read from the dashboard's plan, because the plan is
-     * scoped to the currently selected level while this method is called with an explicit level.
+     * scoped to the currently selected pack while this method is called with an explicit pack id.
      */
-    private suspend fun dueTodayFor(level: CetLevel): Int =
-        db.progressDao().dueCount(level.id, time.nowMillis())
+    private suspend fun dueTodayFor(packId: String): Int =
+        db.progressDao().dueCount(packId, time.nowMillis())
 
     /** Question types are stored as stable ids; the UI shows the same labels the exam screens use. */
     private fun examTypeLabel(type: String): String = when (type.uppercase()) {

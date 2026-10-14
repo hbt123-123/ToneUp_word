@@ -33,6 +33,13 @@ interface SettingsRepository {
 
     suspend fun setOnboardingCompleted(completed: Boolean)
     suspend fun setLevel(level: CetLevel)
+
+    /**
+     * Chooses the pack to study (schema v2, D1). `""` clears the explicit choice and falls
+     * back to `defaultPackIdFor(level)` — used when the learner switches back to the
+     * onboarding level default.
+     */
+    suspend fun setActivePackId(packId: String)
     suspend fun setDailyNewWordGoal(count: Int)
     suspend fun setDailyReviewLimit(limit: Int)
     suspend fun setReminder(enabled: Boolean, hour: Int, minute: Int)
@@ -66,6 +73,26 @@ interface SettingsRepository {
 
     suspend fun setExamPreferences(questionCount: Int, durationMinutes: Int)
 
+    // --- 释义补全网关 (M4, plan §10) — appended setters, same pattern as above ----------------
+    /** Gateway base URL; only `https` will be accepted by the client (plan D7). */
+    suspend fun setGatewayBaseUrl(baseUrl: String)
+
+    /** Gateway key; empty means "use [GatewayDefaults.KEY]" again. */
+    suspend fun setGatewayKey(key: String)
+
+    suspend fun setDictPath(path: String)
+
+    /** FreeDictionary path template, must keep the `{word}` placeholder to be useful. */
+    suspend fun setEnPath(path: String)
+
+    suspend fun setMtPath(path: String)
+
+    /** 「仅 Wi-Fi 补全」 */
+    suspend fun setSyncOnlyUnmetered(enabled: Boolean)
+
+    /** 「剪贴板识别」(M5 开关，M4 先落键) */
+    suspend fun setClipboardDetectEnabled(enabled: Boolean)
+
     /** Restores every preference to its factory value (study data is untouched). */
     suspend fun resetToDefaults()
 }
@@ -87,7 +114,19 @@ class DataStoreSettingsRepository(private val context: Context) : SettingsReposi
     }
 
     override suspend fun setLevel(level: CetLevel) {
-        context.settingsDataStore.edit { it[Keys.LEVEL] = level.id }
+        context.settingsDataStore.edit { prefs ->
+            prefs[Keys.LEVEL] = level.id
+            // Choosing a level re-derives the default pack: a stale explicit pack id must not
+            // silently override the learner's new choice (D1).
+            prefs.remove(Keys.ACTIVE_PACK_ID)
+        }
+    }
+
+    override suspend fun setActivePackId(packId: String) {
+        context.settingsDataStore.edit { prefs ->
+            if (packId.isEmpty()) prefs.remove(Keys.ACTIVE_PACK_ID)
+            else prefs[Keys.ACTIVE_PACK_ID] = packId
+        }
     }
 
     override suspend fun setDailyNewWordGoal(count: Int) {
@@ -169,11 +208,60 @@ class DataStoreSettingsRepository(private val context: Context) : SettingsReposi
         context.settingsDataStore.edit { it.clear() }
     }
 
+    // --- 释义补全网关 (M4) -------------------------------------------------------------------
+    // Empty strings are stored as `remove`: "explicitly cleared" then falls back to the
+    // GatewayDefaults constant, which is exactly what the UI shows as the placeholder.
+
+    override suspend fun setGatewayBaseUrl(baseUrl: String) {
+        context.settingsDataStore.edit { prefs ->
+            val trimmed = baseUrl.trim()
+            if (trimmed.isEmpty()) prefs.remove(Keys.GATEWAY_BASE_URL)
+            else prefs[Keys.GATEWAY_BASE_URL] = trimmed
+        }
+    }
+
+    override suspend fun setGatewayKey(key: String) {
+        context.settingsDataStore.edit { prefs ->
+            if (key.isEmpty()) prefs.remove(Keys.GATEWAY_KEY)
+            else prefs[Keys.GATEWAY_KEY] = key
+        }
+    }
+
+    override suspend fun setDictPath(path: String) {
+        context.settingsDataStore.edit { prefs ->
+            if (path.isEmpty()) prefs.remove(Keys.DICT_PATH)
+            else prefs[Keys.DICT_PATH] = path
+        }
+    }
+
+    override suspend fun setEnPath(path: String) {
+        context.settingsDataStore.edit { prefs ->
+            if (path.isEmpty()) prefs.remove(Keys.EN_PATH)
+            else prefs[Keys.EN_PATH] = path
+        }
+    }
+
+    override suspend fun setMtPath(path: String) {
+        context.settingsDataStore.edit { prefs ->
+            if (path.isEmpty()) prefs.remove(Keys.MT_PATH)
+            else prefs[Keys.MT_PATH] = path
+        }
+    }
+
+    override suspend fun setSyncOnlyUnmetered(enabled: Boolean) {
+        context.settingsDataStore.edit { it[Keys.SYNC_ONLY_UNMETERED] = enabled }
+    }
+
+    override suspend fun setClipboardDetectEnabled(enabled: Boolean) {
+        context.settingsDataStore.edit { it[Keys.CLIPBOARD_DETECT] = enabled }
+    }
+
     private fun Preferences.toUserSettings(): UserSettings {
         val defaults = UserSettings()
         return UserSettings(
             onboardingCompleted = this[Keys.ONBOARDING_COMPLETED] ?: defaults.onboardingCompleted,
             level = CetLevel.fromId(this[Keys.LEVEL] ?: defaults.level.id),
+            activePackId = this[Keys.ACTIVE_PACK_ID] ?: defaults.activePackId,
             dailyNewWordGoal = UserSettings.clampNewWords(
                 this[Keys.DAILY_NEW_WORDS] ?: defaults.dailyNewWordGoal,
             ),
@@ -202,12 +290,23 @@ class DataStoreSettingsRepository(private val context: Context) : SettingsReposi
             examDurationMinutes = UserSettings.clampExamDuration(
                 this[Keys.EXAM_DURATION] ?: defaults.examDurationMinutes,
             ),
+            // Gateway slice (M4): absent key → GatewayDefaults, so the UI placeholder is the truth.
+            gatewayBaseUrl = this[Keys.GATEWAY_BASE_URL] ?: defaults.gatewayBaseUrl,
+            gatewayKey = this[Keys.GATEWAY_KEY] ?: defaults.gatewayKey,
+            dictPath = this[Keys.DICT_PATH] ?: defaults.dictPath,
+            enPath = this[Keys.EN_PATH] ?: defaults.enPath,
+            mtPath = this[Keys.MT_PATH] ?: defaults.mtPath,
+            syncOnlyUnmetered = this[Keys.SYNC_ONLY_UNMETERED] ?: defaults.syncOnlyUnmetered,
+            clipboardDetectEnabled = this[Keys.CLIPBOARD_DETECT] ?: defaults.clipboardDetectEnabled,
         )
     }
 
     private object Keys {
         val ONBOARDING_COMPLETED = booleanPreferencesKey("onboarding_completed")
         val LEVEL = stringPreferencesKey("level")
+
+        /** Explicit pack choice; absent → derive from [Keys.LEVEL] (see `UserSettings`). */
+        val ACTIVE_PACK_ID = stringPreferencesKey("active_pack_id")
         val DAILY_NEW_WORDS = intPreferencesKey("daily_new_words")
         val DAILY_REVIEW_LIMIT = intPreferencesKey("daily_review_limit")
         val REMINDER_ENABLED = booleanPreferencesKey("reminder_enabled")
@@ -231,5 +330,14 @@ class DataStoreSettingsRepository(private val context: Context) : SettingsReposi
         val CELEBRATED_MILESTONE = intPreferencesKey("celebrated_milestone")
         val EXAM_QUESTIONS = intPreferencesKey("exam_questions")
         val EXAM_DURATION = intPreferencesKey("exam_duration")
+
+        // --- 释义补全网关 (M4, plan §10) -----------------------------------------------------
+        val GATEWAY_BASE_URL = stringPreferencesKey("gateway_base_url")
+        val GATEWAY_KEY = stringPreferencesKey("gateway_key")
+        val DICT_PATH = stringPreferencesKey("dict_path")
+        val EN_PATH = stringPreferencesKey("en_path")
+        val MT_PATH = stringPreferencesKey("mt_path")
+        val SYNC_ONLY_UNMETERED = booleanPreferencesKey("sync_only_unmetered")
+        val CLIPBOARD_DETECT = booleanPreferencesKey("clipboard_detect_enabled")
     }
 }

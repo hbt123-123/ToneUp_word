@@ -11,6 +11,7 @@ import top.toneup.word.data.repository.AnswerSource
 import top.toneup.word.data.repository.DefaultWordRepository
 import top.toneup.word.data.repository.ProgressRecorder
 import top.toneup.word.data.repository.SeedProgress
+import top.toneup.word.data.settings.PackIds
 import top.toneup.word.domain.importer.ImportIssue
 import top.toneup.word.domain.importer.ImportPreview
 import top.toneup.word.domain.importer.PackFormat
@@ -127,7 +128,7 @@ class BuiltInPackSeedTest {
     )
 
     private suspend fun wordIdOf(word: String): Long? =
-        database.wordDao().byNormalized(CetLevel.CET4.id, Word.normalizeWordKey(word))?.id
+        database.wordDao().byNormalized(PackIds.BUILTIN_CET4, Word.normalizeWordKey(word))?.id
 
     // --- tests -----------------------------------------------------------------------------
 
@@ -142,7 +143,7 @@ class BuiltInPackSeedTest {
 
         repository.ensureBuiltInPacks()
 
-        assertThat(database.wordDao().count(CetLevel.CET4.id)).isEqualTo(2)
+        assertThat(database.wordDao().count(PackIds.BUILTIN_CET4)).isEqualTo(2)
         val pack = database.wordDao().packById("builtin-cet4")
         assertThat(pack).isNotNull()
         assertThat(pack!!.version).isEqualTo("2")
@@ -163,7 +164,7 @@ class BuiltInPackSeedTest {
         // The second run sees the stored version and skips parsing entirely: the 3 MB assets must
         // not be re-parsed on every cold start.
         assertThat(source.loadCount).isEqualTo(loadsAfterFirst)
-        assertThat(database.wordDao().count(CetLevel.CET4.id)).isEqualTo(2)
+        assertThat(database.wordDao().count(PackIds.BUILTIN_CET4)).isEqualTo(2)
     }
 
     @Test
@@ -196,10 +197,10 @@ class BuiltInPackSeedTest {
         assertThat(progress!!.isFavorite).isTrue()
         assertThat(progress.consecutiveCorrectCount).isEqualTo(1)
 
-        val events = database.reviewEventDao().countSince(CetLevel.CET4.id, 0L)
+        val events = database.reviewEventDao().countSince(PackIds.BUILTIN_CET4, 0L)
         assertThat(events).isEqualTo(1)
 
-        assertThat(database.wordDao().count(CetLevel.CET4.id)).isEqualTo(3)
+        assertThat(database.wordDao().count(PackIds.BUILTIN_CET4)).isEqualTo(3)
         assertThat(database.wordDao().packById("builtin-cet4")!!.version).isEqualTo("2")
     }
 
@@ -218,7 +219,7 @@ class BuiltInPackSeedTest {
         )
         repository.ensureBuiltInPacks()
 
-        val rows = database.wordDao().allForLevel(CetLevel.CET4.id)
+        val rows = database.wordDao().allForPack(PackIds.BUILTIN_CET4)
         assertThat(rows).hasSize(1)
         assertThat(rows.single().meanings).contains("新释义")
         assertThat(rows.single().phonetic).isEqualTo("/new/")
@@ -239,7 +240,7 @@ class BuiltInPackSeedTest {
         repository.ensureBuiltInPacks()
 
         // The app must still start with a usable list rather than an empty one.
-        assertThat(database.wordDao().count(CetLevel.CET4.id)).isGreaterThan(0)
+        assertThat(database.wordDao().count(PackIds.BUILTIN_CET4)).isGreaterThan(0)
         assertThat(database.wordDao().packById("builtin-cet4")).isNotNull()
     }
 
@@ -272,16 +273,16 @@ class BuiltInPackSeedTest {
         val repository = DefaultWordRepository(database, FixedTime(), source)
         repository.ensureBuiltInPacks()
 
-        val byPrefix = repository.search(CetLevel.CET4, "ab", 10).map { it.word.word }
+        val byPrefix = repository.search(PackIds.BUILTIN_CET4, "ab", 10).map { it.word.word }
         assertThat(byPrefix).containsAtLeast("abandon", "ability", "absorb").inOrder()
 
-        val byMeaning = repository.search(CetLevel.CET4, "放弃", 10).map { it.word.word }
+        val byMeaning = repository.search(PackIds.BUILTIN_CET4, "放弃", 10).map { it.word.word }
         assertThat(byMeaning).containsExactly("abandon")
 
-        val all = repository.search(CetLevel.CET4, "", 10)
+        val all = repository.search(PackIds.BUILTIN_CET4, "", 10)
         assertThat(all).hasSize(3)
 
         // A wildcard typed by the user must be treated literally, not as "match everything".
-        assertThat(repository.search(CetLevel.CET4, "%", 10)).isEmpty()
+        assertThat(repository.search(PackIds.BUILTIN_CET4, "%", 10)).isEmpty()
     }
 }

@@ -68,6 +68,7 @@ data class UserWordProgressEntity(
         Index("day_key"),
         Index("grade"),
         Index("source"),
+        Index("pack_id"),
     ],
 )
 data class ReviewEventEntity(
@@ -85,6 +86,8 @@ data class ReviewEventEntity(
     @ColumnInfo(name = "previous_interval_days") val previousIntervalDays: Int,
     @ColumnInfo(name = "new_interval_days") val newIntervalDays: Int,
     @ColumnInfo(name = "response_time_ms") val responseTimeMs: Long? = null,
+    /** Pack the word belonged to when answered (backfilled from `word` in migration 1→2). */
+    @ColumnInfo(name = "pack_id") val packId: String,
 )
 
 /**
@@ -110,6 +113,7 @@ data class ReviewEventEntity(
         Index("wrong_count"),
         Index("resolved_at"),
         Index("is_favorite"),
+        Index("pack_id"),
     ],
 )
 data class WrongAnswerEntity(
@@ -126,4 +130,6 @@ data class WrongAnswerEntity(
     @ColumnInfo(name = "is_favorite") val isFavorite: Boolean = false,
     @ColumnInfo(name = "level") val level: String,
     @ColumnInfo(name = "updated_at") val updatedAt: Long,
+    /** Pack the word belongs to (backfilled from `word` in migration 1→2). */
+    @ColumnInfo(name = "pack_id") val packId: String,
 )

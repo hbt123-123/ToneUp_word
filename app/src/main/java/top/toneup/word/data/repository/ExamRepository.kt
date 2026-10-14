@@ -10,6 +10,7 @@ import top.toneup.word.data.mapper.toDomain
 import top.toneup.word.data.mapper.toEntity
 import top.toneup.word.data.mapper.toJson
 import top.toneup.word.data.mapper.toScore
+import top.toneup.word.data.settings.PackIds
 import top.toneup.word.domain.exam.ExamBlueprint
 import top.toneup.word.domain.exam.ExamGenerator
 import top.toneup.word.domain.exam.ExamQuestion
@@ -100,7 +101,9 @@ class DefaultExamRepository(
                 db.examDao().abandonAllDrafts(now)
                 val sessionId = db.examDao().insertSession(
                     ExamSessionEntity(
-                        level = blueprint.levelId,
+                        // `blueprint.levelId` carries the pack id since v2 (exam scope = pack).
+                        level = PackIds.levelForPackId(blueprint.levelId).id,
+                        packId = blueprint.levelId,
                         status = ExamStatus.DRAFT,
                         createdAt = now,
                         startedAt = now,
@@ -217,7 +220,7 @@ class DefaultExamRepository(
 
                 recorder.addExamResult(
                     submittedAtMillis = now,
-                    levelId = session.level,
+                    packId = session.packId,
                     correct = score.correctCount,
                     total = score.totalQuestions,
                     durationMillis = score.durationMillis,

@@ -19,6 +19,7 @@ import top.toneup.word.AppContainer
 import top.toneup.word.data.local.ToneUpWordDatabase
 import top.toneup.word.data.repository.AnswerSource
 import top.toneup.word.data.settings.DataStoreSettingsRepository
+import top.toneup.word.data.settings.PackIds
 import top.toneup.word.data.settings.ThemeMode
 import top.toneup.word.data.settings.UserSettings
 import top.toneup.word.domain.model.CetLevel
@@ -129,7 +130,9 @@ class ComposeFlowTest {
     private fun readSettings(): UserSettings = runBlocking(Dispatchers.IO) { settings.current() }
 
     private fun reviewEventCount(level: CetLevel = CetLevel.CET4): Int =
-        runBlocking(Dispatchers.IO) { database.reviewEventDao().totalCount(level.id) }
+        runBlocking(Dispatchers.IO) {
+            database.reviewEventDao().totalCount(PackIds.defaultPackIdFor(level))
+        }
 
     private companion object {
         /** A few seconds of real time is far longer than any of these flows needs. */
@@ -289,7 +292,7 @@ class ComposeFlowTest {
     @Test
     fun `review centre lists a word after it was answered wrongly`() {
         val wordId = runBlocking(Dispatchers.IO) {
-            val ids = database.wordDao().idsForLevel(CetLevel.CET4.id)
+            val ids = database.wordDao().idsForPack(PackIds.BUILTIN_CET4)
             val first = ids.first()
             container.progressRecorder.record(first, ReviewGrade.UNKNOWN, AnswerSource.STUDY)
             first
@@ -305,7 +308,7 @@ class ComposeFlowTest {
     @Test
     fun `review centre filters by search term`() {
         runBlocking(Dispatchers.IO) {
-            val ids = database.wordDao().idsForLevel(CetLevel.CET4.id)
+            val ids = database.wordDao().idsForPack(PackIds.BUILTIN_CET4)
             container.progressRecorder.record(ids[0], ReviewGrade.UNKNOWN, AnswerSource.STUDY)
             container.progressRecorder.record(ids[1], ReviewGrade.UNKNOWN, AnswerSource.STUDY)
         }
@@ -423,7 +426,7 @@ class ComposeFlowTest {
     @Test
     fun `clearing study progress asks for confirmation first`() {
         val wordId = runBlocking(Dispatchers.IO) {
-            val ids = database.wordDao().idsForLevel(CetLevel.CET4.id)
+            val ids = database.wordDao().idsForPack(PackIds.BUILTIN_CET4)
             val first = ids.first()
             container.progressRecorder.record(first, ReviewGrade.UNKNOWN, AnswerSource.STUDY)
             first

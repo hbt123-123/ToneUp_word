@@ -9,6 +9,7 @@ import top.toneup.word.data.mapper.toWordWithProgress
 import top.toneup.word.data.mapper.toWord
 import top.toneup.word.data.mapper.toProgress
 import top.toneup.word.data.mapper.toReviewEventDisplay
+import top.toneup.word.data.settings.PackIds
 import top.toneup.word.data.settings.UserSettings
 import top.toneup.word.domain.model.CetLevel
 import top.toneup.word.domain.srs.MasteryStatus
@@ -73,9 +74,9 @@ interface StudyRepository {
         responseTimeMs: Long?,
     )
 
-    suspend fun recentEvents(level: CetLevel, limit: Int = 8): List<RecentEvent>
+    suspend fun recentEvents(packId: String, limit: Int = 8): List<RecentEvent>
 
-    fun observeRecentEvents(level: CetLevel, limit: Int): Flow<List<RecentEvent>>
+    fun observeRecentEvents(packId: String, limit: Int): Flow<List<RecentEvent>>
 
     /** Summary shown when a session finishes. */
     suspend fun summarize(
@@ -94,15 +95,17 @@ class DefaultStudyRepository(
 ) : StudyRepository {
 
     override fun observeTodayPlan(settings: UserSettings): Flow<TodayPlan> {
-        val level = settings.level
+        // D1: the study scope is the active pack; the displayed level follows it.
+        val packId = settings.effectivePackId
+        val level = settings.effectiveLevel
         val now = time.nowMillis()
         val dayKey = StudyDay.dayKey(now, time.zone())
         return combine(
-            db.progressDao().observeDueCount(level.id, now),
-            db.progressDao().observeFragileCount(level.id),
-            db.progressDao().observeNewCount(level.id),
-            db.mistakeBookDao().observeActiveCount(level.id),
-            db.dailySummaryDao().observe(dayKey, level.id),
+            db.progressDao().observeDueCount(packId, now),
+            db.progressDao().observeFragileCount(packId),
+            db.progressDao().observeNewCount(packId),
+            db.mistakeBookDao().observeActiveCount(packId),
+            db.dailySummaryDao().observe(dayKey, packId),
         ) { due, fragile, newAvailable, mistakes, summary ->
             TodayPlan(
                 level = level,
@@ -120,11 +123,11 @@ class DefaultStudyRepository(
     }
 
     override suspend fun buildQueue(settings: UserSettings): List<StudyQueueItem> {
-        val level = settings.level
+        val packId = settings.effectivePackId
         val now = time.nowMillis()
-        val due = db.progressDao().dueWords(level.id, now, settings.dailyReviewLimit).map { it.wordId }
-        val fragile = db.progressDao().fragileWords(level.id, now, settings.dailyReviewLimit).map { it.wordId }
-        val newWords = db.progressDao().newWords(level.id, settings.dailyNewWordGoal).map { it.wordId }
+        val due = db.progressDao().dueWords(packId, now, settings.dailyReviewLimit).map { it.wordId }
+        val fragile = db.progressDao().fragileWords(packId, now, settings.dailyReviewLimit).map { it.wordId }
+        val newWords = db.progressDao().newWords(packId, settings.dailyNewWordGoal).map { it.wordId }
         return StudyQueueBuilder.build(
             dueWordIds = due,
             fragileWordIds = fragile,
@@ -158,7 +161,8 @@ class DefaultStudyRepository(
         val newIds = cards.filterValues { it.isNew }.keys
         return StudySessionState(
             sessionId = entity.id,
-            levelId = entity.level,
+            // Carries the pack id (schema v2); see `Mappers.StudySessionEntity.toState`.
+            levelId = entity.packId,
             queue = wordIds,
             reasons = reasons,
             newWordIds = newIds,
@@ -195,7 +199,7 @@ class DefaultStudyRepository(
             recorder.addStudyDuration(
                 startedAtMillis = state.startedAt,
                 durationMillis = (now - state.startedAt).coerceAtLeast(0L),
-                levelId = state.levelId,
+                packId = state.levelId,
             )
         }
     }
@@ -232,11 +236,11 @@ class DefaultStudyRepository(
         )
     }
 
-    override suspend fun recentEvents(level: CetLevel, limit: Int): List<RecentEvent> =
-        db.reviewEventDao().recent(level.id, limit).map { it.toReviewEventDisplay() }
+    override suspend fun recentEvents(packId: String, limit: Int): List<RecentEvent> =
+        db.reviewEventDao().recent(packId, limit).map { it.toReviewEventDisplay() }
 
-    override fun observeRecentEvents(level: CetLevel, limit: Int): Flow<List<RecentEvent>> =
-        db.reviewEventDao().observeRecent(level.id, limit)
+    override fun observeRecentEvents(packId: String, limit: Int): Flow<List<RecentEvent>> =
+        db.reviewEventDao().observeRecent(packId, limit)
             .map { rows -> rows.map { it.toReviewEventDisplay() } }
 
     override suspend fun summarize(state: StudySessionState, finishedAtMillis: Long): SessionSummary {
@@ -247,7 +251,8 @@ class DefaultStudyRepository(
             .map { it.wordId }
         return SessionSummary(
             sessionId = state.sessionId,
-            level = CetLevel.fromId(state.levelId),
+            // `state.levelId` holds the pack id; translate back for the display model.
+            level = PackIds.levelForPackId(state.levelId),
             answeredCards = state.answered,
             newCards = state.newSeen,
             reviewCards = state.reviewSeen,
@@ -275,7 +280,8 @@ class DefaultStudyRepository(
         endedAt: Long? = null,
     ): StudySessionEntity = StudySessionEntity(
         id = existingId,
-        level = levelId,
+        level = PackIds.levelForPackId(levelId).id,
+        packId = levelId,
         status = status,
         startedAt = startedAt,
         updatedAt = now,

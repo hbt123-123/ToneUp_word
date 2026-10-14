@@ -80,7 +80,7 @@ class WordBrowserScreenTest {
 
     private fun wordEntity(word: String, meaning: String, index: Int) =
         top.toneup.word.data.local.entity.WordEntity(
-            packId = "test-pack",
+            packId = top.toneup.word.data.settings.PackIds.BUILTIN_CET4,
             word = word,
             normalizedWord = top.toneup.word.domain.model.Word.normalizeWordKey(word),
             phonetic = "/test/",
@@ -176,7 +176,7 @@ class WordBrowserScreenTest {
         composeRule.waitForIdle()
 
         val expectedId = runBlocking {
-            database.wordDao().byNormalized(CetLevel.CET4.id, "abandon")!!.id
+            database.wordDao().byNormalized(top.toneup.word.data.settings.PackIds.BUILTIN_CET4, "abandon")!!.id
         }
         org.junit.Assert.assertEquals(expectedId, opened)
     }
@@ -221,7 +221,7 @@ class WordBrowserScreenTest {
     @Test
     fun `the result row shows the phonetic and the example sentence when the word has one`() {
         runBlocking {
-            val stored = database.wordDao().byNormalized(CetLevel.CET4.id, "receive")!!
+            val stored = database.wordDao().byNormalized(top.toneup.word.data.settings.PackIds.BUILTIN_CET4, "receive")!!
             database.wordDao().update(
                 stored.copy(
                     phonetic = "/rɪˈsiːv/",

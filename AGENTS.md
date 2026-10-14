@@ -5,7 +5,7 @@
 **Branch:** main
 
 ## OVERVIEW
-CET-4/CET-6 单词记忆 Android 应用（fork 自 CetVocab，更名为「一潼上岸·单词 · ToneUp Word」）。Kotlin 2.4 + Jetpack Compose + Material 3 + Room + DataStore + WorkManager，Gradle 单模块 `:app`。minSdk 26 / targetSdk 36，**完全离线：不申请 INTERNET 权限**，无账号/广告/埋点。附带 `tools/` Python 离线数据流水线（词库/提示语生成，独立于构建）。
+CET-4/CET-6 单词记忆 Android 应用（fork 自 CetVocab，更名为「一潼上岸·单词 · ToneUp Word」）。Kotlin 2.4 + Jetpack Compose + Material 3 + Room + DataStore + WorkManager，Gradle 单模块 `:app`。minSdk 26 / targetSdk 36，**离线优先：`INTERNET` 权限仅用于自建释义补全网关**（其余功能全离线），无账号/广告/埋点。附带 `tools/` Python 离线数据流水线（词库/提示语生成，独立于构建）。
 
 ## STRUCTURE
 ```
@@ -62,7 +62,9 @@ ToneUp_word/
 - 根 `build.gradle.kts` 故意不应用 `org.jetbrains.kotlin.android`（AGP 9 内置 Kotlin）——**勿"修复"**。
 
 ## ANTI-PATTERNS (THIS PROJECT)
-- **禁止**新增 `INTERNET`/`ACCESS_NETWORK_STATE` 权限、统计 SDK、任何联网能力（产品硬约束，docs/dev/PRODUCT_OPTIMIZATION_PLAN.md）。
+- **联网仅限释义补全网关**：允许且仅允许 `INTERNET` 权限用于自建释义补全网关（ECDICT/FreeDict/LLM 转发，蓝图 `docs/dev/PLAN_CUSTOM_PACKS_GATEWAY.md`）；其余联网能力（云同步、统计/埋点 SDK、远程音频下载、任何联网组件）仍**禁止**；剪贴板/分享的原始文本**永不出本地**（只上传待查询的单词 token + 可选 key）。
+- **`ACCESS_NETWORK_STATE` 仍不声明**：只由 androidx.work 合并带入，app 不读连接状态；WorkManager `NetworkType` 约束（联网/仅 Wi-Fi）不需要我们声明该权限。
+- **禁止在本机引入/编译 ktlint、detekt、spotless 等格式化检查**（不加相关依赖与 Gradle 任务）；验证一律 = `.\gradlew.bat :app:testDebugUnitTest` + `.\gradlew.bat :app:assembleDebug`（文件自验证，见 `docs/dev/PLAN_CUSTOM_PACKS_GATEWAY.md` §11/§13-R1）。
 - **禁止**对 `word` 表用 `Insert(REPLACE)`：会删行重建、CASCADE 连带清空 progress/事件/错题/考试快照。用 `@Update` 或身份映射 insert-then-update。
 - **禁止**破坏性数据库迁移：升版必须手写 Migration 入 `ALL_MIGRATIONS` + 同步 `version` 字面量与 `Migrations.CURRENT_VERSION`（有测试断言）+ 导出 `app/schemas/` 快照。
 - **禁止**提交密钥：`keystore.properties`/`*.jks`/`*.keystore` 已 gitignore；泄露即作废重新生成。
@@ -101,4 +103,5 @@ python tools/wordpack/validate_packs.py   # 词库校验（依赖 cache/ecdict.c
 - `tools/*/cache/` gitignored 且本地不存在——复现流水线先 `download.py`；Tatoeba .bz2 需手工下载。
 - `attach_examples.py` 重复执行会在 PACK_INFO.json `transformNotes` 累加重复段（现状已有痕迹）——勿反复追跑。
 - 签名双通道：环境变量 `TONEUP_KEYSTORE_*` 优先，其次根 `keystore.properties`；都没有时 release 产出**未签名包而非失败**。
+- **本机跑单测前先把 `TEMP`/`TMP` 指到纯 ASCII 路径**（如 `E:\Temp`）：用户目录含中文时，Robolectric 的 `robolectric-nativeruntime.dll`（解压到 `%TEMP%`）JNI_OnLoad 会失败，测试 JVM 在 SQLite 首次 open 时以 EXCEPTION_ACCESS_VIOLATION 崩溃（hs_err 见 `app/`）。做法：`.\gradlew.bat --stop` 后设 `$env:TEMP="E:\Temp"; $env:TMP="E:\Temp"` 再跑 `testDebugUnitTest`（M0 实测，2026-10-14）。
 - Kotlin LSP（kotlin-ls）未安装，符号导航靠 codegraph/grep。

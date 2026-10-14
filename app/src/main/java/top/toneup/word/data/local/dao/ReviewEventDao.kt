@@ -6,7 +6,13 @@ import androidx.room.Query
 import top.toneup.word.data.local.entity.ReviewEventEntity
 import kotlinx.coroutines.flow.Flow
 
-/** Answer log: powers statistics, trends, the activity calendar and data export. */
+/**
+ * Answer log: powers statistics, trends, the activity calendar and data export.
+ *
+ * Scope is the **pack id** since schema v2 (D1): `review_event.pack_id` is written by
+ * `ProgressRecorder` and backfilled from the word row in migration 1→2, so every aggregate
+ * is per pack; the displayed `level` still comes from the word row.
+ */
 @Dao
 interface ReviewEventDao {
 
@@ -21,24 +27,24 @@ interface ReviewEventDao {
         SELECT e.answered_at AS answered_at, e.grade AS grade, e.source AS source,
                w.word AS word, w.meanings AS meanings, w.level AS level
         FROM review_event e JOIN word w ON w.id = e.word_id
-        WHERE w.level = :level
+        WHERE e.pack_id = :packId
         ORDER BY e.answered_at DESC
         LIMIT :limit
         """,
     )
-    fun observeRecent(level: String, limit: Int): Flow<List<RecentEventRow>>
+    fun observeRecent(packId: String, limit: Int): Flow<List<RecentEventRow>>
 
     @Query(
         """
         SELECT e.answered_at AS answered_at, e.grade AS grade, e.source AS source,
                w.word AS word, w.meanings AS meanings, w.level AS level
         FROM review_event e JOIN word w ON w.id = e.word_id
-        WHERE w.level = :level
+        WHERE e.pack_id = :packId
         ORDER BY e.answered_at DESC
         LIMIT :limit
         """,
     )
-    suspend fun recent(level: String, limit: Int): List<RecentEventRow>
+    suspend fun recent(packId: String, limit: Int): List<RecentEventRow>
 
     @Query(
         """
@@ -48,12 +54,12 @@ interface ReviewEventDao {
                SUM(CASE WHEN grade = 'FUZZY' THEN 1 ELSE 0 END) AS fuzzy,
                SUM(CASE WHEN grade = 'UNKNOWN' THEN 1 ELSE 0 END) AS wrong
         FROM review_event
-        WHERE level = :level AND day_key >= :fromDay
+        WHERE pack_id = :packId AND day_key >= :fromDay
         GROUP BY day_key
         ORDER BY day_key ASC
         """,
     )
-    fun observeTrendsSince(level: String, fromDay: String): Flow<List<DailyTrendRow>>
+    fun observeTrendsSince(packId: String, fromDay: String): Flow<List<DailyTrendRow>>
 
     @Query(
         """
@@ -63,15 +69,15 @@ interface ReviewEventDao {
                SUM(CASE WHEN grade = 'FUZZY' THEN 1 ELSE 0 END) AS fuzzy,
                SUM(CASE WHEN grade = 'UNKNOWN' THEN 1 ELSE 0 END) AS wrong
         FROM review_event
-        WHERE level = :level AND day_key >= :fromDay
+        WHERE pack_id = :packId AND day_key >= :fromDay
         GROUP BY day_key
         ORDER BY day_key ASC
         """,
     )
-    suspend fun trendsSince(level: String, fromDay: String): List<DailyTrendRow>
+    suspend fun trendsSince(packId: String, fromDay: String): List<DailyTrendRow>
 
-    @Query("SELECT COUNT(*) FROM review_event WHERE level = :level AND answered_at >= :since")
-    suspend fun countSince(level: String, since: Long): Int
+    @Query("SELECT COUNT(*) FROM review_event WHERE pack_id = :packId AND answered_at >= :since")
+    suspend fun countSince(packId: String, since: Long): Int
 
     /**
      * How many times this word was already answered on this study day. Used to count
@@ -80,8 +86,8 @@ interface ReviewEventDao {
     @Query("SELECT COUNT(*) FROM review_event WHERE word_id = :wordId AND day_key = :dayKey")
     suspend fun countForWordOnDay(wordId: Long, dayKey: String): Int
 
-    @Query("SELECT COUNT(*) FROM review_event WHERE level = :level")
-    suspend fun totalCount(level: String): Int
+    @Query("SELECT COUNT(*) FROM review_event WHERE pack_id = :packId")
+    suspend fun totalCount(packId: String): Int
 
     /**
      * Lapses of **already mastered** words: answers since [since] that were not "已掌握" for a word
@@ -99,11 +105,11 @@ interface ReviewEventDao {
         """
         SELECT COUNT(*) FROM review_event e
         INNER JOIN user_word_progress p ON p.word_id = e.word_id
-        WHERE e.level = :level AND e.answered_at >= :since AND e.grade != 'MASTERED'
+        WHERE e.pack_id = :packId AND e.answered_at >= :since AND e.grade != 'MASTERED'
           AND p.status = 'MASTERED'
         """,
     )
-    suspend fun countLapsesOfMasteredWords(level: String, since: Long): Int
+    suspend fun countLapsesOfMasteredWords(packId: String, since: Long): Int
 
     /**
      * Answers since [since] for words that had **no previous interval** — i.e. the first time the
@@ -116,17 +122,17 @@ interface ReviewEventDao {
     @Query(
         """
         SELECT COUNT(*) FROM review_event
-        WHERE level = :level AND answered_at >= :since AND previous_interval_days = 0
+        WHERE pack_id = :packId AND answered_at >= :since AND previous_interval_days = 0
         """,
     )
-    suspend fun countFirstExposureAnswersSince(level: String, since: Long): Int
+    suspend fun countFirstExposureAnswersSince(packId: String, since: Long): Int
 
-    @Query("SELECT * FROM review_event WHERE level = :level ORDER BY answered_at ASC")
-    suspend fun allForLevel(level: String): List<ReviewEventEntity>
+    @Query("SELECT * FROM review_event WHERE pack_id = :packId ORDER BY answered_at ASC")
+    suspend fun allForPack(packId: String): List<ReviewEventEntity>
 
     @Query("DELETE FROM review_event")
     suspend fun deleteAll()
 
-    @Query("DELETE FROM review_event WHERE level = :level")
-    suspend fun deleteLevel(level: String)
+    @Query("DELETE FROM review_event WHERE pack_id = :packId")
+    suspend fun deleteForPack(packId: String)
 }

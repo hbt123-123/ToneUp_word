@@ -21,6 +21,8 @@
     「仅 `INTERNET` 用于释义补全网关；无账号/广告/埋点；剪贴板原文永不出本地」。
   - **禁止**再扩展到其他联网能力（同步、统计、远程音频下载仍不做）。
 - 隐私红线：只上传**需要查询的单词本身**（及可选 `?key=`）；剪贴板/分享的原始文本仅本地解析。
+- **本机构建规则**：禁止在本机编译/引入 ktlint（及 detekt/spotless 等同类格式化检查）；验证一律走现有文件自验证 = `.\gradlew.bat :app:testDebugUnitTest` + `:app:assembleDebug`（见 §11）。
+- **无历史包袱**：本项目未上线，不存在真实用户数据——迁移回填按「内置包映射 + 其余归 `legacy-other`」一次写完即可，不做迁移工具（§13-Q1 已关闭）。
 
 ---
 
@@ -173,8 +175,10 @@ CREATE TABLE meaning_cache (
 
 1. **ECDICT** `GET /dict?word=X`：`found=true` → 中文 `translation` 为标准释义，附 `phonetic/pos/definition/tag/exchange`；`found=false` → 进入 2（`suggestions` 本期不用，仅可做后续输入联想）。
 2. **FreeDictionary** `GET /en/X`：数组非空 → 取 `meanings[0]` 英文释义入 `en_definition`、`phonetics[].text`、首个 `example`、同义词、`audio` URL；兼容 `source=ecdict-fallback` 形态。**空/404 → 进入 3**。
-3. **翻译模型** `POST /v1/chat/completions`：prompt 模板（常量，可测）如：`把单词「X」的常用词性和中文释义翻译出来，一行，格式：词性. 释义`；解析 `content` 入标准释义。
+3. **翻译模型** `POST /v1/chat/completions`（**LLM 兜底，已确认**）：prompt 模板（常量，可测）如：`把单词「X」的常用词性和中文释义翻译出来，一行，格式：词性. 释义`；解析 `content` 入标准释义。
 4. 全失败 → word 行 `lookup_state='FAILED'`（UI 显示「待补充」+ 重试按钮），`meaning_cache` 记负缓存（TTL 由 `fetched_at` + 24h 判断，FAILED 允许手动强制重查）。
+
+**释义语言策略（Q2 已关闭）**：标准释义始终优先为**中文**——ECDICT `translation` 直接满足；FreeDict 仅贡献英文释义/例句/同义词/发音（入 `en_definition` 等辅助字段），**不需要**「英文释义自动补中文」的额外设置项；ECDICT 未命中时由 LLM 直接生成中文释义兜底。
 
 写回规则（事务）：先查 `meaning_cache` 命中直接写 word；写 word 前检查 `meaning_source != 'manual'`；`lookup_state ∈ {PENDING,FAILED}` 或源为空才写。
 
@@ -275,11 +279,14 @@ M0 基建解禁 ──► M1 数据层v2+packId扫描(关键路径) ──┬─
 
 ---
 
-## 13. 风险与开放问题（需确认）
+## 13. 已关闭决策（评审确认）与残留风险
 
-1. **R8/依赖兼容**：AGP 9 + Kotlin 2.4 下 Retrofit/OkHttp/serialization-converter 版本需 M0 spike 实测；若 converter 不兼容则退化为 OkHttp + `kotlinx.serialization` 手写请求（不改变架构 D6 的分层）。
-2. **`legacy-other` 孤儿数据**：改造前以 OTHER 级导入过的用户，其历史汇总/会话归入 `legacy-other` 不再展示（数据保留）。是否可接受，或需要一次性迁移工具按 `review_event` 重归属？**建议按本计划执行，M6 视反馈补工具。**
-3. **FreeDict 只有英文释义**：按需求严格执行（不额外调 MT 补中文）。若实测体验差，可加设置项「英文释义后自动补中文」（多一次 MT 调用）。
-4. **网关 key 预置进 APK**：可被逆向提取（本项目无混淆对抗目标，网关额度按日限）。接受预置+可改；若泄露则走 `网关使用文档.md` §5 换密钥。
-5. **Android 12+ 剪贴板读取提示**：焦点时机读取可缓解但无法完全消除系统提示；用户可关「剪贴板识别」。
-6. **对外分享入口文案/图标**：Share sheet 显示名用 `app_name`，M5 实现时确认是否需要独立 `android:label`。
+| # | 问题 | 结论 |
+|---|------|------|
+| Q1 | 改造前 OTHER 级历史数据 | **关闭**：未上线、无真实历史数据。迁移回填一次写完（内置包映射 + `legacy-other` 兜底），不做迁移工具，`legacy-other` 行不展示也无需清理工具。 |
+| Q2 | FreeDict 仅英文释义 | **关闭**：标准释义以中文为准——ECDICT `translation` 优先，LLM 兜底自动生成中文释义；FreeDict 仅作辅助字段（英文释义/例句/同义词/发音）。不加设置项。 |
+| Q3 | 网关 key | **关闭**：硬编码为默认值（`BuildConfig`/常量），设置页仍可覆盖；接受可被逆向的现实，泄露则按 `网关使用文档.md` §5 换密钥。 |
+| R1 | 本机禁止编译 ktlint | **规则**：不引入 ktlint/detekt/spotless 依赖与任务；验证 = `testDebugUnitTest` + `assembleDebug` 文件自验证。 |
+| R2 | AGP 9 + Kotlin 2.4 下 Retrofit/OkHttp/serialization-converter 版本 | M0 spike 实测；若 converter 不兼容则退化为 OkHttp + `kotlinx.serialization` 手写请求（保持 D6 分层不变）。 |
+| R3 | Android 12+ 剪贴板读取提示 | 焦点时机读取缓解；无法消除时用户可关「剪贴板识别」。 |
+| R4 | Share sheet 显示名 | 用 `app_name`，M5 实现时确认是否需要独立 `android:label`。 |

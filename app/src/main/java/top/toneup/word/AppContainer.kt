@@ -1,14 +1,21 @@
 package top.toneup.word
 
 import android.content.Context
+import android.content.pm.ApplicationInfo
+import top.toneup.word.core.json.JsonCodec
 import top.toneup.word.core.time.SystemTimeProvider
 import top.toneup.word.core.time.TimeProvider
+import top.toneup.word.data.gateway.GatewayClientProvider
+import top.toneup.word.data.gateway.MeaningLookupService
+import top.toneup.word.data.gateway.toGatewayConfig
 import top.toneup.word.data.io.DocumentIo
 import top.toneup.word.data.local.ToneUpWordDatabase
 import top.toneup.word.data.motivation.AssetStartupTipSource
 import top.toneup.word.data.motivation.StartupTipSource
 import top.toneup.word.data.repository.DefaultInsightRepository
+import top.toneup.word.data.repository.DefaultMeaningSyncRepository
 import top.toneup.word.data.repository.InsightRepository
+import top.toneup.word.data.repository.MeaningSyncRepository
 import top.toneup.word.data.speech.SpeechDiagnostic
 import top.toneup.word.data.speech.SpeechDiagnosticsStore
 import top.toneup.word.data.speech.SpeechService
@@ -34,6 +41,7 @@ import top.toneup.word.work.ReminderScheduler
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.serialization.json.Json
 import java.io.File
 
 /**
@@ -136,6 +144,45 @@ class AppContainer(
     val speechService: SpeechService = SystemTtsSpeechService(
         context = context,
         onDiagnostic = speechDiagnostics::record,
+    )
+
+    // --- Gateway 释义补全 (M4) --------------------------------------------------------------
+
+    /** Shared JSON: the Retrofit converter and the `meaning_cache.payload` codec must agree. */
+    val gatewayJson: Json = JsonCodec.json
+
+    /**
+     * HTTP stack holder: rebuilt automatically whenever baseUrl / key / paths change, and the
+     * only place where https is validated (http → `AppError.config`).
+     * Debuggable builds get BODY logging with the `Authorization` header redacted.
+     */
+    val gatewayClientProvider: GatewayClientProvider = GatewayClientProvider(
+        configProvider = { settingsRepository.current().toGatewayConfig() },
+        json = gatewayJson,
+        isDebugBuild = (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0,
+    )
+
+    /** ECDICT → FreeDictionary → LLM cascade with the 24h shared cache. */
+    val meaningLookupService: MeaningLookupService = MeaningLookupService(
+        clients = gatewayClientProvider,
+        cacheDao = database.meaningCacheDao(),
+        wordDao = database.wordDao(),
+        time = timeProvider,
+        json = gatewayJson,
+    )
+
+    /**
+     * Orchestration for meaning completion: pending counter, unique-work enqueue, immediate
+     * per-word lookup and batch runs. `prepare()` deliberately does **not** trigger a run —
+     * the first enqueue happens after an import or from the settings screen.
+     */
+    val meaningSync: MeaningSyncRepository = DefaultMeaningSyncRepository(
+        context = context,
+        db = database,
+        time = timeProvider,
+        lookupService = meaningLookupService,
+        settingsRepository = settingsRepository,
+        json = gatewayJson,
     )
 
     /**

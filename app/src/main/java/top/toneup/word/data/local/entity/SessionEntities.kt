@@ -15,11 +15,13 @@ import androidx.room.PrimaryKey
  */
 @Entity(
     tableName = "study_session",
-    indices = [Index("status"), Index("level"), Index("updated_at")],
+    indices = [Index("status"), Index("level"), Index("updated_at"), Index("pack_id")],
 )
 data class StudySessionEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0L,
     @ColumnInfo(name = "level") val level: String,
+    /** Pack the session studies (migration 1→2 backfills level→builtin/legacy pack ids). */
+    @ColumnInfo(name = "pack_id") val packId: String,
     /** ACTIVE / COMPLETED / ABANDONED */
     @ColumnInfo(name = "status") val status: String,
     @ColumnInfo(name = "started_at") val startedAt: Long,
@@ -48,11 +50,13 @@ data class StudySessionEntity(
  */
 @Entity(
     tableName = "exam_session",
-    indices = [Index("status"), Index("level"), Index("created_at")],
+    indices = [Index("status"), Index("level"), Index("created_at"), Index("pack_id")],
 )
 data class ExamSessionEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0L,
     @ColumnInfo(name = "level") val level: String,
+    /** Pack the exam was built from (migration 1→2 backfills level→builtin/legacy pack ids). */
+    @ColumnInfo(name = "pack_id") val packId: String,
     /** DRAFT / SUBMITTED / ABANDONED */
     @ColumnInfo(name = "status") val status: String,
     @ColumnInfo(name = "created_at") val createdAt: Long,
@@ -115,19 +119,22 @@ data class ExamQuestionEntity(
 )
 
 /**
- * Per-day, per-level rollup used by the home dashboard, the statistics screen and the
+ * Per-day, per-pack rollup used by the home dashboard, the statistics screen and the
  * activity calendar. Written inside the same transaction as the answer it belongs to.
  *
- * The primary key is composite because a learner may switch between CET-4 and CET-6 on the
- * same day; the study day starts at 04:00 local time (see `StudyDay`).
+ * The primary key is composite because a learner may study several packs on the same day;
+ * the study day starts at 04:00 local time (see `StudyDay`). `level` is kept only as a
+ * migration/display column — scoping is done by `pack_id` since schema v2 (D1).
  */
 @Entity(
     tableName = "daily_study_summary",
-    primaryKeys = ["day_key", "level"],
-    indices = [Index("day_key"), Index("level")],
+    primaryKeys = ["day_key", "pack_id"],
+    indices = [Index("day_key"), Index("pack_id")],
 )
 data class DailyStudySummaryEntity(
     @ColumnInfo(name = "day_key") val dayKey: String,
+    /** Pack this rollup belongs to (migration 1→2 maps level → builtin/legacy pack ids). */
+    @ColumnInfo(name = "pack_id") val packId: String,
     @ColumnInfo(name = "level") val level: String,
     @ColumnInfo(name = "studied_words") val studiedWords: Int = 0,
     @ColumnInfo(name = "new_words") val newWords: Int = 0,

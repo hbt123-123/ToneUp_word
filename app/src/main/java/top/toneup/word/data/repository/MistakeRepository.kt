@@ -10,6 +10,7 @@ import top.toneup.word.data.mapper.toEntity
 import top.toneup.word.data.mapper.toProgress
 import top.toneup.word.data.mapper.toWord
 import top.toneup.word.data.mapper.toWordWithProgress
+import top.toneup.word.data.settings.PackIds
 import top.toneup.word.domain.mistake.MistakeCategory
 import top.toneup.word.domain.mistake.MistakeFilter
 import top.toneup.word.domain.mistake.MistakeItem
@@ -29,7 +30,7 @@ import kotlinx.coroutines.flow.map
  */
 interface MistakeRepository {
 
-    fun observeOverview(level: CetLevel, nowMillis: Long = 0L): Flow<MistakeOverview>
+    fun observeOverview(packId: String, nowMillis: Long = 0L): Flow<MistakeOverview>
 
     /** Reactive list for the current category + filter + sort. */
     fun observeItems(filter: MistakeFilter, sort: MistakeSort): Flow<List<MistakeItem>>
@@ -55,15 +56,15 @@ class DefaultMistakeRepository(
     private val time: TimeProvider,
 ) : MistakeRepository {
 
-    override fun observeOverview(level: CetLevel, nowMillis: Long): Flow<MistakeOverview> {
+    override fun observeOverview(packId: String, nowMillis: Long): Flow<MistakeOverview> {
         val now = if (nowMillis > 0) nowMillis else time.nowMillis()
         val weekAgo = now - 7L * 24L * 60L * 60L * 1000L
         return combine(
-            db.progressDao().observeDueCount(level.id, now),
-            db.progressDao().observeFragileCount(level.id),
-            db.mistakeBookDao().observeHighWrongCount(level.id, HIGH_WRONG_THRESHOLD),
-            db.mistakeBookDao().observeRecentlyWrong(level.id, weekAgo),
-            db.mistakeBookDao().observeActiveCount(level.id),
+            db.progressDao().observeDueCount(packId, now),
+            db.progressDao().observeFragileCount(packId),
+            db.mistakeBookDao().observeHighWrongCount(packId, HIGH_WRONG_THRESHOLD),
+            db.mistakeBookDao().observeRecentlyWrong(packId, weekAgo),
+            db.mistakeBookDao().observeActiveCount(packId),
         ) { due, fragile, high, recent, active ->
             MistakeOverview(
                 dueTodayCount = due,
@@ -74,31 +75,35 @@ class DefaultMistakeRepository(
                 historyCount = active,
                 favoriteCount = 0,
             )
-        }.combine(db.progressDao().observeFavoriteCount(level.id)) { overview, favorites ->
+        }.combine(db.progressDao().observeFavoriteCount(packId)) { overview, favorites ->
             overview.copy(favoriteCount = favorites)
-        }.combine(db.mistakeBookDao().observeTotalCount(level.id)) { overview, total ->
+        }.combine(db.mistakeBookDao().observeTotalCount(packId)) { overview, total ->
             overview.copy(historyCount = total)
         }
     }
 
+    /** Explicit pack wins; a filter that only knows its display level falls back to the builtin id. */
+    private fun scopeOf(filter: MistakeFilter): String =
+        filter.packId.ifEmpty { PackIds.defaultPackIdFor(filter.level) }
+
     override fun observeItems(filter: MistakeFilter, sort: MistakeSort): Flow<List<MistakeItem>> {
-        val level = filter.level.id
+        val packId = scopeOf(filter)
         val like = likePattern(filter.search)
         return when (filter.category) {
             MistakeCategory.DUE_TODAY -> db.progressDao()
-                .observeDueWords(level, time.nowMillis(), LIST_LIMIT)
+                .observeDueWords(packId, time.nowMillis(), LIST_LIMIT)
                 .map { rows -> rows.map { it.toDueMistakeItem() } }
 
             MistakeCategory.UNCONSOLIDATED -> db.progressDao()
-                .observeFragileWords(level, LIST_LIMIT)
+                .observeFragileWords(packId, LIST_LIMIT)
                 .map { rows -> rows.map { it.toDueMistakeItem() } }
 
             MistakeCategory.FAVORITES -> db.progressDao()
-                .observeFavorites(level)
+                .observeFavorites(packId)
                 .map { rows -> rows.map { it.toDueMistakeItem() } }
 
             MistakeCategory.HIGH_WRONG -> db.mistakeBookDao().observeMistakesByCount(
-                level = level,
+                packId = packId,
                 includeResolved = 0,
                 favoriteOnly = if (filter.favoritesOnly) 1 else 0,
                 minWrongCount = filter.minWrongCount,
@@ -108,7 +113,7 @@ class DefaultMistakeRepository(
             ).map { rows -> rows.map { it.toMistakeItem() } }
 
             MistakeCategory.RECENT -> db.mistakeBookDao().observeMistakes(
-                level = level,
+                packId = packId,
                 includeResolved = 0,
                 favoriteOnly = if (filter.favoritesOnly) 1 else 0,
                 minWrongCount = filter.minWrongCount,
@@ -118,7 +123,7 @@ class DefaultMistakeRepository(
             ).map { rows -> rows.map { it.toMistakeItem() } }
 
             MistakeCategory.HISTORY -> db.mistakeBookDao().observeMistakes(
-                level = level,
+                packId = packId,
                 includeResolved = 1,
                 favoriteOnly = if (filter.favoritesOnly) 1 else 0,
                 minWrongCount = filter.minWrongCount,
@@ -136,18 +141,18 @@ class DefaultMistakeRepository(
     }
 
     override suspend fun drillIds(filter: MistakeFilter, sort: MistakeSort): List<Long> {
-        val level = filter.level.id
+        val packId = scopeOf(filter)
         return when (filter.category) {
             MistakeCategory.DUE_TODAY -> db.progressDao()
-                .dueWords(level, time.nowMillis(), LIST_LIMIT).map { it.wordId }
+                .dueWords(packId, time.nowMillis(), LIST_LIMIT).map { it.wordId }
 
             MistakeCategory.UNCONSOLIDATED -> db.progressDao()
-                .fragileWords(level, time.nowMillis(), LIST_LIMIT).map { it.wordId }
+                .fragileWords(packId, time.nowMillis(), LIST_LIMIT).map { it.wordId }
 
-            MistakeCategory.FAVORITES -> db.progressDao().favorites(level).map { it.wordId }
+            MistakeCategory.FAVORITES -> db.progressDao().favorites(packId).map { it.wordId }
 
             MistakeCategory.HIGH_WRONG -> db.mistakeBookDao().mistakeIdsForFilter(
-                level = level,
+                packId = packId,
                 includeResolved = 0,
                 favoriteOnly = if (filter.favoritesOnly) 1 else 0,
                 minWrongCount = filter.minWrongCount,
@@ -157,7 +162,7 @@ class DefaultMistakeRepository(
             )
 
             MistakeCategory.RECENT -> db.mistakeBookDao().mistakeIdsForFilter(
-                level = level,
+                packId = packId,
                 includeResolved = 0,
                 favoriteOnly = if (filter.favoritesOnly) 1 else 0,
                 minWrongCount = filter.minWrongCount,
@@ -167,7 +172,7 @@ class DefaultMistakeRepository(
             )
 
             MistakeCategory.HISTORY -> db.mistakeBookDao().mistakeIdsForFilter(
-                level = level,
+                packId = packId,
                 includeResolved = 1,
                 favoriteOnly = if (filter.favoritesOnly) 1 else 0,
                 minWrongCount = filter.minWrongCount,
