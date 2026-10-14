@@ -1378,10 +1378,54 @@ data class ProfileUiState(
     /** Local (never uploaded) reading success/failure counters. */
     val speechDiagnostics: top.toneup.word.data.speech.SpeechDiagnostics =
         top.toneup.word.data.speech.SpeechDiagnostics(),
+    /** Live state of the gateway settings section (M4-UI). */
+    val gateway: GatewayUiState = GatewayUiState(),
 )
+
+/**
+ * UI state of the "词库与联网" settings section (plan §10).
+ *
+ * The pending count is a `Flow<Int>` collected from the database, so it starts as `null`
+ * ("no emission yet") rather than 0 — the screen must not claim "全部已补全" before the
+ * query has even run (same "null ≠ 0" rule the statistics follow).
+ */
+@Immutable
+data class GatewayUiState(
+    /** Words still waiting for the gateway (PENDING + retryable FAILED); null before the first emission. */
+    val pendingCount: Int? = null,
+    /** True while "测试连接" is in flight — the button shows a spinner and ignores taps. */
+    val testing: Boolean = false,
+    /** Result line of the last connection test; stays until the next test overwrites it. */
+    val testMessage: String? = null,
+    /** One-shot result of "立即补全" (enqueue), surfaced as a snackbar. */
+    val enqueueMessage: String? = null,
+)
+
+/** Mutable backing state for the gateway action results (kept out of [ProfileUiState]). */
+private data class GatewayActionState(
+    val testing: Boolean = false,
+    val testMessage: String? = null,
+    val enqueueMessage: String? = null,
+)
+
+/**
+ * Plan D7 validation for the gateway base URL: only `https` may be stored.
+ *
+ * Pure so the screen can show the error while typing and the ViewModel can refuse the
+ * write — one rule, two call sites, both covered by tests.
+ */
+internal fun gatewayUrlError(baseUrl: String): String? =
+    if (baseUrl.trim().startsWith("https://", ignoreCase = true)) {
+        null
+    } else {
+        "仅支持 https 地址"
+    }
 
 /** Settings, data management and the "about" information. */
 class ProfileViewModel(private val container: AppContainer) : ViewModel() {
+
+    /** Transient state of the gateway actions (connection test / enqueue), independent of the DB flows. */
+    private val _gatewayActions = MutableStateFlow(GatewayActionState())
 
     val state: StateFlow<ProfileUiState> = combine(
         container.settingsRepository.settings,
@@ -1400,6 +1444,14 @@ class ProfileViewModel(private val container: AppContainer) : ViewModel() {
         base.copy(speechStatus = speechStatus)
     }.combine(container.speechDiagnostics.state) { base, diagnostics ->
         base.copy(speechDiagnostics = diagnostics)
+    }.combine(container.meaningSync.observePendingCount()) { base, pendingCount ->
+        base.copy(gateway = base.gateway.copy(pendingCount = pendingCount))
+    }.combine(_gatewayActions) { base, actions ->
+        base.copy(gateway = base.gateway.copy(
+            testing = actions.testing,
+            testMessage = actions.testMessage,
+            enqueueMessage = actions.enqueueMessage,
+        ))
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ProfileUiState())
 
     /** Clears the local speech counters (they are diagnostics, not study data). */
@@ -1431,6 +1483,93 @@ class ProfileViewModel(private val container: AppContainer) : ViewModel() {
     fun setAnimationsEnabled(enabled: Boolean) = launchSettings { setAnimationsEnabled(enabled) }
 
     fun setAutoPlayPronunciation(enabled: Boolean) = launchSettings { setAutoPlayPronunciation(enabled) }
+
+    // --- 词库与联网 (M4-UI) --------------------------------------------------------------
+    // The https guard lives in [gatewayUrlError]: an invalid URL never reaches the repository,
+    // so a cleartext address cannot be persisted even if the screen's inline check is bypassed.
+
+    fun setGatewayBaseUrl(baseUrl: String) {
+        if (gatewayUrlError(baseUrl) != null) return
+        launchSettings { setGatewayBaseUrl(baseUrl.trim()) }
+    }
+
+    fun setGatewayKey(key: String) = launchSettings { setGatewayKey(key.trim()) }
+
+    fun setDictPath(path: String) = launchSettings { setDictPath(path.trim()) }
+
+    fun setEnPath(path: String) = launchSettings { setEnPath(path.trim()) }
+
+    fun setMtPath(path: String) = launchSettings { setMtPath(path.trim()) }
+
+    fun setSyncOnlyUnmetered(enabled: Boolean) = launchSettings { setSyncOnlyUnmetered(enabled) }
+
+    fun setClipboardDetectEnabled(enabled: Boolean) = launchSettings { setClipboardDetectEnabled(enabled) }
+
+    /** Restores the three gateway paths (and address/key) to the documented defaults. */
+    fun restoreGatewayDefaults() {
+        launchSettings {
+            setGatewayBaseUrl(top.toneup.word.data.gateway.GatewayDefaults.BASE_URL)
+            setGatewayKey(top.toneup.word.data.gateway.GatewayDefaults.KEY)
+            setDictPath(top.toneup.word.data.gateway.GatewayDefaults.DICT_PATH)
+            setEnPath(top.toneup.word.data.gateway.GatewayDefaults.EN_PATH)
+            setMtPath(top.toneup.word.data.gateway.GatewayDefaults.MT_PATH)
+        }
+    }
+
+    /**
+     * "立即补全": enqueues the unique meaning-sync run (plan §7.3 trigger ②).
+     * Safe to call repeatedly — WorkManager appends or replaces the single logical queue.
+     */
+    fun enqueueAllMeaningCompletion() {
+        viewModelScope.launch {
+            val message = when (val outcome = container.meaningSync.enqueueAll()) {
+                is Outcome.Success -> "已加入补全队列，联网后自动开始。"
+                is Outcome.Failure -> outcome.error.message ?: "补全任务提交失败。"
+            }
+            _gatewayActions.update { it.copy(enqueueMessage = message) }
+        }
+    }
+
+    /**
+     * "测试连接": builds a client from the *current* settings and hits the gateway root
+     * (plan §10). The result line distinguishes reachability, a bad key (401) and other
+     * HTTP/transport failures so a misconfiguration is diagnosable without a logcat.
+     */
+    fun testGatewayConnection() {
+        if (_gatewayActions.value.testing) return // debounce: ignore taps while in flight
+        _gatewayActions.update { it.copy(testing = true, testMessage = null) }
+        viewModelScope.launch {
+            val startedAt = container.timeProvider.nowMillis()
+            _gatewayActions.update {
+                it.copy(testing = false, testMessage = runGatewayHealthCheck(startedAt))
+            }
+        }
+    }
+
+    /** Runs one health request; never throws — failures are formatted into the result line. */
+    private suspend fun runGatewayHealthCheck(startedAt: Long): String {
+        val session = when (val built = container.gatewayClientProvider.session()) {
+            is Outcome.Failure -> return built.error.message ?: "网关配置有误。"
+            is Outcome.Success -> built.value
+        }
+        val url = session.config.baseUrl.trim().trimEnd('/') + "/"
+        val response = try {
+            session.api.health(url)
+        } catch (t: Throwable) {
+            return "无法连接：" + (t.message ?: t::class.java.simpleName)
+        }
+        val elapsed = container.timeProvider.nowMillis() - startedAt
+        return when {
+            response.isSuccessful -> "连接正常（${elapsed}ms）"
+            response.code() == 401 -> "密钥错误"
+            else -> "网关返回 HTTP ${response.code()}"
+        }
+    }
+
+    /** One-shot: clears the snackbar message. The connection-test line stays until re-tested. */
+    fun dismissGatewayMessage() {
+        _gatewayActions.update { it.copy(enqueueMessage = null) }
+    }
 
     /** Restores default settings only; study data is untouched. */
     fun resetSettings() {
@@ -1788,15 +1927,18 @@ class ImportWordsViewModel(
                     now = container.timeProvider.nowMillis(),
                 )
             ) {
-                // M4 hook: enqueue the meaning-completion worker here (see plan §7.3 trigger ①),
-                // e.g. `container.meaningSyncScheduler.request()` — the words are already
-                // stored as PENDING, so a missing gateway only delays completion, never data.
                 is Outcome.Failure -> _state.update {
                     it.copy(importing = false, message = result.error.message)
                 }
 
-                is Outcome.Success -> _state.update {
-                    it.copy(importing = false, lastResult = result.value)
+                is Outcome.Success -> {
+                    // Plan §7.3 trigger ①: the words are already stored as PENDING, so a failed
+                    // enqueue only delays completion, never data — failure stays silent and the
+                    // learner can retry from the settings screen.
+                    container.meaningSync.enqueueAll()
+                    _state.update {
+                        it.copy(importing = false, lastResult = result.value)
+                    }
                 }
             }
         }

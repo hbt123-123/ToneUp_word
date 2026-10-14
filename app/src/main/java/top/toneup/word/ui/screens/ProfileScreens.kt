@@ -20,21 +20,27 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -44,15 +50,21 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import top.toneup.word.AppContainer
+import top.toneup.word.data.gateway.GatewayDefaults
 import top.toneup.word.data.settings.ThemeMode
+import top.toneup.word.data.settings.UserSettings
 import top.toneup.word.domain.model.CetLevel
+import top.toneup.word.ui.GatewayUiState
 import top.toneup.word.ui.ProfileViewModel
 import top.toneup.word.ui.ViewModelFactories
+import top.toneup.word.ui.gatewayUrlError
 import top.toneup.word.ui.components.AppCard
 import top.toneup.word.ui.components.ConfirmDialog
 import top.toneup.word.ui.components.EmptyState
@@ -291,6 +303,17 @@ fun SettingsScreen(
     var pendingClearProgress by remember { mutableStateOf(false) }
     var pendingClearAll by remember { mutableStateOf(false) }
     var infoMessage by remember { mutableStateOf<String?>(null) }
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    // The enqueue result is one-shot: show it, then clear it so a recomposition cannot
+    // re-pop the snackbar.
+    val enqueueMessage = state.gateway.enqueueMessage
+    LaunchedEffect(enqueueMessage) {
+        if (enqueueMessage != null) {
+            snackbarHostState.showSnackbar(enqueueMessage)
+            viewModel.dismissGatewayMessage()
+        }
+    }
 
     // Android 13+ needs an explicit runtime permission for notifications; Android 8-12 do not,
     // so the request is only launched on the newer versions and never affects older devices.
@@ -316,6 +339,7 @@ fun SettingsScreen(
             )
         },
         containerColor = MaterialTheme.colorScheme.background,
+        snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { padding ->
         Column(
             modifier = Modifier
@@ -504,6 +528,21 @@ fun SettingsScreen(
                 }
             }
 
+            GatewaySettingsSection(
+                settings = settings,
+                gateway = state.gateway,
+                onSetBaseUrl = viewModel::setGatewayBaseUrl,
+                onSetKey = viewModel::setGatewayKey,
+                onSetDictPath = viewModel::setDictPath,
+                onSetEnPath = viewModel::setEnPath,
+                onSetMtPath = viewModel::setMtPath,
+                onSetSyncOnlyUnmetered = viewModel::setSyncOnlyUnmetered,
+                onSetClipboardDetect = viewModel::setClipboardDetectEnabled,
+                onRestoreDefaults = viewModel::restoreGatewayDefaults,
+                onEnqueueAll = viewModel::enqueueAllMeaningCompletion,
+                onTestConnection = viewModel::testGatewayConnection,
+            )
+
             AppCard {
                 Column(verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
                     SectionHeader(title = "数据管理")
@@ -583,6 +622,268 @@ fun SettingsScreen(
             },
             onDismiss = { pendingClearAll = false },
         )
+    }
+}
+
+/**
+ * "词库与联网" settings group (plan §10): gateway address/key, the advanced path fields,
+ * the two completion toggles, the pending count with a manual trigger and the
+ * connectivity test.
+ *
+ * Extracted from [SettingsScreen] (the hottest function in the codebase) so the gateway
+ * rules — https validation, the key's visibility toggle, the one-in-flight test — live in
+ * one reviewable place. Text fields hold *local* state while typing and only write through
+ * to DataStore on an explicit save, so a half-typed URL is never persisted.
+ */
+@Composable
+private fun GatewaySettingsSection(
+    settings: UserSettings,
+    gateway: GatewayUiState,
+    onSetBaseUrl: (String) -> Unit,
+    onSetKey: (String) -> Unit,
+    onSetDictPath: (String) -> Unit,
+    onSetEnPath: (String) -> Unit,
+    onSetMtPath: (String) -> Unit,
+    onSetSyncOnlyUnmetered: (Boolean) -> Unit,
+    onSetClipboardDetect: (Boolean) -> Unit,
+    onRestoreDefaults: () -> Unit,
+    onEnqueueAll: () -> Unit,
+    onTestConnection: () -> Unit,
+) {
+    var baseUrlText by remember(settings.gatewayBaseUrl) { mutableStateOf(settings.gatewayBaseUrl) }
+    var keyText by remember(settings.gatewayKey) { mutableStateOf(settings.gatewayKey) }
+    var keyVisible by remember { mutableStateOf(false) }
+    var showAdvanced by remember { mutableStateOf(false) }
+    var dictPathText by remember(settings.dictPath) { mutableStateOf(settings.dictPath) }
+    var enPathText by remember(settings.enPath) { mutableStateOf(settings.enPath) }
+    var mtPathText by remember(settings.mtPath) { mutableStateOf(settings.mtPath) }
+
+    // Inline validation: the learner sees the reason immediately and the save button
+    // stays disabled, so an invalid URL can never reach the repository (plan D7).
+    val baseUrlError = gatewayUrlError(baseUrlText)
+
+    AppCard {
+        Column(verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
+            SectionHeader(title = "词库与联网")
+
+            Text(
+                text = "导入单词后，应用可通过自建网关补全释义、音标与词性；" +
+                    "联网只用于释义补全，上传内容仅为待查询的单词本身。",
+                style = MaterialTheme.typography.bodySmall,
+                color = AppTheme.colors.mutedText,
+            )
+
+            OutlinedTextField(
+                value = baseUrlText,
+                onValueChange = { baseUrlText = it },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("settings_gateway_url"),
+                singleLine = true,
+                label = { Text("网关地址") },
+                placeholder = { Text(GatewayDefaults.BASE_URL) },
+                isError = baseUrlError != null,
+                supportingText = if (baseUrlError != null) {
+                    { Text(baseUrlError) }
+                } else {
+                    null
+                },
+            )
+            SecondaryButton(
+                text = "保存地址",
+                onClick = { onSetBaseUrl(baseUrlText) },
+                enabled = baseUrlError == null && baseUrlText.trim() != settings.gatewayBaseUrl,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("settings_gateway_url_save"),
+            )
+
+            OutlinedTextField(
+                value = keyText,
+                onValueChange = { keyText = it },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("settings_gateway_key"),
+                singleLine = true,
+                label = { Text("网关密钥") },
+                // The learner sees and edits the real value (it may be the shipped default);
+                // the toggle only hides it from onlookers, it is never masked for the owner.
+                visualTransformation = if (keyVisible) {
+                    VisualTransformation.None
+                } else {
+                    PasswordVisualTransformation()
+                },
+                trailingIcon = {
+                    TextButton(
+                        onClick = { keyVisible = !keyVisible },
+                        modifier = Modifier.testTag("settings_gateway_key_visibility"),
+                    ) {
+                        Text(if (keyVisible) "隐藏" else "显示")
+                    }
+                },
+            )
+            SecondaryButton(
+                text = "保存密钥",
+                onClick = { onSetKey(keyText) },
+                enabled = keyText.trim() != settings.gatewayKey,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("settings_gateway_key_save"),
+            )
+
+            TextButton(
+                onClick = { showAdvanced = !showAdvanced },
+                modifier = Modifier.testTag("settings_gateway_advanced_toggle"),
+            ) {
+                Text(if (showAdvanced) "收起高级设置" else "高级设置（路径）")
+            }
+            if (showAdvanced) {
+                OutlinedTextField(
+                    value = dictPathText,
+                    onValueChange = { dictPathText = it },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("settings_gateway_dict_path"),
+                    singleLine = true,
+                    label = { Text("ECDICT 路径") },
+                    placeholder = { Text(GatewayDefaults.DICT_PATH) },
+                )
+                OutlinedTextField(
+                    value = enPathText,
+                    onValueChange = { enPathText = it },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("settings_gateway_en_path"),
+                    singleLine = true,
+                    label = { Text("英文释义路径") },
+                    placeholder = { Text(GatewayDefaults.EN_PATH) },
+                )
+                OutlinedTextField(
+                    value = mtPathText,
+                    onValueChange = { mtPathText = it },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("settings_gateway_mt_path"),
+                    singleLine = true,
+                    label = { Text("翻译模型路径") },
+                    placeholder = { Text(GatewayDefaults.MT_PATH) },
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                    SecondaryButton(
+                        text = "保存路径",
+                        onClick = {
+                            onSetDictPath(dictPathText)
+                            onSetEnPath(enPathText)
+                            onSetMtPath(mtPathText)
+                        },
+                        enabled = dictPathText.trim() != settings.dictPath ||
+                            enPathText.trim() != settings.enPath ||
+                            mtPathText.trim() != settings.mtPath,
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("settings_gateway_paths_save"),
+                    )
+                    SecondaryButton(
+                        text = "恢复默认",
+                        onClick = {
+                            onRestoreDefaults()
+                            dictPathText = GatewayDefaults.DICT_PATH
+                            enPathText = GatewayDefaults.EN_PATH
+                            mtPathText = GatewayDefaults.MT_PATH
+                        },
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("settings_gateway_paths_reset"),
+                    )
+                }
+            }
+
+            SettingToggleRow(
+                label = "仅 Wi-Fi 下补全",
+                description = "开启后，释义补全只在 Wi-Fi 网络下进行，移动数据下不会发起请求。",
+                checked = settings.syncOnlyUnmetered,
+                onCheckedChange = onSetSyncOnlyUnmetered,
+                testTag = "settings_sync_unmetered_switch",
+            )
+            SettingToggleRow(
+                label = "剪贴板识别",
+                description = "复制单词后回到应用时，提示快速导入到词库。",
+                checked = settings.clipboardDetectEnabled,
+                onCheckedChange = onSetClipboardDetect,
+                testTag = "settings_clipboard_switch",
+            )
+
+            // Pending count: null (no emission yet) reads differently from 0 — the screen
+            // must not claim "全部已补全" before the query has run.
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(Spacing.md),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(Spacing.xs),
+                ) {
+                    Text("待补充释义", style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        text = when (val count = gateway.pendingCount) {
+                            null -> "正在统计…"
+                            0 -> "全部已补全"
+                            else -> "$count 个单词待补充"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = AppTheme.colors.mutedText,
+                        modifier = Modifier.testTag("settings_gateway_pending_count"),
+                    )
+                }
+                SecondaryButton(
+                    text = "立即补全",
+                    onClick = onEnqueueAll,
+                    modifier = Modifier.testTag("settings_gateway_enqueue"),
+                )
+            }
+            Text(
+                text = "需联网；仅 Wi-Fi 可在开关中设置。",
+                style = MaterialTheme.typography.bodySmall,
+                color = AppTheme.colors.mutedText,
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(Spacing.md),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                SecondaryButton(
+                    text = "测试连接",
+                    onClick = onTestConnection,
+                    // Disabled while in flight so a double tap cannot start a second request.
+                    enabled = !gateway.testing,
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("settings_gateway_test"),
+                )
+                if (gateway.testing) {
+                    CircularProgressIndicator(
+                        modifier = Modifier
+                            .size(24.dp)
+                            .testTag("settings_gateway_test_progress"),
+                        strokeWidth = 2.dp,
+                    )
+                }
+            }
+            gateway.testMessage?.let { message ->
+                Text(
+                    text = message,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (message == "密钥错误") {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        AppTheme.colors.mutedText
+                    },
+                    modifier = Modifier.testTag("settings_gateway_test_result"),
+                )
+            }
+        }
     }
 }
 

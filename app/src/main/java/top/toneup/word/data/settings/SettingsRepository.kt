@@ -93,6 +93,12 @@ interface SettingsRepository {
     /** 「剪贴板识别」(M5 开关，M4 先落键) */
     suspend fun setClipboardDetectEnabled(enabled: Boolean)
 
+    /**
+     * Remembers the last clipboard content the M5 detector showed — **hash only**
+     * (plan §8.1); the raw text is never persisted. `""` resets to "never seen".
+     */
+    suspend fun setLastClipboardHash(hash: String)
+
     /** Restores every preference to its factory value (study data is untouched). */
     suspend fun resetToDefaults()
 }
@@ -256,6 +262,14 @@ class DataStoreSettingsRepository(private val context: Context) : SettingsReposi
         context.settingsDataStore.edit { it[Keys.CLIPBOARD_DETECT] = enabled }
     }
 
+    override suspend fun setLastClipboardHash(hash: String) {
+        // Empty means "seen nothing yet": store nothing rather than an empty-string marker.
+        context.settingsDataStore.edit { prefs ->
+            if (hash.isEmpty()) prefs.remove(Keys.LAST_CLIPBOARD_HASH)
+            else prefs[Keys.LAST_CLIPBOARD_HASH] = hash
+        }
+    }
+
     private fun Preferences.toUserSettings(): UserSettings {
         val defaults = UserSettings()
         return UserSettings(
@@ -298,6 +312,7 @@ class DataStoreSettingsRepository(private val context: Context) : SettingsReposi
             mtPath = this[Keys.MT_PATH] ?: defaults.mtPath,
             syncOnlyUnmetered = this[Keys.SYNC_ONLY_UNMETERED] ?: defaults.syncOnlyUnmetered,
             clipboardDetectEnabled = this[Keys.CLIPBOARD_DETECT] ?: defaults.clipboardDetectEnabled,
+            lastClipboardHash = this[Keys.LAST_CLIPBOARD_HASH] ?: defaults.lastClipboardHash,
         )
     }
 
@@ -339,5 +354,9 @@ class DataStoreSettingsRepository(private val context: Context) : SettingsReposi
         val MT_PATH = stringPreferencesKey("mt_path")
         val SYNC_ONLY_UNMETERED = booleanPreferencesKey("sync_only_unmetered")
         val CLIPBOARD_DETECT = booleanPreferencesKey("clipboard_detect_enabled")
+
+        // --- 剪贴板识别 (M5, plan §8.1) ------------------------------------------------------
+        /** SHA-256 hex of the last clipboard text the detector showed; absent = never seen. */
+        val LAST_CLIPBOARD_HASH = stringPreferencesKey("last_clipboard_hash")
     }
 }

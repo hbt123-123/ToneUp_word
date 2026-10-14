@@ -33,15 +33,43 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.ToneUpWord">
 
+        <!--
+          Entry points (M5, plan §8.2):
+          * MAIN/LAUNCHER — the ordinary cold-start icon.
+          * ACTION_SEND (text/plain) — the system share sheet, so a word list picked in a
+            browser / notes app lands straight in the import sheet.
+          * ACTION_PROCESS_TEXT (text/plain) — the text-selection menu (浏览器「翻译/复制」),
+            the fastest path from reading to importing.
+
+          `singleTop` routes a second delivery into onNewIntent instead of stacking another
+          activity on top of the current one; MainActivity consumes both filters through the
+          same handleShareIntent() path. Label uses @string/app_name: res/values/strings.xml
+          carries no dedicated share-sheet label (R4 in the plan; app_name is the whole app's
+          identity in the system picker anyway).
+
+          Privacy: shared text is parsed locally only — nothing is uploaded. The gateway
+          receives individual word tokens, and only after the learner confirms the import.
+        -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:launchMode="singleTop"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode|density|fontScale"
             android:windowSoftInputMode="adjustResize"
             android:theme="@style/Theme.ToneUpWord">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter android:label="@string/app_name">
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+            <intent-filter android:label="@string/app_name">
+                <action android:name="android.intent.action.PROCESS_TEXT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
             </intent-filter>
         </activity>
 

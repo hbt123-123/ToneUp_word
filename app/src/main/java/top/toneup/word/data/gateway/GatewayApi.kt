@@ -1,5 +1,6 @@
 package top.toneup.word.data.gateway
 
+import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.POST
@@ -30,4 +31,12 @@ interface GatewayApi {
     /** §3 OpenAI-compatible chat completion, non-streaming. */
     @POST
     suspend fun chat(@Url url: String, @Body body: ChatRequest): ChatResponse
+
+    /**
+     * §13 connectivity test (`GET /`): any HTTP response — even a 4xx — proves the
+     * gateway is reachable, so the return type is a raw [Response] that never throws.
+     * The 401 case stays distinguishable for the settings screen ("密钥错误").
+     */
+    @GET
+    suspend fun health(@Url url: String): Response<Unit>
 }

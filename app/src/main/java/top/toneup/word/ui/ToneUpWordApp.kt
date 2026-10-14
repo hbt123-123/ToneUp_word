@@ -11,6 +11,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import top.toneup.word.AppContainer
+import top.toneup.word.data.local.entity.WordPackEntity
 import top.toneup.word.ui.components.LoadingState
 import top.toneup.word.ui.navigation.ToneUpWordNavHost
 import top.toneup.word.ui.screens.StartupTipScreen
@@ -39,6 +40,12 @@ fun ToneUpWordApp(
     container: AppContainer,
     state: MainUiState,
     onDismissStartupTip: () -> Unit = {},
+    // M5 clipboard / Share intake: host-level overlay state, assembled in MainActivity from
+    // the Activity-scoped ExternalImportViewModel (defaults = feature dormant).
+    externalImportState: ExternalImportUiState = ExternalImportUiState(),
+    externalImportPacks: List<WordPackEntity> = emptyList(),
+    externalImportActivePackId: String = "",
+    externalImportCallbacks: ExternalImportCallbacks = ExternalImportCallbacks(),
 ) {
     val settings = state.settings
 
@@ -77,6 +84,17 @@ fun ToneUpWordApp(
                         onContinue = onDismissStartupTip,
                     )
                 }
+
+                // M5: clipboard / Share import sheet — a host-level overlay like the start-up
+                // line above, not a navigation destination: it must appear above whatever
+                // screen is on top without disturbing the back stack. Renders nothing while
+                // its state is idle/dismissed.
+                ExternalImportSheet(
+                    state = externalImportState,
+                    packs = externalImportPacks,
+                    activePackId = externalImportActivePackId,
+                    callbacks = externalImportCallbacks,
+                )
             }
         }
     }

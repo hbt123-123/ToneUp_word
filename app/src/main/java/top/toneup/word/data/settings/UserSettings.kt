@@ -87,6 +87,12 @@ data class UserSettings(
     val syncOnlyUnmetered: Boolean = false,
     /** 「剪贴板识别」— consumed by M5; the key lands in M4 so both lanes agree on its name. */
     val clipboardDetectEnabled: Boolean = true,
+    /**
+     * SHA-256 hex of the last clipboard text the M5 detector showed (plan §8.1); `""` until
+     * the first detection. Stores the **hash only** — the clipboard text itself is never
+     * persisted, and a matching hash means "already seen, do not pop the sheet again".
+     */
+    val lastClipboardHash: String = "",
 ) {
     companion object {
         const val DEFAULT_NEW_WORDS = 20

@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import top.toneup.word.AppContainer
+import top.toneup.word.core.result.Outcome
 import top.toneup.word.domain.mistake.MistakeCategory
 import top.toneup.word.domain.mistake.MistakeItem
 import top.toneup.word.domain.mistake.MistakeSort
@@ -453,14 +454,22 @@ fun WordDetailScreen(
     var detail by remember { mutableStateOf<top.toneup.word.domain.model.WordWithProgress?>(null) }
     var pendingDelete by remember { mutableStateOf(false) }
     var rateMode by remember { mutableStateOf(SpeechRateMode.SYSTEM) }
+    // Gateway re-lookup (M4): the domain model carries no `lookup_state`, so the button is
+    // always offered and the write-back guards (meaning_source=manual etc.) decide the effect.
+    var relookupRunning by remember { mutableStateOf(false) }
+    var relookupMessage by remember { mutableStateOf<String?>(null) }
     val speech = top.toneup.word.ui.speech.rememberSpeechActions(container.speechService) { rateMode }
     val speechState by speech.state.collectAsStateWithLifecycle()
     // The screen owns its own coroutine scope: no GlobalScope, and every write is cancelled
     // automatically when the user leaves the screen.
     val scope = rememberCoroutineScope()
 
-    LaunchedEffect(wordId) {
+    suspend fun reloadDetail() {
         detail = container.mistakeRepository.detail(wordId)
+    }
+
+    LaunchedEffect(wordId) {
+        reloadDetail()
         rateMode = container.settingsRepository.current().speechRateMode
     }
 
@@ -548,6 +557,45 @@ fun WordDetailScreen(
                 onClick = { onPractice(wordId) },
                 modifier = Modifier.fillMaxWidth(),
             )
+            SecondaryButton(
+                text = if (relookupRunning) "正在查询…" else "重新查询释义",
+                onClick = {
+                    if (!relookupRunning) {
+                        relookupRunning = true
+                        relookupMessage = null
+                        scope.launch {
+                            when (val result = container.meaningSync.lookupWordNow(wordId)) {
+                                is Outcome.Failure -> {
+                                    relookupRunning = false
+                                    relookupMessage = result.error.message ?: "查询失败，请稍后重试。"
+                                }
+
+                                is Outcome.Success -> {
+                                    reloadDetail()
+                                    relookupRunning = false
+                                    relookupMessage = "释义已更新。"
+                                }
+                            }
+                        }
+                    }
+                },
+                enabled = !relookupRunning,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("word_detail_relookup"),
+            )
+            relookupMessage?.let { message ->
+                Text(
+                    text = message,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (message == "释义已更新。") {
+                        AppTheme.colors.mutedText
+                    } else {
+                        MaterialTheme.colorScheme.error
+                    },
+                    modifier = Modifier.testTag("word_detail_relookup_message"),
+                )
+            }
             SecondaryButton(
                 text = "删除这条错题记录",
                 onClick = { pendingDelete = true },
