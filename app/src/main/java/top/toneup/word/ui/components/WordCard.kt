@@ -24,6 +24,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.Star
@@ -96,6 +97,11 @@ fun WordCard(
     onRetrySpeech: () -> Unit = {},
     onOpenSpeechSettings: () -> Unit = {},
     onInstallVoiceData: () -> Unit = {},
+    /**
+     * Opens the note/meaning editor for this word (plan §9). Null hides the edit icon — the
+     * exam never passes it, because a closed-book paper must not offer edits mid-answer.
+     */
+    onEdit: (() -> Unit)? = null,
 ) {
     // Resolved once: the motion token decides every animation on this card, including whether
     // the reveal animates at all (the user's "动画效果" switch and the system reduce-motion flag).
@@ -199,7 +205,7 @@ fun WordCard(
                 label = "word-reveal",
             ) { isRevealed ->
                 if (isRevealed) {
-                    WordMeaningBlock(word = word)
+                    WordMeaningBlock(word = word, onEdit = onEdit)
                 } else if (word.exampleSentence.isNotBlank()) {
                     // Context before the answer: an English sentence that uses the word, with **no**
                     // Chinese translation and no meaning — the learner has to infer the sense from
@@ -263,17 +269,48 @@ private const val REVEAL_MILLIS = 240
 
 /** Meanings, example sentence, translation and collocations. */
 @Composable
-private fun WordMeaningBlock(word: Word) {
+private fun WordMeaningBlock(word: Word, onEdit: (() -> Unit)? = null) {
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-        if (word.partOfSpeech.isNotBlank()) {
-            ReviewBadge(
-                text = word.partOfSpeech,
-                container = MaterialTheme.colorScheme.surfaceContainerHigh,
-                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+        // Header row: the part-of-speech badge on the left, the edit entry top-right. Rendered
+        // only when there is something to put in it, so a word with neither keeps its layout.
+        if (word.partOfSpeech.isNotBlank() || onEdit != null) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (word.partOfSpeech.isNotBlank()) {
+                    ReviewBadge(
+                        text = word.partOfSpeech,
+                        container = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                if (onEdit != null) {
+                    IconButton(
+                        onClick = onEdit,
+                        modifier = Modifier
+                            .size(40.dp)
+                            .testTag("word_card_edit")
+                            .semantics { contentDescription = "编辑笔记与释义" },
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Edit,
+                            contentDescription = null,
+                            tint = AppTheme.colors.mutedText,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                }
+            }
         }
         word.meanings.forEach { meaning ->
             Text(text = meaning, style = MaterialTheme.typography.titleSmall)
+        }
+        // Plan §9: the FreeDictionary English definition and the learner's own note travel
+        // directly under the standard meanings; both hide themselves when empty.
+        if (word.enDefinition.isNotBlank() || word.userNote.isNotBlank()) {
+            WordExtraInfo(word = word)
         }
         if (word.exampleSentence.isNotBlank()) {
             Column {
@@ -301,6 +338,51 @@ private fun WordMeaningBlock(word: Word) {
                 Text(
                     text = word.collocations.joinToString(" · "),
                     style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * The two blocks a hand edit can produce (plan §9): the FreeDictionary English definition in
+ * small grey type, and the learner's own note behind a divider.
+ *
+ * Exported as one component so the study card, the review card and the word-detail screen all
+ * render exactly the same layout — an edit made on one screen looks identical on the next.
+ * Both blocks are self-hiding: nothing is rendered for empty content.
+ */
+@Composable
+fun WordExtraInfo(word: Word, modifier: Modifier = Modifier) {
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+        if (word.enDefinition.isNotBlank()) {
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                Text(
+                    text = "英文释义",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = AppTheme.colors.mutedText,
+                )
+                Text(
+                    text = word.enDefinition,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = AppTheme.colors.mutedText,
+                    modifier = Modifier.testTag("word_en_definition"),
+                )
+            }
+        }
+        if (word.userNote.isNotBlank()) {
+            HorizontalDivider(color = AppTheme.colors.hairline)
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                Text(
+                    text = "笔记",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = AppTheme.colors.mutedText,
+                )
+                Text(
+                    text = word.userNote,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.testTag("word_user_note"),
                 )
             }
         }

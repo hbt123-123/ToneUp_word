@@ -4,10 +4,12 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -30,6 +32,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -46,6 +50,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -101,6 +106,8 @@ fun HomeScreen(
     onOpenInsightAction: (top.toneup.word.domain.insight.Insight) -> Unit = {},
     /** Opens the vocabulary search; the entry lives in the app bar so the dashboard stays as it is. */
     onOpenWordBrowser: () -> Unit = {},
+    /** Opens 词库管理 from the app-bar pack chip (M2 acceptance entry). */
+    onOpenPacks: () -> Unit = {},
 ) {
     val viewModel: HomeViewModel = viewModel(factory = ViewModelFactories.home(container))
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -116,11 +123,58 @@ fun HomeScreen(
                 title = {
                     Column {
                         Text(state.greeting, style = MaterialTheme.typography.titleLarge)
-                        Text(
-                            text = state.dateLabel,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = AppTheme.colors.mutedText,
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+                        ) {
+                            Text(
+                                text = state.dateLabel,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = AppTheme.colors.mutedText,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            // Current-pack chip (M2 acceptance): the pack id ("builtin-cet4") is
+                            // resolved to its display name by the ViewModel, and one tap opens
+                            // 词库管理. It hides itself while the name is unknown, so the app bar
+                            // never shows a raw id or a broken label.
+                            state.activePackName?.let { packName ->
+                                Surface(
+                                    onClick = onOpenPacks,
+                                    shape = RoundedCornerShape(percent = 50),
+                                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                    modifier = Modifier
+                                        .testTag("home_pack_chip")
+                                        .semantics {
+                                            contentDescription = "当前词库：$packName，点击管理词库"
+                                        },
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(
+                                            horizontal = Spacing.sm,
+                                            vertical = 2.dp,
+                                        ),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(2.dp),
+                                    ) {
+                                        Text(
+                                            text = packName,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.widthIn(max = PACK_CHIP_MAX_WIDTH),
+                                        )
+                                        Icon(
+                                            imageVector = Icons.Filled.KeyboardArrowDown,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(14.dp),
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -163,7 +217,7 @@ fun HomeScreen(
             plan.newAvailableCount == 0 && plan.dueCount == 0 && plan.fragileCount == 0 &&
                 plan.activeMistakeCount == 0 && plan.answeredToday == 0 -> EmptyState(
                 title = "还没有可学习的单词",
-                description = "当前词库为空。可以到「我的 - 词库导入」导入你自己的 JSON / CSV 词库，或切换词库级别。",
+                description = "当前词库为空。可以到「我的 - 词库管理」新建词库并粘贴导入单词。",
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(padding),
@@ -309,6 +363,12 @@ fun HomeScreen(
         }
     }
 }
+
+/**
+ * Cap for the app-bar pack chip: a learner may name a pack up to 40 characters, which must not
+ * push the date label off the screen. Longer names ellipsize inside the chip.
+ */
+private val PACK_CHIP_MAX_WIDTH = 140.dp
 
 /**
  * Weekday label shared by every bar in the trend chart.

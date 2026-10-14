@@ -21,6 +21,19 @@ data class Word(
     val license: String = "",
     val audioUri: String? = null,
     val packId: String? = null,
+    // --- plan §9 (schema v3): learner edits + gateway state -------------------------------
+    /** The learner's own note on this word; empty until they write one. */
+    val userNote: String = "",
+    /** FreeDictionary English definition — auxiliary reading shown in small type under the
+     *  standard meanings (Q2: it never replaces the Chinese meanings). */
+    val enDefinition: String = "",
+    /** FreeDictionary pronunciation URL; empty means "read with system TTS" (M6b). */
+    val audioUrl: String = "",
+    /** NONE / OK / PENDING / FAILED — the meaning-completion state machine (D4). */
+    val lookupState: String = "OK",
+    /** ecdict / freecdict / mt / manual / file — `manual` is a terminal state that automation
+     *  never overwrites (D4), which is what makes hand-edited meanings safe to trust. */
+    val meaningSource: String = "",
 ) {
     val primaryMeaning: String get() = meanings.firstOrNull().orEmpty()
 

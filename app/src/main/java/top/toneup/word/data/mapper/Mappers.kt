@@ -63,6 +63,11 @@ fun WordEntity.toDomain(): Word = Word(
     license = license,
     audioUri = audioUri,
     packId = packId,
+    userNote = userNote,
+    enDefinition = enDefinition,
+    audioUrl = audioUrl,
+    lookupState = lookupState,
+    meaningSource = meaningSource,
 )
 
 fun WordWithProgressView.toWord(): Word = Word(
@@ -79,6 +84,11 @@ fun WordWithProgressView.toWord(): Word = Word(
     license = license,
     audioUri = audioUri,
     packId = packId,
+    userNote = userNote,
+    enDefinition = enDefinition,
+    audioUrl = audioUrl,
+    lookupState = lookupState,
+    meaningSource = meaningSource,
 )
 
 fun WordWithProgressView.toProgress(): WordProgress = WordProgress(

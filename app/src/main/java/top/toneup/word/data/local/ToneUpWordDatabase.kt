@@ -52,7 +52,7 @@ import top.toneup.word.data.local.entity.WrongAnswerEntity
     views = [WordWithProgressView::class],
     // Kept as a literal: the annotation processor requires a compile-time constant, while
     // `Migrations.CURRENT_VERSION` mirrors it and a test asserts the two stay equal.
-    version = 2,
+    version = 3,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)

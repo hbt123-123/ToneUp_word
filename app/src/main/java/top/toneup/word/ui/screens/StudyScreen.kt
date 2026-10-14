@@ -24,6 +24,9 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
@@ -51,6 +54,7 @@ import top.toneup.word.ui.components.SectionHeader
 import top.toneup.word.ui.components.StatCard
 import top.toneup.word.ui.components.StudyProgressIndicator
 import top.toneup.word.ui.components.WordCard
+import top.toneup.word.ui.components.WordEditDialog
 import top.toneup.word.ui.speech.rememberSpeechActions
 import top.toneup.word.ui.theme.AppTheme
 import top.toneup.word.ui.theme.ToneUpWordTheme
@@ -78,6 +82,9 @@ fun StudyScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val speech = rememberSpeechActions(container.speechService) { state.speechRateMode }
     val speechState by speech.state.collectAsStateWithLifecycle()
+    // Note/meaning editor (plan §9): the dialog writes through the repository, and the card is
+    // re-read from the database when it closes so the reveal shows the text just saved.
+    var showEdit by remember { mutableStateOf(false) }
 
     LaunchedEffect(drillIds) { viewModel.start(drillIds) }
 
@@ -187,6 +194,7 @@ fun StudyScreen(
                     onRetrySpeech = speech::retry,
                     onOpenSpeechSettings = speech::openSystemSpeechSettings,
                     onInstallVoiceData = speech::installVoiceData,
+                    onEdit = { showEdit = true },
                     modifier = Modifier.testTag("study_word_card"),
                 )
 
@@ -225,6 +233,25 @@ fun StudyScreen(
                 Spacer(Modifier.height(Spacing.lg))
             }
         }
+    }
+
+    val editingCard = state.card
+    if (showEdit && editingCard != null) {
+        WordEditDialog(
+            word = editingCard.word,
+            onSaveNote = { note ->
+                container.wordRepository.saveUserNote(editingCard.word.id, note)
+            },
+            onSaveMeaning = { meanings ->
+                container.wordRepository.saveManualMeaning(editingCard.word.id, meanings)
+            },
+            onDismiss = {
+                showEdit = false
+                // The queue is a snapshot: only the card on screen is re-read, so an edit can
+                // never reshuffle the session the learner is in the middle of.
+                viewModel.refreshCard()
+            },
+        )
     }
 }
 

@@ -136,6 +136,7 @@ fun ToneUpWordNavHost(
                     onOpenReviewCenter = { navController.navigate(Routes.REVIEW) },
                     onOpenStats = { navController.navigate(Routes.STATS) },
                     onOpenWordBrowser = { navController.navigate(Routes.WORD_BROWSER) },
+                    onOpenPacks = { navController.navigate(Routes.PACKS) },
                 )
             }
 

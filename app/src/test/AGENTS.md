@@ -1,7 +1,7 @@
 # app/src/test/ — JVM 单元测试（唯一测试层）
 
 ## OVERVIEW
-26 类 / 404 用例；镜像 main 包结构；无 androidTest——Compose/Room 测试全在 JVM（Robolectric）跑。
+34 类 / 529 用例；镜像 main 包结构；无 androidTest——Compose/Room 测试全在 JVM（Robolectric）跑。
 
 ## STRUCTURE
 ```

@@ -28,6 +28,11 @@ import androidx.room.DatabaseView
             w.license           AS license,
             w.audio_uri         AS audio_uri,
             w.pack_id           AS pack_id,
+            w.user_note         AS user_note,
+            w.en_definition     AS en_definition,
+            w.lookup_state      AS lookup_state,
+            w.meaning_source    AS meaning_source,
+            w.audio_url         AS audio_url,
             p.status            AS status,
             p.mastery_level     AS mastery_level,
             p.repetitions       AS repetitions,
@@ -60,6 +65,17 @@ data class WordWithProgressView(
     @ColumnInfo(name = "license") val license: String,
     @ColumnInfo(name = "audio_uri") val audioUri: String?,
     @ColumnInfo(name = "pack_id") val packId: String?,
+    // --- schema v3: learner edits + gateway state (plan §9) ------------------------------
+    /** The learner's own note; empty when they never wrote one. */
+    @ColumnInfo(name = "user_note") val userNote: String,
+    /** FreeDictionary English definition; auxiliary to the standard (Chinese) meanings. */
+    @ColumnInfo(name = "en_definition") val enDefinition: String,
+    /** NONE / OK / PENDING / FAILED (D4). */
+    @ColumnInfo(name = "lookup_state") val lookupState: String,
+    /** ecdict / freecdict / mt / manual / file — `manual` is never overwritten (D4). */
+    @ColumnInfo(name = "meaning_source") val meaningSource: String,
+    /** FreeDictionary pronunciation URL; empty means "read with TTS" (M6b). */
+    @ColumnInfo(name = "audio_url") val audioUrl: String,
     @ColumnInfo(name = "status") val status: String?,
     @ColumnInfo(name = "mastery_level") val masteryLevel: Int?,
     @ColumnInfo(name = "repetitions") val repetitions: Int?,

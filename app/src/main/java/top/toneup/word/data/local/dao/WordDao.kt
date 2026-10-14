@@ -220,4 +220,27 @@ interface WordDao {
     /** Removes a pack row. Callers must have deleted the pack's words already. */
     @Query("DELETE FROM word_pack WHERE id = :packId")
     suspend fun deletePackRow(packId: String)
+
+    // === M6a card editing append (notes / hand-edited meanings, plan §9) ====================
+    // Appended at the tail like the blocks above. Partial column updates only: an editor must
+    // never rewrite the whole row, because a concurrent gateway write-back or a seeding pass
+    // may own the other columns. Never `Insert(REPLACE)` on `word`.
+
+    /** Writes the learner's note; touches `user_note` and `updated_at` only. */
+    @Query("UPDATE word SET user_note = :note, updated_at = :now WHERE id = :id")
+    suspend fun updateUserNote(id: Long, note: String, now: Long)
+
+    /**
+     * Stores a hand-edited meaning set as the terminal state (D4): `meaning_source='manual'`
+     * makes every automated write-back skip this row from now on (see [idsNeedingLookup],
+     * [recordLookupFailure] and `MeaningSyncRepository.applyLookupToWord`), and
+     * `lookup_state='OK'` marks the row complete so no worker picks it up either.
+     */
+    @Query(
+        """
+        UPDATE word SET meanings = :meanings, meaning_source = 'manual', lookup_state = 'OK', updated_at = :now
+        WHERE id = :id
+        """,
+    )
+    suspend fun updateManualMeaning(id: Long, meanings: String, now: Long)
 }

@@ -7,11 +7,15 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import top.toneup.word.data.speech.AudioPlayback
+import top.toneup.word.data.speech.AudioUrlPlayer
 import top.toneup.word.data.speech.SpeechContent
 import top.toneup.word.data.speech.SpeechRecovery
 import top.toneup.word.data.speech.SpeechRequest
 import top.toneup.word.data.speech.SpeechService
 import top.toneup.word.data.speech.SpeechStatus
+import top.toneup.word.data.speech.isStreamableAudioUrl
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -50,12 +54,17 @@ data class SpeechUiState(
  *    produces FAILED with a readable reason plus a recovery action;
  *  * **a stuck engine cannot spin forever** — readiness is awaited with a timeout
  *    ([timeoutMillis]), after which the learner is told to check the system settings;
- *  * **double taps cannot overlap** — a new request cancels the previous one and stops playback.
+ *  * **double taps cannot overlap** — a new request cancels the previous one and stops playback;
+ *  * **a word's own recording is preferred but never required** — when `audio_url` names an
+ *    http(s) stream it is played first (plan §9 / M6b); *any* streaming failure falls through to
+ *    system TTS without ever showing FAILED, so a dead URL is inaudible: the learner just hears
+ *    the engine instead. FAILED stays reserved for "TTS itself did not work".
  */
 class SpeechController(
     private val service: SpeechService,
     private val scope: CoroutineScope,
     private val timeoutMillis: Long = INIT_TIMEOUT_MILLIS,
+    private val audio: AudioPlayback = AudioUrlPlayer(),
 ) {
 
     private val _state = MutableStateFlow(SpeechUiState())
@@ -68,10 +77,18 @@ class SpeechController(
         if (request.text.isBlank()) return
         job?.cancel()
         service.stop()
+        audio.stop() // streaming audio and TTS are mutually exclusive, at every entry point
         lastRequest = request
         _state.value = SpeechUiState(phase = SpeechPhase.LOADING, content = request.content)
 
         job = scope.launch {
+            if (playOwnRecording(request)) {
+                _state.value = SpeechUiState(phase = SpeechPhase.IDLE, content = request.content)
+                return@launch
+            }
+            // Nothing playable (or the stream failed): silently carry on with system TTS. The
+            // LOADING refresh also covers "the recording started, then died mid-stream".
+            _state.value = SpeechUiState(phase = SpeechPhase.LOADING, content = request.content)
             when (val status = awaitUsable()) {
                 null -> fail(MESSAGE_TIMEOUT, SpeechRecovery.OPEN_SYSTEM_SETTINGS)
                 is SpeechStatus.Ready -> {
@@ -92,6 +109,26 @@ class SpeechController(
         }
     }
 
+    /**
+     * Plays [request]'s own recording when there is one; `false` means "no usable recording, use
+     * TTS" — for an empty/non-http URL, a stream error, the prepare timeout, or a thrown error.
+     *
+     * A cancelled request rethrows instead of falling back: cancellation means the learner already
+     * moved on (stop / another word), and speaking the old request now would play over them.
+     */
+    private suspend fun playOwnRecording(request: SpeechRequest): Boolean {
+        if (!isStreamableAudioUrl(request.audioUrl)) return false
+        return try {
+            audio.play(request.audioUrl) {
+                _state.value = SpeechUiState(phase = SpeechPhase.PLAYING, content = request.content)
+            }
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (failure: Exception) {
+            false // defensive: AudioPlayback promises not to throw, but a fallback is always safe
+        }
+    }
+
     /** Re-runs the last request; used by the "重试" action in the failed state. */
     fun retry() {
         lastRequest?.let { request ->
@@ -104,6 +141,7 @@ class SpeechController(
     fun stop() {
         job?.cancel()
         service.stop()
+        audio.stop()
         _state.value = SpeechUiState(phase = SpeechPhase.IDLE, content = _state.value.content)
     }
 

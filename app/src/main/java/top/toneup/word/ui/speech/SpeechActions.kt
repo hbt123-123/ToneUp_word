@@ -22,13 +22,14 @@ const val SPEECH_LOCALE_ENGLISH = "en"
 /** Chinese for the meaning read-aloud; the engine picks the voice. */
 const val SPEECH_LOCALE_CHINESE = "zh-CN"
 
-/** Reading request for the headword. */
+/** Reading request for the headword; carries the word's own recording when it has one. */
 fun Word.asSpeechRequest(rateMode: SpeechRateMode): SpeechRequest = SpeechRequest(
     text = word,
     localeTag = SPEECH_LOCALE_ENGLISH,
     content = SpeechContent.WORD,
     rateMode = rateMode,
     utteranceId = "word-$id",
+    audioUrl = audioUrl,
 )
 
 /** Reading request for the example sentence; only meaningful when one exists. */

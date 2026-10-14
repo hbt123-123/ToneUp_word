@@ -86,7 +86,7 @@ ToneUp_word/
 ```bash
 .\gradlew.bat :app:assembleDebug          # 调试 APK → app\build\outputs\apk\debug\
 .\gradlew.bat :app:installDebug           # 安装到设备/模拟器
-.\gradlew.bat :app:testDebugUnitTest      # 全部单测（404 用例 / 26 类）
+.\gradlew.bat :app:testDebugUnitTest      # 全部单测（529 用例 / 34 类）
 .\gradlew.bat :app:testDebugUnitTest --tests "*.SpacedRepetitionTest*"   # 单类
 .\gradlew.bat :app:assembleRelease -x lintVitalRelease   # R8 发布包（本机约定跳过 lint）
 .\gradlew.bat :app:lintVitalRelease       # Android Lint（唯一静态检查；低内存机会 OOM）

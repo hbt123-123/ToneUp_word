@@ -39,6 +39,14 @@ data class SpeechRequest(
     val content: SpeechContent,
     val rateMode: SpeechRateMode = SpeechRateMode.SYSTEM,
     val utteranceId: String = "toneup-${content.name.lowercase()}-${text.hashCode()}",
+    /**
+     * The word's own pronunciation recording (`word.audio_url`), empty when there is none.
+     *
+     * Only meaningful for [SpeechContent.WORD]: when it names an http(s) stream the controller
+     * plays it first and silently falls back to system TTS if that fails (plan §9 / M6b). Example
+     * sentences and meanings never carry one — they are always read by the engine.
+     */
+    val audioUrl: String = "",
 )
 
 /**

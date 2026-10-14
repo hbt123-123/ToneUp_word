@@ -350,6 +350,11 @@ data class HomeUiState(
     val errorMessage: String? = null,
     val greeting: String = "",
     val dateLabel: String = "",
+    /**
+     * Display name of the pack the learner is studying (`word_pack.name`), or null while the
+     * pack row is not readable yet. Drives the app-bar chip that opens 词库管理 (M2 acceptance).
+     */
+    val activePackName: String? = null,
     /** The concrete next action; null only while the first emission is still loading. */
     val nextStep: NextStep? = null,
     /** At most [InsightEngine.MAX_HOME_INSIGHTS] suggestions, most severe first. */
@@ -437,6 +442,12 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
         }.getOrNull()
         val insights = signals?.let { InsightEngine.analyze(it) }.orEmpty()
 
+        // The app-bar pack chip reads the pack's display name (not the raw id like
+        // "builtin-cet4"); a missing row hides the chip instead of showing a broken label.
+        val activePackName = runCatching {
+            container.wordRepository.packById(settings.effectivePackId)?.name
+        }.getOrNull()
+
         return HomeUiState(
             loading = false,
             settings = settings,
@@ -448,6 +459,7 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
             errorMessage = null,
             greeting = greetingFor(Instant.ofEpochMilli(now).atZone(zone).hour),
             dateLabel = HomeDateFormatter.format(now, zone),
+            activePackName = activePackName,
             nextStep = NextStepPlanner.plan(snapshot.plan),
             insights = InsightEngine.forHome(insights),
             motivation = motivationFor(settings, snapshot.plan, stats, signals, now, zone),
@@ -697,6 +709,21 @@ class StudyViewModel(private val container: AppContainer) : ViewModel() {
     fun reveal() {
         if (_state.value.saving) return
         _state.update { it.copy(revealed = true) }
+    }
+
+    /**
+     * Re-reads the card currently on screen (M6a: after a note/meaning edit).
+     *
+     * Only the visible card is reloaded — the queue and the session cursor are untouched, so an
+     * edit can never reshuffle or restart a session in progress. The reveal state is kept: the
+     * learner just saved from the back of the card and must keep seeing it.
+     */
+    fun refreshCard() {
+        val session = _state.value.session ?: return
+        viewModelScope.launch {
+            runCatching { loadCard(session) }
+                .onSuccess { card -> if (card != null) _state.update { it.copy(card = card) } }
+        }
     }
 
     /**

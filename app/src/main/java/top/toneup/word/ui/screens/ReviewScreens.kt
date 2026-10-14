@@ -65,6 +65,7 @@ import top.toneup.word.ui.components.PrimaryButton
 import top.toneup.word.ui.components.ReviewBadge
 import top.toneup.word.ui.components.SecondaryButton
 import top.toneup.word.ui.components.StatCard
+import top.toneup.word.ui.components.WordEditDialog
 import top.toneup.word.ui.components.WordSearchBar
 import top.toneup.word.ui.theme.AppTheme
 import top.toneup.word.ui.theme.ToneUpWordTheme
@@ -454,10 +455,13 @@ fun WordDetailScreen(
     var detail by remember { mutableStateOf<top.toneup.word.domain.model.WordWithProgress?>(null) }
     var pendingDelete by remember { mutableStateOf(false) }
     var rateMode by remember { mutableStateOf(SpeechRateMode.SYSTEM) }
-    // Gateway re-lookup (M4): the domain model carries no `lookup_state`, so the button is
-    // always offered and the write-back guards (meaning_source=manual etc.) decide the effect.
+    // Gateway re-lookup (M4): the button is always offered — the row's `meaning_source` guards
+    // (manual is never overwritten) decide the effect, so a re-lookup on an edited word is a
+    // safe no-op rather than something the UI has to predict.
     var relookupRunning by remember { mutableStateOf(false) }
     var relookupMessage by remember { mutableStateOf<String?>(null) }
+    // Note/meaning editor (M6a, plan §9): same dialog as the study card, same repository writes.
+    var showEdit by remember { mutableStateOf(false) }
     val speech = top.toneup.word.ui.speech.rememberSpeechActions(container.speechService) { rateMode }
     val speechState by speech.state.collectAsStateWithLifecycle()
     // The screen owns its own coroutine scope: no GlobalScope, and every write is cancelled
@@ -523,6 +527,7 @@ fun WordDetailScreen(
                 onRetrySpeech = speech::retry,
                 onOpenSpeechSettings = speech::openSystemSpeechSettings,
                 onInstallVoiceData = speech::installVoiceData,
+                onEdit = { showEdit = true },
                 modifier = Modifier.testTag("word_detail_card"),
             )
 
@@ -557,33 +562,44 @@ fun WordDetailScreen(
                 onClick = { onPractice(wordId) },
                 modifier = Modifier.fillMaxWidth(),
             )
-            SecondaryButton(
-                text = if (relookupRunning) "正在查询…" else "重新查询释义",
-                onClick = {
-                    if (!relookupRunning) {
-                        relookupRunning = true
-                        relookupMessage = null
-                        scope.launch {
-                            when (val result = container.meaningSync.lookupWordNow(wordId)) {
-                                is Outcome.Failure -> {
-                                    relookupRunning = false
-                                    relookupMessage = result.error.message ?: "查询失败，请稍后重试。"
-                                }
+            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                // Same editor as the study card (plan §9): edit the note, or freeze a hand
+                // written meaning as `meaning_source='manual'` so no gateway run overwrites it.
+                SecondaryButton(
+                    text = "编辑",
+                    onClick = { showEdit = true },
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("word_detail_edit"),
+                )
+                SecondaryButton(
+                    text = if (relookupRunning) "正在查询…" else "重新查询释义",
+                    onClick = {
+                        if (!relookupRunning) {
+                            relookupRunning = true
+                            relookupMessage = null
+                            scope.launch {
+                                when (val result = container.meaningSync.lookupWordNow(wordId)) {
+                                    is Outcome.Failure -> {
+                                        relookupRunning = false
+                                        relookupMessage = result.error.message ?: "查询失败，请稍后重试。"
+                                    }
 
-                                is Outcome.Success -> {
-                                    reloadDetail()
-                                    relookupRunning = false
-                                    relookupMessage = "释义已更新。"
+                                    is Outcome.Success -> {
+                                        reloadDetail()
+                                        relookupRunning = false
+                                        relookupMessage = "释义已更新。"
+                                    }
                                 }
                             }
                         }
-                    }
-                },
-                enabled = !relookupRunning,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("word_detail_relookup"),
-            )
+                    },
+                    enabled = !relookupRunning,
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("word_detail_relookup"),
+                )
+            }
             relookupMessage?.let { message ->
                 Text(
                     text = message,
@@ -603,6 +619,21 @@ fun WordDetailScreen(
             )
             Spacer(Modifier.height(Spacing.lg))
         }
+    }
+
+    val editing = detail
+    if (showEdit && editing != null) {
+        WordEditDialog(
+            word = editing.word,
+            onSaveNote = { note -> container.wordRepository.saveUserNote(wordId, note) },
+            onSaveMeaning = { meanings -> container.wordRepository.saveManualMeaning(wordId, meanings) },
+            onDismiss = {
+                showEdit = false
+                // Re-read the detail so the card, the meanings and the manual marker all show
+                // the just-saved state (the card's reveal block renders note + en definition).
+                scope.launch { reloadDetail() }
+            },
+        )
     }
 
     if (pendingDelete) {

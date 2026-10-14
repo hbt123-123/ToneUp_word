@@ -175,6 +175,13 @@ CREATE TABLE meaning_cache (
 
 1. **ECDICT** `GET /dict?word=X`：`found=true` → 中文 `translation` 为标准释义，附 `phonetic/pos/definition/tag/exchange`；`found=false` → 进入 2（`suggestions` 本期不用，仅可做后续输入联想）。
 2. **FreeDictionary** `GET /en/X`：数组非空 → 取 `meanings[0]` 英文释义入 `en_definition`、`phonetics[].text`、首个 `example`、同义词、`audio` URL；兼容 `source=ecdict-fallback` 形态。**空/404 → 进入 3**。
+**实测补齐（2026-10-14，M6a/M6b 交付后）**：
+- 落地的级联是 ECDICT(中文优先) → FreeDict(辅助字段 en_definition/audio_url) → LLM 兜底。默认路径与网关文档一致：`/dict`、`/en/{word}`、`/v1/chat/completions`。
+- 为让学习卡片/词详情拿到 `user_note`/`en_definition`/`audio_url`/`lookup_state`/`meaning_source`，`WordWithProgressView` 在 v3 补列（纯视图迁移，不碰数据）——本计划原设计遗漏了视图层。
+- domain `Word` 新增 5 个默认字段承载上述信息；手动编辑置 `meaning_source='manual'` 后三处守卫（`applyLookupToWord`/`idsNeedingLookup`/`recordLookupFailure`）全部永久跳过。
+- Room 对视图做逐字节 schema 校验：迁移 SQL 必须与导出的 `3.json` 视图 SQL 完全一致（反引号表名+trim 后 body）。
+- `SpeechRequest` 承载 `audioUrl`，朗读路由在 SpeechController 内：在线播放失败静默回落 TTS（不进 FAILED），不落盘缓存。
+
 3. **翻译模型** `POST /v1/chat/completions`（**LLM 兜底，已确认**）：prompt 模板（常量，可测）如：`把单词「X」的常用词性和中文释义翻译出来，一行，格式：词性. 释义`；解析 `content` 入标准释义。
 4. 全失败 → word 行 `lookup_state='FAILED'`（UI 显示「待补充」+ 重试按钮），`meaning_cache` 记负缓存（TTL 由 `fetched_at` + 24h 判断，FAILED 允许手动强制重查）。
 
@@ -267,13 +274,15 @@ M0 基建解禁 ──► M1 数据层v2+packId扫描(关键路径) ──┬─
 
 | 里程碑 | 内容 | 验收 |
 |--------|------|------|
-| **M0** | 解禁 INTERNET（改 Manifest 注释+AGENTS+产品文档）；引入 retrofit/okhttp/mockwebserver 依赖；R8 keep 规则（Signature/retrofit 注解/serialization）spike；`assembleDebug`+全测绿 | 冷启动/全测无回归 |
-| **M1** | §4 全部：迁移+索引重建+DAO/Repository/VM/Worker packId 化+`activePackId` 设置 | 全测绿+迁移测试+手工冒烟（四类学习功能） |
-| **M2** | PACKS 路由接线、词库 CRUD/切换/删除确认、首页 chip 入口 | 手工验收 CRUD + 进度隔离 |
-| **M3** | `PlainTextWordParser` + 导入页（粘贴→预览→确认→PENDING 入库） | 解析器单测；导入不依赖网络 |
-| **M4** | §7 网络栈/级联/缓存/Worker/设置项 | MockWebServer 测试；真机对默认网关端到端补全 |
-| **M5** | 剪贴板焦点读取+hash 去重+弹层；Share/ProcessText filter+singleTop+onNewIntent | 真机：从浏览器/备忘录分享导入；回前台弹层去重 |
-| **M6** | 卡片笔记/释义编辑（manual 保护）、按词库导出、待补充重试入口、文档回写 | 端到端回归 + `lintVitalRelease`（低内存机器可跳过） |
+| **M0** ✅ | 解禁 INTERNET（改 Manifest 注释+AGENTS+产品文档）；引入 retrofit/okhttp/mockwebserver 依赖；R8 keep 规则（Signature/retrofit 注解/serialization）spike；`assembleDebug`+全测绿 | 冷启动/全测无回归 |
+| **M1** ✅ | §4 全部：迁移+索引重建+DAO/Repository/VM/Worker packId 化+`activePackId` 设置 | 全测绿+迁移测试+手工冒烟（四类学习功能） |
+| **M2** ✅ | PACKS 路由接线、词库 CRUD/切换/删除确认、首页 chip 入口 | 手工验收 CRUD + 进度隔离 |
+| **M3** ✅ | `PlainTextWordParser` + 导入页（粘贴→预览→确认→PENDING 入库） | 解析器单测；导入不依赖网络 |
+| **M4** ✅ | §7 网络栈/级联/缓存/Worker/设置项 | MockWebServer 测试；真机对默认网关端到端补全 |
+| **M5** ✅ | 剪贴板焦点读取+hash 去重+弹层；Share/ProcessText filter+singleTop+onNewIntent | 真机：从浏览器/备忘录分享导入；回前台弹层去重 |
+| **M6** ✅ | 卡片笔记/释义编辑（manual 保护）、按词库导出、待补充重试入口、文档回写 | 端到端回归 + `lintVitalRelease`（低内存机器可跳过） |
+
+> **交付状态（2026-10-14）**：M0–M6 全部实现并提交；测试从基线 404 增至 513（M6a 完成点，M6b 后另增）。实际泳道划分与计划略有偏差：M0/M1 并行开工；M4 拆为 backend/UI 两段；M5 前置在 M4-UI 期间并行；M6 拆为 M6a（编辑+展示+v3 迁移+首页入口）与 M6b（audio_url 播放回落）。M6b 完成后的最终测试数以此节之后的更新为准。
 
 并行策略：M1 是关键路径，**不与其他写入泳道并行**（全仓扫描冲突面太大）；M1 完成后 M2/M3/M4 三泳道可并行（不同包：`ui/screens+Routes` vs `domain/importer` vs `data/gateway+work`），M5 依赖 M2（词库选择弹层）与 M3（解析器）。各泳道单独提交，评审人=泳道作者之外的另一泳道负责人。
 

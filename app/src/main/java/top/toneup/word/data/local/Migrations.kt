@@ -13,7 +13,9 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  *    database file.
  *  * Version 1 is the first shipped schema. Version 2 (custom packs gateway, plan §4) adds
  *    the meaning-completion columns on `word`, the `meaning_cache` table and the `pack_id`
- *    dimension on every user-data table.
+ *    dimension on every user-data table. Version 3 (plan §9) exposes the learner-edit columns
+ *    (`user_note`, `en_definition`, `lookup_state`, `meaning_source`, `audio_url`) through the
+ *    `word_with_progress` view so cards and the word-detail screen can read them.
  *
  * All SQL here must stay within SQLite 3.18 (Android 8.0): no UPSERT clause, no window
  * functions, no RETURNING, no `UPDATE ... FROM`.
@@ -21,7 +23,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 object Migrations {
 
     /** Current schema version, kept in sync with the `@Database(version = ...)` value. */
-    const val CURRENT_VERSION: Int = 2
+    const val CURRENT_VERSION: Int = 3
 
     /** level → reserved pack id, shared by session and summary backfills (D9/Q1). */
     private const val LEVEL_TO_PACK =
@@ -155,10 +157,73 @@ object Migrations {
     }
 
     /**
+     * v2 → v3: expose the learner-edit columns through `word_with_progress` (plan §9).
+     *
+     * Schema v2 added `user_note` / `en_definition` / `lookup_state` / `meaning_source` /
+     * `audio_url` on `word`, but the view the cards and the word-detail screen read still
+     * projected the pre-gateway column set, so a note written on a card could not be rendered
+     * again. A view holds no data of its own, so the upgrade is one `DROP` + one `CREATE` with
+     * exactly the SQL the `@DatabaseView` annotation declares ([WORD_WITH_PROGRESS_VIEW_SQL]) —
+     * pure DDL, idempotent, SQLite 3.18 compatible; no row is read or written.
+     */
+    val MIGRATION_2_3: Migration = object : Migration(2, 3) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("DROP VIEW IF EXISTS word_with_progress")
+            // Room validates the upgraded view against its schema bundle byte-for-byte
+            // (backticked name, trimmed annotation body) — keep this string identical to
+            // `createSql` in `app/schemas/.../3.json`.
+            db.execSQL("CREATE VIEW `word_with_progress` AS " + WORD_WITH_PROGRESS_VIEW_SQL.trim())
+        }
+    }
+
+    /**
+     * The `word_with_progress` definition, statement-for-statement identical to the SQL inside
+     * `WordWithProgressView`'s `@DatabaseView` annotation: Room validates the view's column set
+     * against the entity after the migration, so the two sources must stay in lockstep.
+     */
+    private const val WORD_WITH_PROGRESS_VIEW_SQL = """
+        SELECT
+            w.id                AS word_id,
+            w.word              AS word,
+            w.phonetic          AS phonetic,
+            w.part_of_speech    AS part_of_speech,
+            w.meanings          AS meanings,
+            w.example_sentence  AS example_sentence,
+            w.example_translation AS example_translation,
+            w.collocations      AS collocations,
+            w.level             AS level,
+            w.source            AS source,
+            w.license           AS license,
+            w.audio_uri         AS audio_uri,
+            w.pack_id           AS pack_id,
+            w.user_note         AS user_note,
+            w.en_definition     AS en_definition,
+            w.lookup_state      AS lookup_state,
+            w.meaning_source    AS meaning_source,
+            w.audio_url         AS audio_url,
+            p.status            AS status,
+            p.mastery_level     AS mastery_level,
+            p.repetitions       AS repetitions,
+            p.interval_days     AS interval_days,
+            p.ease_factor       AS ease_factor,
+            p.due_at            AS due_at,
+            p.last_reviewed_at  AS last_reviewed_at,
+            p.last_answer       AS last_answer,
+            p.lapse_count       AS lapse_count,
+            p.wrong_count       AS wrong_count,
+            p.fuzzy_count       AS fuzzy_count,
+            p.consecutive_correct_count AS consecutive_correct_count,
+            p.is_favorite       AS is_favorite,
+            p.introduced_at     AS introduced_at
+        FROM word w
+        LEFT JOIN user_word_progress p ON p.word_id = w.id
+    """
+
+    /**
      * All migrations known to this build, oldest first.
      *
-     * Declared *after* [MIGRATION_1_2] on purpose: object properties initialise in declaration
-     * order, so referencing it above would capture an uninitialised value.
+     * Declared *after* the individual migrations on purpose: object properties initialise in
+     * declaration order, so referencing one above would capture an uninitialised value.
      */
-    val ALL_MIGRATIONS: Array<Migration> = arrayOf(MIGRATION_1_2)
+    val ALL_MIGRATIONS: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3)
 }

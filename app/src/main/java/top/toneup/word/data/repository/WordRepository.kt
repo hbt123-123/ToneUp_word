@@ -138,6 +138,30 @@ interface WordRepository {
         limit: Int = APPROX_LIMIT,
     ): List<WordWithProgress>
 
+    // --- Card editing (M6a, plan §9) ---------------------------------------------------------
+
+    /**
+     * Saves the learner's note for one word (the card / detail "笔记" editor).
+     *
+     * The note is the learner's own text: it is stored as given (an empty string clears it) and
+     * no automated write-back ever touches `user_note`, so it cannot be lost to a re-lookup.
+     */
+    suspend fun saveUserNote(wordId: Long, note: String): Outcome<Unit>
+
+    /**
+     * Saves a hand-edited meaning set and freezes it as the terminal state (D4).
+     *
+     * The write sets `meaning_source='manual'` + `lookup_state='OK'` in one statement, so from
+     * now on the completion worker (`idsNeedingLookup`) and the write-back
+     * (`MeaningSyncRepository.applyLookupToWord`) both skip this row — "手动编辑后不再被自动
+     * 补全覆盖" is enforced by the existing guards, not by the UI.
+     *
+     * @param meanings one entry per meaning; entries are trimmed and blank ones dropped, and an
+     *   empty result is refused with [ErrorCode.EMPTY] so a stray confirm tap cannot wipe the
+     *   meanings a word already has.
+     */
+    suspend fun saveManualMeaning(wordId: Long, meanings: List<String>): Outcome<Unit>
+
     companion object {
         /** Bounded result size: the browser pages through the list instead of loading 10k rows. */
         const val SEARCH_LIMIT = 200
@@ -688,6 +712,43 @@ class DefaultWordRepository(
         }
     } catch (throwable: Throwable) {
         Outcome.Failure(AppError.database(throwable.javaClass.simpleName))
+    }
+
+    // --- Card editing (M6a, plan §9) ---------------------------------------------------------
+
+    override suspend fun saveUserNote(wordId: Long, note: String): Outcome<Unit> = try {
+        db.withTransaction {
+            db.wordDao().byId(wordId)
+                ?: return@withTransaction Outcome.Failure(
+                    AppError(ErrorCode.DATABASE, "单词不存在或已被删除。"),
+                )
+            db.wordDao().updateUserNote(wordId, note, time.nowMillis())
+            Outcome.Success(Unit)
+        }
+    } catch (throwable: Throwable) {
+        Outcome.Failure(AppError.database(throwable.javaClass.simpleName))
+    }
+
+    override suspend fun saveManualMeaning(wordId: Long, meanings: List<String>): Outcome<Unit> {
+        val cleaned = meanings.map { it.trim() }.filter { it.isNotEmpty() }
+        if (cleaned.isEmpty()) {
+            return Outcome.Failure(AppError(ErrorCode.EMPTY, "释义不能为空。"))
+        }
+        val encoded = JsonCodec.encodeStrings(cleaned)
+        return try {
+            db.withTransaction {
+                db.wordDao().byId(wordId)
+                    ?: return@withTransaction Outcome.Failure(
+                        AppError(ErrorCode.DATABASE, "单词不存在或已被删除。"),
+                    )
+                // One statement sets meanings + the terminal manual state, so a concurrent
+                // worker can never observe new meanings with a still-automatable source.
+                db.wordDao().updateManualMeaning(wordId, encoded, time.nowMillis())
+                Outcome.Success(Unit)
+            }
+        } catch (throwable: Throwable) {
+            Outcome.Failure(AppError.database(throwable.javaClass.simpleName))
+        }
     }
 
     private companion object {
