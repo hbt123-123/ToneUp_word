@@ -726,6 +726,14 @@ class StudyViewModel(private val container: AppContainer) : ViewModel() {
         }
     }
 
+    /** Saves the learner's note for the current card (M6a card editing). */
+    suspend fun saveUserNote(wordId: Long, note: String): Outcome<Unit> =
+        container.wordRepository.saveUserNote(wordId, note)
+
+    /** Saves a hand-edited meaning set for the current card (M6a card editing). */
+    suspend fun saveManualMeaning(wordId: Long, meanings: List<String>): Outcome<Unit> =
+        container.wordRepository.saveManualMeaning(wordId, meanings)
+
     /**
      * Changes the reading speed from the study card.
      *

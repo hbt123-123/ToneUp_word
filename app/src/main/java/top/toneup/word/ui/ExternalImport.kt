@@ -176,9 +176,6 @@ class ExternalImportViewModel(
         .map { it.effectivePackId }
         .stateIn(viewModelScope, SharingStarted.Eagerly, "")
 
-    /** Hash of a clipboard payload that has been shown but not yet remembered. */
-    private var pendingClipboardHash: String? = null
-
     /**
      * Share / process-text entry (plan §8.2): parse the whole payload at once — one shared
      * paragraph of words, comma/newline separated, imports in a single tap. Blank or fully
@@ -213,9 +210,13 @@ class ExternalImportViewModel(
         if (_state.value.importing) return
         val parsed = PlainTextWordParser.parse(text).getOrNull() ?: return
         if (parsed.isEmpty) return
-        // Remember what was shown *now*: the sheet may be dismissed or confirmed either way,
-        // and both mean "seen — never pop for this content again".
-        pendingClipboardHash = ClipboardHash.of(text)
+        // Persist the "seen" marker immediately: the sheet is on screen, so the VM is alive
+        // and the write starts now — no dependence on dismiss/confirm being called before
+        // the Activity is destroyed.
+        val hash = ClipboardHash.of(text)
+        viewModelScope.launch {
+            runCatching { container.settingsRepository.setLastClipboardHash(hash) }
+        }
         _state.value = ExternalImportUiState(
             phase = ExternalImportPhase.DETECTED,
             source = ExternalImportSource.CLIPBOARD,
@@ -263,7 +264,6 @@ class ExternalImportViewModel(
     /** Closes the sheet from any visible state; a write in flight owns the state and wins. */
     fun dismiss() {
         if (_state.value.importing) return
-        markClipboardSeen()
         _state.value = ExternalImportUiState(phase = ExternalImportPhase.DISMISSED)
     }
 
@@ -288,20 +288,10 @@ class ExternalImportViewModel(
                 // Rows are already stored as PENDING (plan §6.2): a missing gateway only
                 // delays completion, never data — so a sync failure must not fail the import.
                 runCatching { meaningSync.enqueueAll() }
-                markClipboardSeen()
                 _state.update {
                     it.copy(phase = ExternalImportPhase.DONE, result = result.value, error = null)
                 }
             }
-        }
-    }
-
-    /** Persists the "already seen" marker for a shown clipboard payload; share paths no-op. */
-    private fun markClipboardSeen() {
-        val hash = pendingClipboardHash ?: return
-        pendingClipboardHash = null
-        viewModelScope.launch {
-            runCatching { container.settingsRepository.setLastClipboardHash(hash) }
         }
     }
 

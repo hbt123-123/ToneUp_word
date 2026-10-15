@@ -240,10 +240,10 @@ fun StudyScreen(
         WordEditDialog(
             word = editingCard.word,
             onSaveNote = { note ->
-                container.wordRepository.saveUserNote(editingCard.word.id, note)
+                viewModel.saveUserNote(editingCard.word.id, note)
             },
             onSaveMeaning = { meanings ->
-                container.wordRepository.saveManualMeaning(editingCard.word.id, meanings)
+                viewModel.saveManualMeaning(editingCard.word.id, meanings)
             },
             onDismiss = {
                 showEdit = false
