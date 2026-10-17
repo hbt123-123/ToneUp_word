@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="window_background">#F8FAF8</color>
-    <color name="ic_launcher_background">#63C7A5</color>
+    <!-- 自适应图标背景：取自「上岸水环」作品的深蓝紫底色（前景透明圆角处依赖它与作品同色） -->
+    <color name="ic_launcher_background">#34468B</color>
 </resources>

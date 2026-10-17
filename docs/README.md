@@ -8,6 +8,7 @@
 | --- | --- |
 | [使用指南](USER_GUIDE.md) | 装什么、怎么用、统计口径怎么看、朗读出问题怎么办、数据在哪 |
 | [词库导入格式](WORD_PACK_FORMAT.md) | 自带词库的字段定义；想导入自己的 JSON / CSV 时看这份 |
+| [外部调用：Share / Process-Text](SHARE_INTENT.md) | 其他应用如何把一段单词文本分享进来：intent 参数、调用示例、文本解析规则与限额 |
 
 ## 开发
 
