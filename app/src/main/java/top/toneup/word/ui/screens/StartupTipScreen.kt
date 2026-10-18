@@ -151,7 +151,7 @@ private fun StartupTipScreenSeedingPreview() {
     ToneUpWordTheme {
         StartupTipScreen(
             tip = previewTip,
-            seedProgress = SeedProgress(packName = "CET-4 词库", processed = 1_200, total = 3_849),
+            seedProgress = SeedProgress(packName = "CET-6 词库", processed = 1_200, total = 5_407),
             onContinue = {},
         )
     }

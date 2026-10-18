@@ -103,11 +103,11 @@ class ProgressRecorder(
      * Pack scope of a word (schema v2, D1): read from `word.pack_id`, which migration 1→2
      * guarantees to be non-empty for every row. The fallbacks only cover a word row that has
      * disappeared mid-transaction (FK CASCADE makes that impossible in practice) — keeping a
-     * deterministic `builtin-cet4`/level-derived bucket instead of dropping the answer.
+     * deterministic `builtin-cet6`/level-derived bucket instead of dropping the answer.
      */
     private suspend fun scopeOf(wordId: Long): String {
         val entity = db.wordDao().byId(wordId)
-            ?: return PackIds.defaultPackIdFor(CetLevel.CET4)
+            ?: return PackIds.defaultPackIdFor(CetLevel.CET6)
         val packId = entity.packId
         if (!packId.isNullOrEmpty()) return packId
         return PackIds.defaultPackIdFor(CetLevel.fromId(entity.level))

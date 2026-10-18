@@ -42,7 +42,10 @@ class DatabaseTest {
 
     private val now = 1_768_450_800_000L
     private val dayKey = "2026-01-15"
-    private val pack = PackIds.BUILTIN_CET4
+    // Two distinct packs so that per-pack isolation can be asserted. `pack` uses the historical
+    // CET-4 slug as a plain string — its asset no longer ships, but the id remains a valid scope
+    // for these DAO-level tests.
+    private val pack = "builtin-cet4"
     private val pack6 = PackIds.BUILTIN_CET6
 
     @Before
@@ -69,7 +72,9 @@ class DatabaseTest {
     private fun wordEntity(
         word: String,
         level: CetLevel = CetLevel.CET4,
-        packId: String = PackIds.defaultPackIdFor(level),
+        // The pack is passed explicitly rather than derived from the level: CET-4 and CET-6 no
+        // longer map to distinct packs, and these DAO tests need two clearly separate scopes.
+        packId: String = pack,
         meanings: String = """["释义"]""",
     ) = WordEntity(
         packId = packId,
@@ -178,8 +183,8 @@ class DatabaseTest {
 
     @Test
     fun `the same word may exist once per pack`() = runTest {
-        val cet4 = database.wordDao().insert(wordEntity("apple", CetLevel.CET4))
-        val cet6 = database.wordDao().insert(wordEntity("apple", CetLevel.CET6))
+        val cet4 = database.wordDao().insert(wordEntity("apple", CetLevel.CET4, packId = pack))
+        val cet6 = database.wordDao().insert(wordEntity("apple", CetLevel.CET6, packId = pack6))
 
         assertThat(cet4).isGreaterThan(0L)
         assertThat(cet6).isGreaterThan(0L)

@@ -141,6 +141,10 @@ object ViewModelFactories {
     fun importWords(container: AppContainer, packId: String): ViewModelProvider.Factory = viewModelFactory {
         initializer { ImportWordsViewModel(container, packId) }
     }
+
+    fun writeWord(container: AppContainer): ViewModelProvider.Factory = viewModelFactory {
+        initializer { WriteWordViewModel(container) }
+    }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -364,6 +368,12 @@ data class HomeUiState(
      * string: the card hides itself on null.
      */
     val motivation: MotivationMessage? = null,
+    /**
+     * Mistake-book counts shown on the dashboard now that 错题本 is no longer a bottom tab
+     * (plan §C): due-today, unconsolidated and high-wrong numbers plus the entry into the
+     * full-screen review centre.
+     */
+    val mistakeOverview: MistakeOverview = MistakeOverview.Empty,
 )
 
 /** Time-of-day greeting. Pure function of the hour so it can be unit tested. */
@@ -417,9 +427,17 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
         container.settingsRepository.settings.flatMapLatest { settings ->
             container.studyRepository.observeRecentEvents(settings.effectivePackId, 6)
         },
-        resumable,
-    ) { settings, plan, stats, recent, resumableId ->
-        HomeSnapshot(settings, plan, stats, recent, resumableId)
+        // Two more signals folded into one source: `combine` has no typed overload past five
+        // flows, and pairing them keeps the snapshot lambda readable.
+        combine(
+            resumable,
+            container.settingsRepository.settings.flatMapLatest { settings ->
+                container.mistakeRepository.observeOverview(settings.effectivePackId)
+            },
+            ::Pair,
+        ),
+    ) { settings, plan, stats, recent, (resumableId, mistakeOverview) ->
+        HomeSnapshot(settings, plan, stats, recent, resumableId, mistakeOverview)
     }.map { snapshot -> describeHome(snapshot) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeUiState())
 
@@ -429,6 +447,7 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
         val stats: StatsSnapshot,
         val recent: List<RecentEvent>,
         val resumableId: Long?,
+        val mistakeOverview: MistakeOverview,
     )
 
     private suspend fun describeHome(snapshot: HomeSnapshot): HomeUiState {
@@ -443,7 +462,7 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
         val insights = signals?.let { InsightEngine.analyze(it) }.orEmpty()
 
         // The app-bar pack chip reads the pack's display name (not the raw id like
-        // "builtin-cet4"); a missing row hides the chip instead of showing a broken label.
+        // "builtin-cet6"); a missing row hides the chip instead of showing a broken label.
         val activePackName = runCatching {
             container.wordRepository.packById(settings.effectivePackId)?.name
         }.getOrNull()
@@ -463,6 +482,7 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
             nextStep = NextStepPlanner.plan(snapshot.plan),
             insights = InsightEngine.forHome(insights),
             motivation = motivationFor(settings, snapshot.plan, stats, signals, now, zone),
+            mistakeOverview = snapshot.mistakeOverview,
         )
     }
 
@@ -1984,5 +2004,132 @@ class ImportWordsViewModel(
 
     fun dismissMessage() {
         _state.update { it.copy(message = null) }
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Write word (手写录词) — the「写词库」tab
+// ---------------------------------------------------------------------------------------------
+
+/** One word the learner typed during this visit; kept so the screen can list "本次已写入". */
+@Immutable
+data class WrittenWordEntry(
+    val wordId: Long,
+    val word: String,
+    val note: String,
+)
+
+@Immutable
+data class WriteWordUiState(
+    val packId: String = "",
+    val packName: String = "",
+    val wordInput: String = "",
+    val noteInput: String = "",
+    val saving: Boolean = false,
+    /** Most recent writes first, capped at [WriteWordViewModel.MAX_RECENT]. */
+    val written: List<WrittenWordEntry> = emptyList(),
+    val message: String? = null,
+)
+
+/**
+ * Hand-typing words the learner meets while reading (plan §D).
+ *
+ * Each entry is written one at a time: `WordRepository.addWordWithNote` keeps `(pack_id,
+ * normalized_word)` identity (an already-known word keeps its progress and only its note is
+ * updated), and the note is stored in `user_note` — shown **before** the looked-up meanings when
+ * the card is studied. A word left without a note is completed later by the gateway, exactly like
+ * an imported word.
+ *
+ * The pack scope follows `effectivePackId`, so a learner who switched packs types into the pack
+ * they are currently studying.
+ */
+class WriteWordViewModel(private val container: AppContainer) : ViewModel() {
+
+    private val _input = MutableStateFlow(WriteWordInput())
+
+    private data class WriteWordInput(
+        val word: String = "",
+        val note: String = "",
+        val saving: Boolean = false,
+        val written: List<WrittenWordEntry> = emptyList(),
+        val message: String? = null,
+    )
+
+    val state: StateFlow<WriteWordUiState> = combine(
+        container.settingsRepository.settings,
+        _input,
+    ) { settings, input -> settings to input }
+        .map { (settings, input) ->
+            val packName = runCatching {
+                container.wordRepository.packById(settings.effectivePackId)?.name
+            }.getOrNull().orEmpty()
+            WriteWordUiState(
+                packId = settings.effectivePackId,
+                packName = packName,
+                wordInput = input.word,
+                noteInput = input.note,
+                saving = input.saving,
+                written = input.written,
+                message = input.message,
+            )
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), WriteWordUiState())
+
+    fun onWordChanged(value: String) = _input.update { it.copy(word = value, message = null) }
+
+    fun onNoteChanged(value: String) = _input.update { it.copy(note = value) }
+
+    /** Writes the current word + note, then clears the fields so the next word can be typed. */
+    fun write() {
+        val current = _input.value
+        val word = current.word.trim()
+        if (word.isEmpty()) {
+            _input.update { it.copy(message = "请输入要写入的单词。") }
+            return
+        }
+        if (current.saving) return
+        _input.update { it.copy(saving = true, message = null) }
+        viewModelScope.launch {
+            val packId = container.settingsRepository.current().effectivePackId
+            when (
+                val result = container.wordRepository.addWordWithNote(
+                    packId = packId,
+                    word = word,
+                    note = current.note,
+                    now = container.timeProvider.nowMillis(),
+                )
+            ) {
+                is Outcome.Failure -> _input.update {
+                    it.copy(saving = false, message = result.error.message)
+                }
+
+                is Outcome.Success -> {
+                    // A word typed without a note is filled in later by the gateway; a failed
+                    // enqueue only delays completion, never data (plan §7.3).
+                    container.meaningSync.enqueueAll()
+                    val entry = WrittenWordEntry(
+                        wordId = result.value,
+                        word = word,
+                        note = current.note.trim(),
+                    )
+                    _input.update {
+                        it.copy(
+                            saving = false,
+                            word = "",
+                            note = "",
+                            written = (listOf(entry) + it.written).take(MAX_RECENT),
+                            message = "已写入「$word」。",
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    fun dismissMessage() = _input.update { it.copy(message = null) }
+
+    companion object {
+        /** How many freshly written words the screen keeps on show. */
+        const val MAX_RECENT = 20
     }
 }

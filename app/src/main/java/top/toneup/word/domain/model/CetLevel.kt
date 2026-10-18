@@ -16,6 +16,6 @@ enum class CetLevel(val id: String, val label: String, val shortLabel: String) {
             entries.firstOrNull { it.id.equals(id?.trim(), ignoreCase = true) } ?: OTHER
 
         /** Levels offered in onboarding / settings (OTHER is import-only). */
-        val selectable: List<CetLevel> = listOf(CET4, CET6)
+        val selectable: List<CetLevel> = listOf(CET6)
     }
 }

@@ -1,11 +1,11 @@
 package top.toneup.word.ui.navigation
 
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Warning
 import androidx.compose.ui.graphics.vector.ImageVector
 
 /**
@@ -19,10 +19,16 @@ object Routes {
 
     // Bottom-navigation destinations.
     const val HOME = "home"
-    const val REVIEW = "review"
+    const val WRITE_WORD = "write-word"
     const val EXAM_SETUP = "exam-setup"
     const val STATS = "stats"
     const val PROFILE = "profile"
+
+    /**
+     * The mistake book ([Routes.REVIEW]) is no longer a top-level tab — it lives inside the home
+     * screen as an overview card that opens this full-screen flow.
+     */
+    const val REVIEW = "review"
 
     // Full-screen flows.
     const val STUDY_SESSION = "study/session?drillIds={drillIds}"
@@ -62,7 +68,7 @@ enum class TopLevelDestination(
     val icon: ImageVector,
 ) {
     HOME(Routes.HOME, "首页", Icons.Filled.Home),
-    REVIEW(Routes.REVIEW, "错题本", Icons.Filled.Warning),
+    WRITE_WORD(Routes.WRITE_WORD, "写词库", Icons.Filled.Add),
     EXAM(Routes.EXAM_SETUP, "考试", Icons.Filled.Edit),
     STATS(Routes.STATS, "统计", Icons.Filled.DateRange),
     PROFILE(Routes.PROFILE, "我的", Icons.Filled.Person),

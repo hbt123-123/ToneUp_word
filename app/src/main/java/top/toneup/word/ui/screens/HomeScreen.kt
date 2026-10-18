@@ -295,6 +295,45 @@ fun HomeScreen(
                     }
                 }
 
+                // 3b. The mistake book, folded in from the bottom bar (plan §C): its counts are
+                // visible without opening the full-screen review centre, and "复习错题" jumps
+                // straight into a drill.
+                item(key = "mistake_book") {
+                    val overview = state.mistakeOverview
+                    AppCard {
+                        Column(verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
+                            SectionHeader(
+                                title = "错题本",
+                                actionLabel = "进入错题本",
+                                onAction = onOpenReviewCenter,
+                            )
+                            if (overview.activeCount == 0) {
+                                Text(
+                                    text = "还没有错题记录。答错或标记为「模糊」的词会自动收进错题本。",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = AppTheme.colors.mutedText,
+                                )
+                            } else {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                ) {
+                                    MistakeStat(label = "今日待复习", value = overview.dueTodayCount)
+                                    MistakeStat(label = "未巩固", value = overview.unconsolidatedCount)
+                                    MistakeStat(label = "高错误", value = overview.highWrongCount)
+                                }
+                                SecondaryButton(
+                                    text = "复习错题",
+                                    onClick = onStartMistakeDrill,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("home_review_mistakes"),
+                                )
+                            }
+                        }
+                    }
+                }
+
                 // 4. Word status distribution — one bar, three numbers, no chart to interpret.
                 state.stats?.let { stats ->
                     item(key = "word_status") {
@@ -386,6 +425,28 @@ private fun TodayPlan.planSummary(): String {
         if (fragileCount > 0) add("未巩固 ${fragileCount}")
     }
     return if (parts.isEmpty()) "今天没有待办，可以回顾错题" else parts.joinToString(" · ")
+}
+
+/**
+ * One count in the home-screen mistake-book card: the number on top, the label underneath.
+ *
+ * Deliberately smaller than [StatCard] — this card is an overview, not a dashboard, and three
+ * of these must fit on one row without wrapping.
+ */
+@Composable
+private fun MistakeStat(label: String, value: Int) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            text = value.toString(),
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = AppTheme.colors.mutedText,
+        )
+    }
 }
 
 @Composable

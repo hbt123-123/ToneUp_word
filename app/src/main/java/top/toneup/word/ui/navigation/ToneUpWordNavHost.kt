@@ -42,6 +42,7 @@ import top.toneup.word.ui.screens.StatsScreen
 import top.toneup.word.ui.screens.StudyScreen
 import top.toneup.word.ui.screens.WordBrowserScreen
 import top.toneup.word.ui.screens.WordDetailScreen
+import top.toneup.word.ui.screens.WriteWordScreen
 import top.toneup.word.ui.theme.AppTheme
 
 /**
@@ -138,6 +139,10 @@ fun ToneUpWordNavHost(
                     onOpenWordBrowser = { navController.navigate(Routes.WORD_BROWSER) },
                     onOpenPacks = { navController.navigate(Routes.PACKS) },
                 )
+            }
+
+            composable(Routes.WRITE_WORD) {
+                WriteWordScreen(container = container)
             }
 
             composable(

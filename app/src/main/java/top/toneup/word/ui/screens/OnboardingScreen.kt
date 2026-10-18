@@ -102,7 +102,7 @@ fun OnboardingScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                     Text("一潼上岸·单词", style = MaterialTheme.typography.headlineMedium)
                     Text(
-                        text = "专注 CET-4 / CET-6 的单词记忆、间隔重复与闭卷自测。学习与考试功能全部离线可用，" +
+                        text = "专注 CET-6 与自建词库的单词记忆、间隔重复与闭卷自测。学习与考试功能全部离线可用，" +
                             "数据只保存在本机（仅发音音频需要联网下载）。",
                         style = MaterialTheme.typography.bodyMedium,
                         color = AppTheme.colors.mutedText,

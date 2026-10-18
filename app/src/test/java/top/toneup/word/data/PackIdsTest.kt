@@ -16,23 +16,26 @@ class PackIdsTest {
 
     @Test
     fun `the reserved pack ids are stable identifiers`() {
-        assertThat(PackIds.BUILTIN_CET4).isEqualTo("builtin-cet4")
         assertThat(PackIds.BUILTIN_CET6).isEqualTo("builtin-cet6")
         assertThat(PackIds.LEGACY_OTHER).isEqualTo("legacy-other")
     }
 
     @Test
     fun `defaultPackIdFor maps each level to its reserved pack`() {
-        assertThat(PackIds.defaultPackIdFor(CetLevel.CET4)).isEqualTo(PackIds.BUILTIN_CET4)
+        // The CET-4 built-in no longer ships; a pre-upgrade install whose default level is CET-4
+        // degrades to the remaining built-in so it always has a valid study scope.
+        assertThat(PackIds.defaultPackIdFor(CetLevel.CET4)).isEqualTo(PackIds.BUILTIN_CET6)
         assertThat(PackIds.defaultPackIdFor(CetLevel.CET6)).isEqualTo(PackIds.BUILTIN_CET6)
         assertThat(PackIds.defaultPackIdFor(CetLevel.OTHER)).isEqualTo(PackIds.LEGACY_OTHER)
     }
 
     @Test
     fun `levelForPackId is the inverse for reserved ids`() {
-        assertThat(PackIds.levelForPackId(PackIds.BUILTIN_CET4)).isEqualTo(CetLevel.CET4)
         assertThat(PackIds.levelForPackId(PackIds.BUILTIN_CET6)).isEqualTo(CetLevel.CET6)
         assertThat(PackIds.levelForPackId(PackIds.LEGACY_OTHER)).isEqualTo(CetLevel.OTHER)
+        // The retired CET-4 id can still appear in an upgraded install; it must not be labelled
+        // as an official CET list.
+        assertThat(PackIds.levelForPackId("builtin-cet4")).isEqualTo(CetLevel.OTHER)
     }
 
     @Test

@@ -26,7 +26,7 @@ enum class ThemeMode(val id: String, val label: String) {
  */
 data class UserSettings(
     val onboardingCompleted: Boolean = false,
-    val level: CetLevel = CetLevel.CET4,
+    val level: CetLevel = CetLevel.CET6,
     /**
      * Pack the learner is studying, `""` until a pack is chosen explicitly (schema v2, D1).
      *

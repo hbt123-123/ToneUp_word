@@ -130,14 +130,6 @@ class BuiltInPackLoader(
          */
         private val DEMO_FALLBACK = listOf(
             BuiltInPackDefinition(
-                id = "builtin-cet4",
-                assetPath = "wordpacks/cet4.json",
-                level = CetLevel.CET4,
-                name = "CET-4 演示词库",
-                version = 1,
-                expectedWordCount = 0,
-            ),
-            BuiltInPackDefinition(
                 id = "builtin-cet6",
                 assetPath = "wordpacks/cet6.json",
                 level = CetLevel.CET6,

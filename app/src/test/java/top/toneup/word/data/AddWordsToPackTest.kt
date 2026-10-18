@@ -83,12 +83,12 @@ class AddWordsToPackTest {
         return requireNotNull(outcome.getOrNull())
     }
 
-    private suspend fun insertBuiltInPack(id: String = PackIds.BUILTIN_CET4) {
+    private suspend fun insertBuiltInPack(id: String = PackIds.BUILTIN_CET6) {
         database.wordDao().upsertPack(
             WordPackEntity(
                 id = id,
-                name = "四级演示词库",
-                level = CetLevel.CET4.id,
+                name = "六级演示词库",
+                level = CetLevel.CET6.id,
                 isBuiltIn = true,
                 wordCount = 0,
                 createdAt = now,
@@ -251,25 +251,25 @@ class AddWordsToPackTest {
     fun `words added to the built-in pack never replace seeded rows`() = runTest {
         insertBuiltInPack()
         val seeded = top.toneup.word.data.local.entity.WordEntity(
-            packId = PackIds.BUILTIN_CET4,
+            packId = PackIds.BUILTIN_CET6,
             word = "apple",
             normalizedWord = Word.normalizeWordKey("apple"),
             phonetic = "/ˈæpl/",
             meanings = """["苹果"]""",
-            level = CetLevel.CET4.id,
+            level = CetLevel.CET6.id,
             lookupState = "OK",
             meaningSource = "file",
             createdAt = now,
             updatedAt = now,
         )
         database.wordDao().insert(seeded)
-        val seededId = database.wordDao().byNormalized(PackIds.BUILTIN_CET4, "apple")!!.id
+        val seededId = database.wordDao().byNormalized(PackIds.BUILTIN_CET6, "apple")!!.id
 
-        val outcome = repository.addWordsToPack(PackIds.BUILTIN_CET4, listOf("apple", "banana"), now)
+        val outcome = repository.addWordsToPack(PackIds.BUILTIN_CET6, listOf("apple", "banana"), now)
 
         val result = requireNotNull(outcome.getOrNull())
         assertThat(result).isEqualTo(PackAddResult(inserted = 1, skipped = 1, total = 2))
-        val apple = database.wordDao().byNormalized(PackIds.BUILTIN_CET4, "apple")!!
+        val apple = database.wordDao().byNormalized(PackIds.BUILTIN_CET6, "apple")!!
         assertThat(apple.id).isEqualTo(seededId)
         assertThat(apple.phonetic).isEqualTo("/ˈæpl/") // untouched content
         assertThat(apple.lookupState).isEqualTo("OK") // not reset to PENDING
@@ -290,7 +290,7 @@ class AddWordsToPackTest {
     @Test
     fun `renamePack refuses built-in packs and blank names`() = runTest {
         insertBuiltInPack()
-        assertThat(repository.renamePack(PackIds.BUILTIN_CET4, "改名").isSuccess).isFalse()
+        assertThat(repository.renamePack(PackIds.BUILTIN_CET6, "改名").isSuccess).isFalse()
 
         val packId = createTestPack()
         assertThat(repository.renamePack(packId, "   ").isSuccess).isFalse()
@@ -317,9 +317,9 @@ class AddWordsToPackTest {
     @Test
     fun `deletePack refuses built-in packs and the legacy bucket`() = runTest {
         insertBuiltInPack()
-        val outcome = repository.deletePack(PackIds.BUILTIN_CET4)
+        val outcome = repository.deletePack(PackIds.BUILTIN_CET6)
         assertThat(outcome.isSuccess).isFalse()
-        assertThat(database.wordDao().packById(PackIds.BUILTIN_CET4)).isNotNull()
+        assertThat(database.wordDao().packById(PackIds.BUILTIN_CET6)).isNotNull()
     }
 
     @Test

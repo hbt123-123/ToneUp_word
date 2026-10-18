@@ -292,7 +292,7 @@ class ComposeFlowTest {
     @Test
     fun `review centre lists a word after it was answered wrongly`() {
         val wordId = runBlocking(Dispatchers.IO) {
-            val ids = database.wordDao().idsForPack(PackIds.BUILTIN_CET4)
+            val ids = database.wordDao().idsForPack(PackIds.BUILTIN_CET6)
             val first = ids.first()
             container.progressRecorder.record(first, ReviewGrade.UNKNOWN, AnswerSource.STUDY)
             first
@@ -308,7 +308,7 @@ class ComposeFlowTest {
     @Test
     fun `review centre filters by search term`() {
         runBlocking(Dispatchers.IO) {
-            val ids = database.wordDao().idsForPack(PackIds.BUILTIN_CET4)
+            val ids = database.wordDao().idsForPack(PackIds.BUILTIN_CET6)
             container.progressRecorder.record(ids[0], ReviewGrade.UNKNOWN, AnswerSource.STUDY)
             container.progressRecorder.record(ids[1], ReviewGrade.UNKNOWN, AnswerSource.STUDY)
         }
@@ -426,7 +426,7 @@ class ComposeFlowTest {
     @Test
     fun `clearing study progress asks for confirmation first`() {
         val wordId = runBlocking(Dispatchers.IO) {
-            val ids = database.wordDao().idsForPack(PackIds.BUILTIN_CET4)
+            val ids = database.wordDao().idsForPack(PackIds.BUILTIN_CET6)
             val first = ids.first()
             container.progressRecorder.record(first, ReviewGrade.UNKNOWN, AnswerSource.STUDY)
             first

@@ -355,7 +355,7 @@ class ExternalImportViewModelTest {
     @Test
     fun `the default pack follows the active pack setting`() {
         awaitCondition("the builtin default is exposed before any choice") {
-            viewModel.activePackId.value == PackIds.BUILTIN_CET4
+            viewModel.activePackId.value == PackIds.BUILTIN_CET6
         }
 
         val packId = createTestPack("新库")

@@ -237,7 +237,7 @@ fun DataTransferScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                     SectionHeader(title = "已安装词库")
                     Text(
-                        text = "内置演示词库：四级 ${BuiltInWordPacks.cet4.size} 词、六级 ${BuiltInWordPacks.cet6.size} 词，" +
+                        text = "内置演示词库：六级 ${BuiltInWordPacks.cet6.size} 词，" +
                             "许可 ${BuiltInWordPacks.LICENSE}。",
                         style = MaterialTheme.typography.bodySmall,
                         color = AppTheme.colors.mutedText,
@@ -370,7 +370,7 @@ fun AboutScreen(
                     ReviewBadge(text = "minSdk 26（Android 8.0）")
                 }
                 Text(
-                    text = "面向中国大陆大学生的 CET-4 / CET-6 单词记忆工具，提供间隔重复复习、错题巩固、" +
+                    text = "面向中国大陆大学生的 CET-6 与自建词库单词记忆工具，提供间隔重复复习、错题巩固、" +
                         "闭卷自测和学习统计。",
                     style = MaterialTheme.typography.bodyMedium,
                 )

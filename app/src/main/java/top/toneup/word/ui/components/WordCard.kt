@@ -304,12 +304,31 @@ private fun WordMeaningBlock(word: Word, onEdit: (() -> Unit)? = null) {
                 }
             }
         }
+        // Hand-written note first: the learner's own gloss for a word outranks the looked-up
+        // meanings — a word typed into 「写词库」 with a note shows that note before anything the
+        // dictionary or the gateway returned (plan §E).
+        if (word.userNote.isNotBlank()) {
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                Text(
+                    text = "我的释义",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = AppTheme.colors.mutedText,
+                )
+                Text(
+                    text = word.userNote,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.testTag("word_user_note"),
+                )
+                HorizontalDivider(color = AppTheme.colors.hairline)
+            }
+        }
         word.meanings.forEach { meaning ->
             Text(text = meaning, style = MaterialTheme.typography.titleSmall)
         }
-        // Plan §9: the FreeDictionary English definition and the learner's own note travel
-        // directly under the standard meanings; both hide themselves when empty.
-        if (word.enDefinition.isNotBlank() || word.userNote.isNotBlank()) {
+        // Plan §9: the FreeDictionary English definition travels directly under the standard
+        // meanings; it hides itself when empty.
+        if (word.enDefinition.isNotBlank()) {
             WordExtraInfo(word = word)
         }
         if (word.exampleSentence.isNotBlank()) {
@@ -345,12 +364,13 @@ private fun WordMeaningBlock(word: Word, onEdit: (() -> Unit)? = null) {
 }
 
 /**
- * The two blocks a hand edit can produce (plan §9): the FreeDictionary English definition in
- * small grey type, and the learner's own note behind a divider.
+ * The FreeDictionary English definition block (plan §9), rendered in small grey type under the
+ * standard meanings and after the learner's own note.
  *
- * Exported as one component so the study card, the review card and the word-detail screen all
- * render exactly the same layout — an edit made on one screen looks identical on the next.
- * Both blocks are self-hiding: nothing is rendered for empty content.
+ * Exported so the study card, the review card and the word-detail screen can share one layout —
+ * an edit made on one screen looks identical on the next. The block is self-hiding: nothing is
+ * rendered for an empty definition. The hand-written note lives with the meanings themselves
+ * (it is shown **before** them), so it is not part of this component.
  */
 @Composable
 fun WordExtraInfo(word: Word, modifier: Modifier = Modifier) {
@@ -367,22 +387,6 @@ fun WordExtraInfo(word: Word, modifier: Modifier = Modifier) {
                     style = MaterialTheme.typography.bodySmall,
                     color = AppTheme.colors.mutedText,
                     modifier = Modifier.testTag("word_en_definition"),
-                )
-            }
-        }
-        if (word.userNote.isNotBlank()) {
-            HorizontalDivider(color = AppTheme.colors.hairline)
-            Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-                Text(
-                    text = "笔记",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = AppTheme.colors.mutedText,
-                )
-                Text(
-                    text = word.userNote,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.testTag("word_user_note"),
                 )
             }
         }

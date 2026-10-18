@@ -55,6 +55,17 @@ class ProgressRecorderTest {
     private val start = 1_768_442_400_000L
     private val dayKey = "2026-01-15"
 
+    /**
+     * The retired CET-4 pack id. Its asset no longer ships, but the id is still a perfectly
+     * valid study scope — these tests need **two distinct packs** to prove that per-pack
+     * accounting (daily summaries, review events) never leaks across scopes.
+     */
+    private val cet4Pack = "builtin-cet4"
+
+    /** Pack a word of [level] is written under: CET-4 → the legacy id, everything else → CET-6. */
+    private fun packFor(level: CetLevel): String =
+        if (level == CetLevel.CET4) cet4Pack else PackIds.BUILTIN_CET6
+
     @Before
     fun setUp() {
         database = Room.inMemoryDatabaseBuilder(
@@ -79,7 +90,7 @@ class ProgressRecorderTest {
     private suspend fun insertWord(word: String, level: CetLevel = CetLevel.CET4): Long =
         database.wordDao().insert(
             WordEntity(
-                packId = PackIds.defaultPackIdFor(level),
+                packId = packFor(level),
                 word = word,
                 normalizedWord = Word.normalizeWordKey(word),
                 meanings = """["释义"]""",
@@ -90,7 +101,7 @@ class ProgressRecorderTest {
         )
 
     private suspend fun summary(level: CetLevel = CetLevel.CET4) =
-        database.dailySummaryDao().get(dayKey, PackIds.defaultPackIdFor(level))
+        database.dailySummaryDao().get(dayKey, packFor(level))
 
     // --- One answer ------------------------------------------------------------------------
 
@@ -112,7 +123,7 @@ class ProgressRecorderTest {
         assertThat(stored!!.status).isEqualTo("LEARNING")
         assertThat(stored.wrongCount).isEqualTo(1)
 
-        val events = database.reviewEventDao().allForPack(PackIds.BUILTIN_CET4)
+        val events = database.reviewEventDao().allForPack(cet4Pack)
         assertThat(events).hasSize(1)
         assertThat(events.single().wordId).isEqualTo(wordId)
         assertThat(events.single().grade).isEqualTo("UNKNOWN")
@@ -123,7 +134,9 @@ class ProgressRecorderTest {
         assertThat(wrong).isNotNull()
         assertThat(wrong!!.wrongCount).isEqualTo(1)
         assertThat(wrong.resolvedAt).isNull()
-        assertThat(wrong.level).isEqualTo(CetLevel.CET4.id)
+        // The mistake row's level is derived from the pack, not from the word's legacy level
+        // column: the retired CET-4 id degrades to OTHER (see PackIds.levelForPackId).
+        assertThat(wrong.level).isEqualTo(CetLevel.OTHER.id)
 
         val day = summary()!!
         assertThat(day.studiedWords).isEqualTo(1)
@@ -176,7 +189,7 @@ class ProgressRecorderTest {
             responseTimeMs = 4_200L,
         )
 
-        val event = database.reviewEventDao().allForPack(PackIds.BUILTIN_CET4).single()
+        val event = database.reviewEventDao().allForPack(cet4Pack).single()
         assertThat(event.sessionId).isEqualTo(77L)
         assertThat(event.responseTimeMs).isEqualTo(4_200L)
         assertThat(event.answeredAt).isEqualTo(start)
@@ -235,9 +248,9 @@ class ProgressRecorderTest {
 
         assertThat(summary()!!.studiedWords).isEqualTo(1)
         assertThat(StudyDay.dayKey(time.nowMillis(), time.zone())).isEqualTo("2026-01-16")
-        assertThat(database.dailySummaryDao().get("2026-01-16", PackIds.BUILTIN_CET4)!!.studiedWords)
+        assertThat(database.dailySummaryDao().get("2026-01-16", cet4Pack)!!.studiedWords)
             .isEqualTo(1)
-        assertThat(database.dailySummaryDao().allForPack(PackIds.BUILTIN_CET4)).hasSize(2)
+        assertThat(database.dailySummaryDao().allForPack(cet4Pack)).hasSize(2)
     }
 
     @Test
@@ -277,7 +290,7 @@ class ProgressRecorderTest {
         time.advanceBy(24L * 60 * 60 * 1000)
         recorder.record(wordId, ReviewGrade.MASTERED, AnswerSource.STUDY)
 
-        val secondDay = database.dailySummaryDao().get("2026-01-16", PackIds.BUILTIN_CET4)!!
+        val secondDay = database.dailySummaryDao().get("2026-01-16", cet4Pack)!!
         assertThat(secondDay.studiedWords).isEqualTo(1)
         assertThat(secondDay.newWords).isEqualTo(0)
         assertThat(secondDay.reviewWords).isEqualTo(1)
@@ -307,7 +320,7 @@ class ProgressRecorderTest {
         val resolved = database.mistakeBookDao().byWordId(wordId)!!
         assertThat(resolved.correctSinceWrong).isEqualTo(ProgressRecorder.AUTO_RESOLVE_STREAK)
         assertThat(resolved.resolvedAt).isEqualTo(start)
-        assertThat(database.mistakeBookDao().activeCount(PackIds.BUILTIN_CET4)).isEqualTo(0)
+        assertThat(database.mistakeBookDao().activeCount(cet4Pack)).isEqualTo(0)
         assertThat(database.mistakeBookDao().byWordId(wordId)).isNotNull()
     }
 
@@ -377,7 +390,7 @@ class ProgressRecorderTest {
         assertThat(cet6Summary.unknownCount).isEqualTo(0)
         assertThat(cet6Summary.masteredCount).isEqualTo(1)
 
-        assertThat(database.dailySummaryDao().allForPack(PackIds.BUILTIN_CET4)).hasSize(1)
+        assertThat(database.dailySummaryDao().allForPack(cet4Pack)).hasSize(1)
         assertThat(database.dailySummaryDao().allForPack(PackIds.BUILTIN_CET6)).hasSize(1)
     }
 
@@ -389,9 +402,9 @@ class ProgressRecorderTest {
         time.advanceBy(SpacedRepetitionDays.ONE_DAY + 60_000L)
         recorder.record(wordId, ReviewGrade.MASTERED, AnswerSource.STUDY)
 
-        assertThat(database.dailySummaryDao().allForPack(PackIds.BUILTIN_CET4).map { it.dayKey })
+        assertThat(database.dailySummaryDao().allForPack(cet4Pack).map { it.dayKey })
             .containsExactly("2026-01-15", "2026-01-16").inOrder()
-        assertThat(database.dailySummaryDao().get("2026-01-16", PackIds.BUILTIN_CET4)!!.masteredCount)
+        assertThat(database.dailySummaryDao().get("2026-01-16", cet4Pack)!!.masteredCount)
             .isEqualTo(1)
     }
 
@@ -403,7 +416,7 @@ class ProgressRecorderTest {
 
         assertThat(progress.wordId).isEqualTo(wordId)
         assertThat(progress.status).isEqualTo(MasteryStatus.REVIEW)
-        assertThat(database.reviewEventDao().allForPack(PackIds.BUILTIN_CET4).single().source)
+        assertThat(database.reviewEventDao().allForPack(cet4Pack).single().source)
             .isEqualTo(AnswerSource.EXAM.id)
         assertThat(summary(CetLevel.CET4)!!.reviewEvents).isEqualTo(1)
     }
@@ -412,8 +425,8 @@ class ProgressRecorderTest {
 
     @Test
     fun `study duration and session count are added to the day the session started on`() = runTest {
-        recorder.addStudyDuration(startedAtMillis = start, durationMillis = 600_000L, packId = PackIds.BUILTIN_CET4)
-        recorder.addStudyDuration(startedAtMillis = start, durationMillis = 300_000L, packId = PackIds.BUILTIN_CET4)
+        recorder.addStudyDuration(startedAtMillis = start, durationMillis = 600_000L, packId = cet4Pack)
+        recorder.addStudyDuration(startedAtMillis = start, durationMillis = 300_000L, packId = cet4Pack)
 
         val day = summary()!!
         assertThat(day.studyDurationMs).isEqualTo(900_000L)
@@ -422,8 +435,8 @@ class ProgressRecorderTest {
 
     @Test
     fun `a zero or negative duration is ignored`() = runTest {
-        recorder.addStudyDuration(start, 0L, PackIds.BUILTIN_CET4)
-        recorder.addStudyDuration(start, -1_000L, PackIds.BUILTIN_CET4)
+        recorder.addStudyDuration(start, 0L, cet4Pack)
+        recorder.addStudyDuration(start, -1_000L, cet4Pack)
 
         assertThat(summary()).isNull()
     }
@@ -432,7 +445,7 @@ class ProgressRecorderTest {
     fun `exam results are added to the daily rollup`() = runTest {
         recorder.addExamResult(
             submittedAtMillis = start,
-            packId = PackIds.BUILTIN_CET4,
+            packId = cet4Pack,
             correct = 7,
             total = 10,
             durationMillis = 420_000L,
@@ -462,7 +475,7 @@ class ProgressRecorderTest {
         assertThat(second.masteryLevel).isEqualTo(2)
         assertThat(database.progressDao().byWordId(wordId)!!.intervalDays).isEqualTo(3)
 
-        val events = database.reviewEventDao().allForPack(PackIds.BUILTIN_CET4)
+        val events = database.reviewEventDao().allForPack(cet4Pack)
         assertThat(events.map { it.newIntervalDays }).containsExactly(1, 3).inOrder()
     }
 

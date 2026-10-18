@@ -54,6 +54,8 @@ import top.toneup.word.domain.model.CetLevel
 import top.toneup.word.ui.ImportWordsViewModel
 import top.toneup.word.ui.PackListViewModel
 import top.toneup.word.ui.ViewModelFactories
+import top.toneup.word.ui.WriteWordViewModel
+import top.toneup.word.ui.WrittenWordEntry
 import top.toneup.word.ui.components.AccentPanel
 import top.toneup.word.ui.components.AppCard
 import top.toneup.word.ui.components.ConfirmDialog
@@ -61,6 +63,7 @@ import top.toneup.word.ui.components.EmptyState
 import top.toneup.word.ui.components.PrimaryButton
 import top.toneup.word.ui.components.ReviewBadge
 import top.toneup.word.ui.components.SecondaryButton
+import top.toneup.word.ui.components.SectionHeader
 import top.toneup.word.ui.theme.AppTheme
 import top.toneup.word.ui.theme.Spacing
 
@@ -127,15 +130,28 @@ fun PackListScreen(
             ),
             verticalArrangement = Arrangement.spacedBy(Spacing.md),
         ) {
-            item {
-                PrimaryButton(
-                    text = "新建词库",
-                    onClick = { nameDialog = PackNameDialogState(mode = PackNameMode.Create, packId = null, initial = "") },
-                    leadingIcon = Icons.Filled.Add,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("packs_create"),
-                )
+            // Self-built packs are the point of this screen now: the create entry is a full-width
+            // highlighted panel with its own explanation, so it reads as "make your own pack"
+            // rather than a secondary button next to the built-in list (plan §B).
+            item(key = "packs_create_panel") {
+                AccentPanel {
+                    Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                        Text("自建词库", style = MaterialTheme.typography.titleSmall)
+                        Text(
+                            text = "把你阅读中积累的单词整理成自己的词库：到「写词库」页逐个写入，可附上自己的中文释义。",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = AppTheme.colors.mutedText,
+                        )
+                        PrimaryButton(
+                            text = "新建自建词库",
+                            onClick = { nameDialog = PackNameDialogState(mode = PackNameMode.Create, packId = null, initial = "") },
+                            leadingIcon = Icons.Filled.Add,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("packs_create"),
+                        )
+                    }
+                }
             }
 
             if (state.packs.isEmpty()) {
@@ -143,6 +159,8 @@ fun PackListScreen(
                     EmptyState(
                         title = "还没有词库",
                         description = "内置演示词库会在首次启动时自动创建；也可以新建自己的词库。",
+                        actionLabel = "新建词库",
+                        onAction = { nameDialog = PackNameDialogState(mode = PackNameMode.Create, packId = null, initial = "") },
                     )
                 }
             }
@@ -502,6 +520,157 @@ fun ImportWordsScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag("import_confirm"),
+                )
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Write word (手写录词) — the「写词库」tab (plan §B / §D)
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * Hand-type the words met while reading, one at a time, with an optional Chinese note.
+ *
+ * The note is the answer to "the dictionary meaning is not what I need here": it is stored in
+ * `user_note` and shown **before** the looked-up meanings on the study card (see
+ * `WordCard.WordMeaningBlock`). A word left without a note is completed by the gateway exactly
+ * like an imported word — this screen therefore stays fully offline until the gateway runs.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun WriteWordScreen(
+    container: AppContainer,
+) {
+    val viewModel: WriteWordViewModel =
+        viewModel(factory = ViewModelFactories.writeWord(container))
+    val state by viewModel.state.collectAsStateWithLifecycle()
+
+    val snackbarHostState = remember { SnackbarHostState() }
+    val message = state.message
+    LaunchedEffect(message) {
+        if (message != null) {
+            snackbarHostState.showSnackbar(message)
+            viewModel.dismissMessage()
+        }
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("写词库") },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background,
+                ),
+            )
+        },
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+        containerColor = MaterialTheme.colorScheme.background,
+    ) { padding ->
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding),
+            contentPadding = PaddingValues(
+                start = Spacing.lg,
+                end = Spacing.lg,
+                top = Spacing.md,
+                bottom = Spacing.xl,
+            ),
+            verticalArrangement = Arrangement.spacedBy(Spacing.md),
+        ) {
+            item(key = "write_pack_hint") {
+                AccentPanel {
+                    Text(
+                        text = "写入到当前词库：${
+                            state.packName.ifBlank { state.packId }.ifBlank { "（未选择）" }
+                        }",
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.testTag("write_pack_hint"),
+                    )
+                }
+            }
+
+            item(key = "write_input") {
+                AppCard(modifier = Modifier.fillMaxWidth()) {
+                    Column(verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
+                        OutlinedTextField(
+                            value = state.wordInput,
+                            onValueChange = viewModel::onWordChanged,
+                            label = { Text("单词") },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("write_word_field"),
+                        )
+                        OutlinedTextField(
+                            value = state.noteInput,
+                            onValueChange = viewModel::onNoteChanged,
+                            label = { Text("我的释义 / 注释（可选，中文）") },
+                            minLines = 2,
+                            maxLines = 4,
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                            keyboardActions = KeyboardActions(onDone = { viewModel.write() }),
+                            supportingText = {
+                                Text("填写后会优先展示，覆盖词典里不符合语境的意思。")
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("write_note_field"),
+                        )
+                        PrimaryButton(
+                            text = "写入",
+                            onClick = viewModel::write,
+                            enabled = state.wordInput.isNotBlank() && !state.saving,
+                            loading = state.saving,
+                            leadingIcon = Icons.Filled.Add,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("write_submit"),
+                        )
+                    }
+                }
+            }
+
+            item(key = "write_written_header") {
+                SectionHeader(title = "本次已写入")
+            }
+
+            if (state.written.isEmpty()) {
+                item(key = "write_written_empty") {
+                    EmptyState(
+                        title = "还没有写入单词",
+                        description = "在上方输入一个单词，可附上自己的中文释义；写入后会立即出现在这里。",
+                    )
+                }
+            } else {
+                items(state.written, key = { it.wordId }) { entry ->
+                    WrittenWordRow(
+                        entry = entry,
+                        modifier = Modifier.testTag("write_written_${entry.wordId}"),
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** One row of "本次已写入": the word, and the learner's own note when present. */
+@Composable
+private fun WrittenWordRow(
+    entry: WrittenWordEntry,
+    modifier: Modifier = Modifier,
+) {
+    AppCard(modifier = modifier.fillMaxWidth()) {
+        Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+            Text(text = entry.word, style = MaterialTheme.typography.titleSmall)
+            if (entry.note.isNotEmpty()) {
+                Text(
+                    text = entry.note,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = AppTheme.colors.mutedText,
                 )
             }
         }

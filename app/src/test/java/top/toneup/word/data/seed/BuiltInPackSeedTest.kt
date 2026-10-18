@@ -98,7 +98,7 @@ class BuiltInPackSeedTest {
     private fun record(
         word: String,
         meaning: String = "释义",
-        level: CetLevel = CetLevel.CET4,
+        level: CetLevel = CetLevel.CET6,
         index: Int = 1,
         phonetic: String = "/test/",
     ) =
@@ -118,17 +118,17 @@ class BuiltInPackSeedTest {
             audioUri = null,
         )
 
-    private fun definition(version: Int, count: Int, level: CetLevel = CetLevel.CET4) = BuiltInPackDefinition(
-        id = if (level == CetLevel.CET4) "builtin-cet4" else "builtin-cet6",
+    private fun definition(version: Int, count: Int, level: CetLevel = CetLevel.CET6) = BuiltInPackDefinition(
+        id = if (level == CetLevel.CET6) "builtin-cet6" else "builtin-cet6",
         assetPath = "wordpacks/x.json",
         level = level,
-        name = if (level == CetLevel.CET4) "CET-4 词汇" else "CET-6 词汇",
+        name = if (level == CetLevel.CET6) "CET-4 词汇" else "CET-6 词汇",
         version = version,
         expectedWordCount = count,
     )
 
     private suspend fun wordIdOf(word: String): Long? =
-        database.wordDao().byNormalized(PackIds.BUILTIN_CET4, Word.normalizeWordKey(word))?.id
+        database.wordDao().byNormalized(PackIds.BUILTIN_CET6, Word.normalizeWordKey(word))?.id
 
     // --- tests -----------------------------------------------------------------------------
 
@@ -137,14 +137,14 @@ class BuiltInPackSeedTest {
         val words = listOf(record("apple"), record("banana", index = 2))
         val source = FakePackSource(
             definitions = listOf(definition(version = 2, count = 2)),
-            wordsByPack = mutableMapOf("builtin-cet4" to words),
+            wordsByPack = mutableMapOf("builtin-cet6" to words),
         )
         val repository = DefaultWordRepository(database, FixedTime(), source)
 
         repository.ensureBuiltInPacks()
 
-        assertThat(database.wordDao().count(PackIds.BUILTIN_CET4)).isEqualTo(2)
-        val pack = database.wordDao().packById("builtin-cet4")
+        assertThat(database.wordDao().count(PackIds.BUILTIN_CET6)).isEqualTo(2)
+        val pack = database.wordDao().packById("builtin-cet6")
         assertThat(pack).isNotNull()
         assertThat(pack!!.version).isEqualTo("2")
         assertThat(pack.isBuiltIn).isTrue()
@@ -154,7 +154,7 @@ class BuiltInPackSeedTest {
     @Test
     fun `re-running the seed for an up-to-date pack does no work`() = runTest {
         val words = listOf(record("apple"), record("banana", index = 2))
-        val source = FakePackSource(listOf(definition(2, 2)), mutableMapOf("builtin-cet4" to words))
+        val source = FakePackSource(listOf(definition(2, 2)), mutableMapOf("builtin-cet6" to words))
         val repository = DefaultWordRepository(database, FixedTime(), source)
 
         repository.ensureBuiltInPacks()
@@ -164,13 +164,13 @@ class BuiltInPackSeedTest {
         // The second run sees the stored version and skips parsing entirely: the 3 MB assets must
         // not be re-parsed on every cold start.
         assertThat(source.loadCount).isEqualTo(loadsAfterFirst)
-        assertThat(database.wordDao().count(PackIds.BUILTIN_CET4)).isEqualTo(2)
+        assertThat(database.wordDao().count(PackIds.BUILTIN_CET6)).isEqualTo(2)
     }
 
     @Test
     fun `upgrading a pack keeps row ids, learning progress and favourites`() = runTest {
         val v1 = listOf(record("apple", meaning = "旧释义"), record("banana", index = 2))
-        val source = FakePackSource(listOf(definition(1, 2)), mutableMapOf("builtin-cet4" to v1))
+        val source = FakePackSource(listOf(definition(1, 2)), mutableMapOf("builtin-cet6" to v1))
         val repository = DefaultWordRepository(database, FixedTime(), source)
         repository.ensureBuiltInPacks()
 
@@ -185,7 +185,7 @@ class BuiltInPackSeedTest {
             record("banana", index = 2),
             record("cherry", index = 3),
         )
-        source.upgrade(listOf(definition(2, 3)), mutableMapOf("builtin-cet4" to v2))
+        source.upgrade(listOf(definition(2, 3)), mutableMapOf("builtin-cet6" to v2))
 
         repository.ensureBuiltInPacks()
 
@@ -197,29 +197,29 @@ class BuiltInPackSeedTest {
         assertThat(progress!!.isFavorite).isTrue()
         assertThat(progress.consecutiveCorrectCount).isEqualTo(1)
 
-        val events = database.reviewEventDao().countSince(PackIds.BUILTIN_CET4, 0L)
+        val events = database.reviewEventDao().countSince(PackIds.BUILTIN_CET6, 0L)
         assertThat(events).isEqualTo(1)
 
-        assertThat(database.wordDao().count(PackIds.BUILTIN_CET4)).isEqualTo(3)
-        assertThat(database.wordDao().packById("builtin-cet4")!!.version).isEqualTo("2")
+        assertThat(database.wordDao().count(PackIds.BUILTIN_CET6)).isEqualTo(3)
+        assertThat(database.wordDao().packById("builtin-cet6")!!.version).isEqualTo("2")
     }
 
     @Test
     fun `upgrading updates content in place instead of duplicating the word`() = runTest {
         val source = FakePackSource(
             listOf(definition(1, 1)),
-            mutableMapOf("builtin-cet4" to listOf(record("apple", meaning = "旧释义"))),
+            mutableMapOf("builtin-cet6" to listOf(record("apple", meaning = "旧释义"))),
         )
         val repository = DefaultWordRepository(database, FixedTime(), source)
         repository.ensureBuiltInPacks()
 
         source.upgrade(
             listOf(definition(2, 1)),
-            mutableMapOf("builtin-cet4" to listOf(record("apple", meaning = "新释义", phonetic = "/new/"))),
+            mutableMapOf("builtin-cet6" to listOf(record("apple", meaning = "新释义", phonetic = "/new/"))),
         )
         repository.ensureBuiltInPacks()
 
-        val rows = database.wordDao().allForPack(PackIds.BUILTIN_CET4)
+        val rows = database.wordDao().allForPack(PackIds.BUILTIN_CET6)
         assertThat(rows).hasSize(1)
         assertThat(rows.single().meanings).contains("新释义")
         assertThat(rows.single().phonetic).isEqualTo("/new/")
@@ -229,7 +229,7 @@ class BuiltInPackSeedTest {
     fun `a missing asset falls back to the in-code demo packs`() = runTest {
         val failing = object : PackSource {
             override suspend fun definitions(): List<BuiltInPackDefinition> = listOf(
-                BuiltInPackDefinition("builtin-cet4", "wordpacks/cet4.json", CetLevel.CET4, "CET-4", 2, 3849),
+                BuiltInPackDefinition("builtin-cet6", "wordpacks/cet4.json", CetLevel.CET6, "CET-4", 2, 3849),
             )
 
             override suspend fun load(definition: BuiltInPackDefinition): Outcome<ImportPreview> =
@@ -240,14 +240,14 @@ class BuiltInPackSeedTest {
         repository.ensureBuiltInPacks()
 
         // The app must still start with a usable list rather than an empty one.
-        assertThat(database.wordDao().count(PackIds.BUILTIN_CET4)).isGreaterThan(0)
-        assertThat(database.wordDao().packById("builtin-cet4")).isNotNull()
+        assertThat(database.wordDao().count(PackIds.BUILTIN_CET6)).isGreaterThan(0)
+        assertThat(database.wordDao().packById("builtin-cet6")).isNotNull()
     }
 
     @Test
     fun `seeding reports progress per pack`() = runTest {
         val words = (1..1000).map { index -> record("word$index", index = index) }
-        val source = FakePackSource(listOf(definition(2, 1000)), mutableMapOf("builtin-cet4" to words))
+        val source = FakePackSource(listOf(definition(2, 1000)), mutableMapOf("builtin-cet6" to words))
         val reported = mutableListOf<SeedProgress>()
         val repository = DefaultWordRepository(database, FixedTime(), source) { reported += it }
 
@@ -269,20 +269,20 @@ class BuiltInPackSeedTest {
             record("ability", meaning = "能力", index = 2),
             record("absorb", meaning = "吸收", index = 3),
         )
-        val source = FakePackSource(listOf(definition(2, 3)), mutableMapOf("builtin-cet4" to words))
+        val source = FakePackSource(listOf(definition(2, 3)), mutableMapOf("builtin-cet6" to words))
         val repository = DefaultWordRepository(database, FixedTime(), source)
         repository.ensureBuiltInPacks()
 
-        val byPrefix = repository.search(PackIds.BUILTIN_CET4, "ab", 10).map { it.word.word }
+        val byPrefix = repository.search(PackIds.BUILTIN_CET6, "ab", 10).map { it.word.word }
         assertThat(byPrefix).containsAtLeast("abandon", "ability", "absorb").inOrder()
 
-        val byMeaning = repository.search(PackIds.BUILTIN_CET4, "放弃", 10).map { it.word.word }
+        val byMeaning = repository.search(PackIds.BUILTIN_CET6, "放弃", 10).map { it.word.word }
         assertThat(byMeaning).containsExactly("abandon")
 
-        val all = repository.search(PackIds.BUILTIN_CET4, "", 10)
+        val all = repository.search(PackIds.BUILTIN_CET6, "", 10)
         assertThat(all).hasSize(3)
 
         // A wildcard typed by the user must be treated literally, not as "match everything".
-        assertThat(repository.search(PackIds.BUILTIN_CET4, "%", 10)).isEmpty()
+        assertThat(repository.search(PackIds.BUILTIN_CET6, "%", 10)).isEmpty()
     }
 }

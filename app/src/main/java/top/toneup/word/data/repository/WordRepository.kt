@@ -115,6 +115,25 @@ interface WordRepository {
     suspend fun addWordsToPack(packId: String, words: List<String>, now: Long): Outcome<PackAddResult>
 
     /**
+     * Writes one hand-typed word (with an optional Chinese note) into a pack — the「写词库」flow.
+     *
+     * Identity is still `(pack_id, normalized_word)` (D2): a word already in the pack keeps its
+     * existing row and its progress/mistake history (never a REPLACE), and only a non-blank
+     * [note] overwrites `user_note` — leaving the field empty therefore never erases a note the
+     * learner wrote earlier. New rows enter empty of content with `lookup_state='PENDING'`, so a
+     * word typed without a note is filled in later by the gateway (D4) while the note lives in
+     * `user_note` and is rendered before the looked-up meanings.
+     *
+     * @return the word row id, so the caller can immediately read it back for the "已写入" list.
+     */
+    suspend fun addWordWithNote(
+        packId: String,
+        word: String,
+        note: String,
+        now: Long,
+    ): Outcome<Long>
+
+    /**
      * Vocabulary lookup for the word browser.
      *
      * Matches the English word and the Chinese meanings; prefix matches on the word sort first so
@@ -325,7 +344,7 @@ class DefaultWordRepository(
     private suspend fun seedInlineDemoPacks() {
         val now = time.nowMillis()
         BuiltInWordPacks.all.forEach { (packId, words) ->
-            val level = if (packId.contains("cet6")) CetLevel.CET6 else CetLevel.CET4
+            val level = CetLevel.CET6
             val existingPack = db.wordDao().packById(packId)
             val existingIds: Map<String, Long> = db.wordDao().idByNormalized(packId)
                 .associate { it.normalizedWord to it.id }
@@ -360,7 +379,7 @@ class DefaultWordRepository(
                 db.wordDao().upsertPack(
                     WordPackEntity(
                         id = packId,
-                        name = if (level == CetLevel.CET6) "六级演示词库" else "四级演示词库",
+                        name = "六级演示词库",
                         level = level.id,
                         description = "${words.size} 个自建演示词条",
                         source = BuiltInWordPacks.SOURCE,
@@ -712,6 +731,64 @@ class DefaultWordRepository(
         }
     } catch (throwable: Throwable) {
         Outcome.Failure(AppError.database(throwable.javaClass.simpleName))
+    }
+
+    override suspend fun addWordWithNote(
+        packId: String,
+        word: String,
+        note: String,
+        now: Long,
+    ): Outcome<Long> {
+        val trimmed = word.trim()
+        if (trimmed.isEmpty()) return Outcome.Failure(AppError.empty())
+        val normalized = Word.normalizeWordKey(trimmed)
+        if (normalized.isEmpty()) return Outcome.Failure(AppError.empty())
+        return try {
+            val pack = db.wordDao().packById(packId)
+                ?: return Outcome.Failure(AppError(ErrorCode.DATABASE, "词库不存在或已被删除。"))
+            val cleanedNote = note.trim()
+            db.withTransaction {
+                // D2 identity: look the row up first so an existing word keeps its progress,
+                // mistakes and exam snapshots — never `Insert(REPLACE)`.
+                val existingId = db.wordDao().byNormalized(packId, normalized)?.id
+                val wordId: Long? = existingId ?: db.wordDao().insertAll(
+                    listOf(
+                        WordEntity(
+                            packId = packId,
+                            externalId = null,
+                            word = trimmed,
+                            normalizedWord = normalized,
+                            phonetic = "",
+                            partOfSpeech = "",
+                            meanings = "[]",
+                            level = pack.level,
+                            source = "",
+                            license = "",
+                            audioUri = null,
+                            createdAt = now,
+                            updatedAt = now,
+                            // D4: the gateway fills the meaning later; a note never needs it.
+                            lookupState = "PENDING",
+                            meaningSource = "",
+                        ),
+                    ),
+                ).firstOrNull()?.takeIf { it >= 0L }
+                if (wordId == null) {
+                    return@withTransaction Outcome.Failure(AppError.database("insert-failed"))
+                }
+                if (existingId == null) {
+                    db.wordDao().updatePackWordCount(packId, db.wordDao().countInPack(packId), now)
+                }
+                // Only a non-blank note writes through; an empty field means "no note", so it
+                // must not erase a note the learner already saved for this word.
+                if (cleanedNote.isNotEmpty()) {
+                    db.wordDao().updateUserNote(wordId, cleanedNote, now)
+                }
+                Outcome.Success(wordId)
+            }
+        } catch (throwable: Throwable) {
+            Outcome.Failure(AppError.database(throwable.javaClass.simpleName))
+        }
     }
 
     // --- Card editing (M6a, plan §9) ---------------------------------------------------------
