@@ -307,7 +307,10 @@ fun HomeScreen(
                                 actionLabel = "进入错题本",
                                 onAction = onOpenReviewCenter,
                             )
-                            if (overview.activeCount == 0) {
+                            // Due reviews can exist with no mistake row at all: keying the empty
+                            // state on mistakes alone would hide 复习错题 while a drill is still
+                            // useful. Both counts have to be zero for the book to be "empty".
+                            if (overview.activeCount == 0 && overview.dueTodayCount == 0) {
                                 Text(
                                     text = "还没有错题记录。答错或标记为「模糊」的词会自动收进错题本。",
                                     style = MaterialTheme.typography.bodyMedium,

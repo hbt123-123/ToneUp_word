@@ -326,6 +326,16 @@ private fun WordMeaningBlock(word: Word, onEdit: (() -> Unit)? = null) {
         word.meanings.forEach { meaning ->
             Text(text = meaning, style = MaterialTheme.typography.titleSmall)
         }
+        // A word typed into 「写词库」 starts with no meanings; while the gateway is still working
+        // (or the device is offline) the block would otherwise render nothing at all, which reads
+        // as a bug rather than as "not filled in yet".
+        if (word.meanings.isEmpty() && word.userNote.isBlank() && word.lookupState == "PENDING") {
+            Text(
+                text = "释义待补全",
+                style = MaterialTheme.typography.bodyMedium,
+                color = AppTheme.colors.mutedText,
+            )
+        }
         // Plan §9: the FreeDictionary English definition travels directly under the standard
         // meanings; it hides itself when empty.
         if (word.enDefinition.isNotBlank()) {

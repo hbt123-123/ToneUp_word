@@ -275,6 +275,68 @@ class AddWordsToPackTest {
         assertThat(apple.lookupState).isEqualTo("OK") // not reset to PENDING
     }
 
+    // --- addWordWithNote (the 「写词库」 write path) -------------------------------------------
+
+    @Test
+    fun `addWordWithNote inserts a PENDING row with the trimmed note and refreshes the count`() = runTest {
+        insertBuiltInPack()
+
+        val outcome = repository.addWordWithNote(
+            packId = PackIds.BUILTIN_CET6,
+            word = "  apple  ",
+            note = "  特殊含义：苹果公司  ",
+            now = now,
+        )
+
+        assertThat(outcome.isSuccess).isTrue()
+        val word = database.wordDao().byNormalized(PackIds.BUILTIN_CET6, "apple")!!
+        assertThat(word.id).isEqualTo(outcome.getOrNull())
+        assertThat(word.word).isEqualTo("apple")
+        // A word typed by hand has no dictionary meanings yet: it enters for the gateway, exactly
+        // like an imported one, and the learner's note is stored beside it.
+        assertThat(word.meanings).isEqualTo("[]")
+        assertThat(word.lookupState).isEqualTo("PENDING")
+        assertThat(word.meaningSource).isEmpty()
+        assertThat(word.userNote).isEqualTo("特殊含义：苹果公司")
+        assertThat(word.level).isEqualTo(CetLevel.CET6.id)
+        assertThat(database.wordDao().packById(PackIds.BUILTIN_CET6)!!.wordCount).isEqualTo(1)
+    }
+
+    @Test
+    fun `addWordWithNote reuses the existing row and never erases a note with a blank one`() = runTest {
+        insertBuiltInPack()
+
+        val first = repository.addWordWithNote(PackIds.BUILTIN_CET6, "apple", "第一版释义", now)
+        val wordId = requireNotNull(first.getOrNull())
+        database.progressDao().upsert(progressEntity(wordId, status = "REVIEW"))
+
+        // Case variant → same identity, same row: the progress row must survive (no REPLACE).
+        val second = repository.addWordWithNote(PackIds.BUILTIN_CET6, "Apple", "更精确的释义", now + 1)
+        assertThat(second.getOrNull()).isEqualTo(wordId)
+        assertThat(database.progressDao().byWordId(wordId)).isNotNull()
+        assertThat(database.wordDao().packById(PackIds.BUILTIN_CET6)!!.wordCount).isEqualTo(1)
+
+        // A blank note means "no note", so the saved one must stay untouched.
+        val third = repository.addWordWithNote(PackIds.BUILTIN_CET6, "APPLE", "   ", now + 2)
+        assertThat(third.getOrNull()).isEqualTo(wordId)
+        assertThat(database.wordDao().byNormalized(PackIds.BUILTIN_CET6, "apple")!!.userNote)
+            .isEqualTo("更精确的释义")
+    }
+
+    @Test
+    fun `addWordWithNote fails on a blank word and writes nothing to a missing pack`() = runTest {
+        insertBuiltInPack()
+
+        val blank = repository.addWordWithNote(PackIds.BUILTIN_CET6, "   ", "x", now)
+        assertThat(blank.isSuccess).isFalse()
+        assertThat((blank as Outcome.Failure).error.code)
+            .isEqualTo(top.toneup.word.core.result.ErrorCode.EMPTY)
+
+        val missing = repository.addWordWithNote("no-such-pack", "apple", "", now)
+        assertThat(missing.isSuccess).isFalse()
+        assertThat(database.wordDao().count("no-such-pack")).isEqualTo(0)
+    }
+
     // --- renamePack ----------------------------------------------------------------------------
 
     @Test

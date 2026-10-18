@@ -13,6 +13,7 @@ import top.toneup.word.data.repository.AnswerSource
 import top.toneup.word.data.repository.ExamDraft
 import top.toneup.word.data.repository.ExamStatus
 import top.toneup.word.data.repository.ExportScope
+import top.toneup.word.data.repository.MeaningSyncRepository
 import top.toneup.word.data.repository.PackAddResult
 import top.toneup.word.data.repository.RestoreResult
 import top.toneup.word.data.repository.SeedProgress
@@ -2043,7 +2044,11 @@ data class WriteWordUiState(
  * The pack scope follows `effectivePackId`, so a learner who switched packs types into the pack
  * they are currently studying.
  */
-class WriteWordViewModel(private val container: AppContainer) : ViewModel() {
+class WriteWordViewModel(
+    private val container: AppContainer,
+    /** The gateway seam — injectable so the write path can be tested without WorkManager. */
+    private val meaningSync: MeaningSyncRepository = container.meaningSync,
+) : ViewModel() {
 
     private val _input = MutableStateFlow(WriteWordInput())
 
@@ -2106,7 +2111,7 @@ class WriteWordViewModel(private val container: AppContainer) : ViewModel() {
                 is Outcome.Success -> {
                     // A word typed without a note is filled in later by the gateway; a failed
                     // enqueue only delays completion, never data (plan §7.3).
-                    container.meaningSync.enqueueAll()
+                    meaningSync.enqueueAll()
                     val entry = WrittenWordEntry(
                         wordId = result.value,
                         word = word,
@@ -2117,7 +2122,13 @@ class WriteWordViewModel(private val container: AppContainer) : ViewModel() {
                             saving = false,
                             word = "",
                             note = "",
-                            written = (listOf(entry) + it.written).take(MAX_RECENT),
+                            // Identity is (pack, normalized word), so writing the same word twice
+                            // returns the same row id — drop the stale line first, otherwise the
+                            // LazyColumn would be handed a duplicate key and throw.
+                            written = (
+                                listOf(entry) +
+                                    it.written.filterNot { old -> old.wordId == entry.wordId }
+                                ).take(MAX_RECENT),
                             message = "已写入「$word」。",
                         )
                     }
