@@ -888,32 +888,32 @@ class ReviewCenterViewModel(private val container: AppContainer) : ViewModel() {
     private var overviewJob: Job? = null
 
     init {
+        // D1: the scope of every query is the active pack. It is read once, when the screen is
+        // created — exactly like before this change. This view model deliberately does not hold a
+        // long-lived `settings` subscription: a collector that outlives the composition keeps
+        // DataStore's write actor busy, and the next write (e.g. in another test class sharing the
+        // JVM) then parks forever.
         viewModelScope.launch {
             val settings = container.settingsRepository.current()
-            selectCategory(MistakeCategory.RECENT, settings.effectiveLevel, settings.effectivePackId)
+            _state.update {
+                it.copy(
+                    filter = it.filter.copy(packId = settings.effectivePackId, level = settings.effectiveLevel),
+                    loading = true,
+                )
+            }
+            observeList()
+            observeOverview(settings.effectivePackId)
         }
     }
 
     /**
-     * Points every query at the given pack and refreshes both lists.
-     *
-     * [packId] defaults to the builtin pack of [level] so callers that only hold a display
-     * level (the review screen's level chips) keep working; the init path passes the
-     * learner's actual `activePackId`.
+     * Category chips only change the category; the pack scope stays the active pack (D1), so
+     * switching a tab never resets the mistake book back to a builtin pack.
      */
-    fun selectCategory(category: MistakeCategory, level: CetLevel, packId: String = PackIds.defaultPackIdFor(level)) {
-        _state.update {
-            it.copy(filter = it.filter.copy(category = category, level = level, packId = packId), loading = true)
-        }
+    fun selectCategory(category: MistakeCategory) {
+        _state.update { it.copy(filter = it.filter.copy(category = category), loading = true) }
         observeList()
-        observeOverview(packId)
-    }
-
-    fun setLevel(level: CetLevel) {
-        val packId = PackIds.defaultPackIdFor(level)
-        _state.update { it.copy(filter = it.filter.copy(level = level, packId = packId), loading = true) }
-        observeList()
-        observeOverview(packId)
+        observeOverview(_state.value.filter.packId)
     }
 
     fun setSearch(query: String) {
@@ -1491,8 +1491,6 @@ class ProfileViewModel(private val container: AppContainer) : ViewModel() {
 
     /** Clears the local speech counters (they are diagnostics, not study data). */
     fun resetSpeechDiagnostics() = container.speechDiagnostics.reset()
-
-    fun setLevel(level: CetLevel) = launchSettings { setLevel(level) }
 
     fun setDailyNewWordGoal(value: Int) = launchSettings { setDailyNewWordGoal(value) }
 

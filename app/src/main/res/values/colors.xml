@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="window_background">#F8FAF8</color>
+    <!-- 深色主题的窗口背景：`values-night/colors.xml` 提供夜间取值，此处补默认声明以满足 Lint（缺失默认资源）。
+         该名称只被 `values-night/themes.xml` 引用，默认值在浅色下不会被使用。 -->
+    <color name="window_background_dark">#121815</color>
     <!-- 自适应图标背景：取自「上岸水环」作品的深蓝紫底色（前景透明圆角处依赖它与作品同色） -->
     <color name="ic_launcher_background">#34468B</color>
 </resources>

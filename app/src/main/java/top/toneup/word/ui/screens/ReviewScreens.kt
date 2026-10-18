@@ -173,7 +173,7 @@ fun ReviewCenterScreen(
                 FilterChipGroup(
                     options = MistakeCategory.entries.toList(),
                     selected = state.filter.category,
-                    onSelect = { viewModel.selectCategory(it, state.filter.level) },
+                    onSelect = { viewModel.selectCategory(it) },
                     label = { it.label },
                     modifier = Modifier.testTag("review_categories"),
                 )

@@ -20,7 +20,9 @@ import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import androidx.lifecycle.viewModelScope
 import org.junit.After
@@ -89,12 +91,25 @@ class ExternalImportViewModelTest {
         runBlocking(Dispatchers.IO) { container.settingsRepository.resetToDefaults() }
         meaningSync = RecordingMeaningSync()
         viewModel = ExternalImportViewModel(container, meaningSync)
+        // The pack / active-pack flows are `WhileSubscribed` (they must not stay subscribed after
+        // the sheet is gone). These warm collectors give the assertions a live subscriber for the
+        // whole test; the coroutines run inside [viewModelScope], so [tearDown] cancels them too.
+        viewModel.viewModelScope.launch { viewModel.packs.collect { } }
+        viewModel.viewModelScope.launch { viewModel.activePackId.collect { } }
     }
 
     @After
     fun tearDown() {
-        // Stop the ViewModel's eager Room/DataStore subscriptions before closing the pool.
+        // Cancel the ViewModel's Room/DataStore subscriptions, then keep draining the paused main
+        // looper until they finish unwinding. DataStore's write actor stays reserved for the
+        // previous reader until that reader's cancellation has actually run; the cancellation
+        // continuation lands on this (soon to be abandoned) paused looper, so without the drain
+        // the next test class in the same JVM blocks forever on its first DataStore write.
         viewModel.viewModelScope.cancel()
+        repeat(DRAIN_ROUNDS) {
+            shadowOf(Looper.getMainLooper()).idle()
+            Thread.sleep(POLL_INTERVAL_MILLIS)
+        }
         database.close()
     }
 
@@ -367,5 +382,11 @@ class ExternalImportViewModelTest {
     private companion object {
         /** Real-time bound for Room / DataStore round-trips on a busy machine. */
         const val TIMEOUT_MILLIS = 10_000L
+
+        /** Granularity at which the paused main looper is pumped while polling. */
+        const val POLL_INTERVAL_MILLIS = 10L
+
+        /** Teardown drain rounds: enough for a DataStore reader's cancellation to unwind. */
+        const val DRAIN_ROUNDS = 50
     }
 }

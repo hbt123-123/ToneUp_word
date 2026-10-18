@@ -1,7 +1,8 @@
 # 自建词库 + 网关释义补全 — 开发计划
 
-> 状态：**待评审** · 起草：架构评审会 · 基线：commit e98ea83（Room v1，404 单测）
-> 本文档是后续编码实现的唯一指导蓝图；实现过程中若偏离，须回写本文档。
+> 状态：**已交付**（M0–M6 全部落地，代码基线 HEAD `fbfeefe`）· 起草：架构评审会 · 原始基线：commit e98ea83（Room v1，404 单测）
+> 本文档是本次改造的指导蓝图；实现过程中的有意偏离均已回写（见 §3 D4/D8、§5、§6.2、§7.2、§10、§12 的注记）。
+> 文档描述与代码不一致时**以代码为准**。
 
 ---
 
@@ -54,11 +55,11 @@
 | D1 | **纯按词库学习（已确认）**：学习范围 = `packId`。Repository/DAO/VM/Worker 的 level 参数全部替换为 packId；`CetLevel` 保留为词库元数据（内置包标 CET4/CET6，自定义包标 OTHER）。 | 用户已选定；统计/错题/考试天然按词库隔离，语义最清晰。 |
 | D2 | 单词行按 **(pack_id, normalized_word)** 唯一；同一单词可出现在多个词库，**进度跟行走、按包隔离**。 | 「每个词库独立存储单词及其学习进度」的直接落地；旧索引按 level 会让第二个自定义包"吞并"第一个包的行。 |
 | D3 | 释义查询结果缓存在独立表 `meaning_cache`（按 normalized_word 全局共享），写回 word 行。 | 同一单词跨词库/重复导入不重复请求；不覆盖手动编辑。 |
-| D4 | 释义状态机挂在 word 行：`lookup_state` ∈ `NONE/OK/PENDING/FAILED`；`meaning_source` ∈ `ecdict/freecdict/mt/manual`。`manual` 永不被自动覆盖。 | 满足「待补充」「修改后不再被覆盖」。 |
+| D4 | 释义状态机挂在 word 行：`lookup_state` ∈ `NONE/OK/PENDING/FAILED`；`meaning_source` ∈ `ecdict/freecdict/mt/file/manual`（`file` = 既有 / 文件导入来源，见 §4.1 回填 SQL）。`manual` 永不被自动覆盖。 | 满足「待补充」「修改后不再被覆盖」。 |
 | D5 | 后台补全用 **WorkManager 唯一任务**（复用现有 `work/` 设施），约束 = 联网 + 可选「仅 Wi-Fi」（`NetworkType.UNMETERED`）；顺序节流 250ms/词，401 立即停机并提示配置错误。 | 网关免费额度 10 万次/日；避免导出大批单词时打爆。 |
 | D6 | 网络栈：**Retrofit + OkHttp + kotlinx-serialization converter**，全部配置（baseUrl、key、三个 path）走 DataStore 设置项，默认值 = 文档网关。 | 需求指定；可配置满足「用户可更换网关」。 |
 | D7 | `baseUrl` 校验强制 **https**（默认 `https://gateway.lztfirefly.top`）。 | 个人应用不引入 cleartext 放开整包的安全代价；如确需 http 后续再评估 networkSecurityConfig。 |
-| D8 | 新 ViewModel 继续按约定**追加到 `ui/ViewModels.kt` 分节**（不另开文件），工厂追加到 `ViewModelFactories`。 | 遵守项目单文件聚合约定。 |
+| D8 | 新 ViewModel 继续按约定**追加到 `ui/ViewModels.kt` 分节**（不另开文件），工厂追加到 `ViewModelFactories`。<br>**落地例外**：`ExternalImportViewModel`（含 `ClipboardHash` 与 `ExternalImportSheet`）单独落在 `ui/ExternalImport.kt` —— 它是 **Activity 级**、跨导航图浮层的 VM，由 `MainActivity` 持有，不适合放进逐屏工厂集合。 | 遵守项目单文件聚合约定；Activity 级 VM 例外。 |
 | D9 | 迁移中无法归属的历史 OTHER 级汇总/会话行，归入保留 id `legacy-other`，不参与任何词库统计展示，仅保数据不丢。 | daily_summary 的 OTHER 行无法拆回各包；宁可隐藏不可删史。 |
 
 ---
@@ -129,7 +130,7 @@ CREATE TABLE meaning_cache (
 
 ## 5. 词库管理（M2）
 
-- 接线 `Routes.PACKS` → 新屏幕 `PackListScreen`（`ui/screens/PackLists.kt` 或并入现有 Profile 文件，按行数定）：
+- 接线 `Routes.PACKS` → 新屏幕 `PackListScreen`（**落地为 `ui/screens/PackScreens.kt`**，与 `ImportWordsScreen` 同文件双屏）：
   - 列表：`WordRepository.observePacks()`（内置在前、自定义在后），显示名称/词数/当前选中；行内菜单：重命名、删除（**内置包禁删**，已有 `deleteImportedPack` 守卫）、设为当前词库。
   - 新建：对话框输入名称 → `WordDao.upsertPack(id="user-" + 时间戳或 UUID, level="OTHER", is_built_in=false)` → 立即置为 `activePackId` 并进入导入页。
   - 删除确认必须提示：**词与学习进度一并删除**（FK CASCADE 会连带 progress/event/wrong）。
@@ -151,7 +152,7 @@ CREATE TABLE meaning_cache (
 
 ### 6.2 导入界面
 
-- 新路由 `Routes.IMPORT_WORDS = "import-words?packId={packId}"`（或从 PACKS 页内嵌）：多行 TextField 粘贴 → 实时解析预览（成功 N / 过滤 M / 重复 K）→ 确认 → 事务入库。
+- 新路由 `Routes.IMPORT_WORDS = "import-words/{packId}"`（**落地为路径参数**；PACKS 页的导入入口直达）：多行 TextField 粘贴 → 实时解析预览（成功 N / 过滤 M / 重复 K）→ 确认 → 事务入库。
 - 入库复用 `WordRepository` 事务模式（**不用 `Insert(REPLACE)`**）：`(pack_id, normalized_word)` 存在则跳过（或合并更新空字段），新行 `lookup_state='PENDING'`、`meaning_source=''`、phonetic 空。
 - 入库成功后立即 `enqueueMeaningSync()`（见 §7）。
 - 失败语义：解析失败 → `Outcome` 错误展示；网络不可用**不影响**入库（词先进，释义后补）。
@@ -240,8 +241,8 @@ CREATE TABLE meaning_cache (
 | dict/en/mt 路径 | String（高级折叠区） | `/dict` · `/en/{word}` · `/v1/chat/completions` |
 | 仅 Wi-Fi 补全 | Boolean | 关 |
 | 剪贴板识别 | Boolean | 开 |
-| 重试全部待补充 | 按钮（显示 PENDING/FAILED 计数） | — |
-| 连通性测试 | 按钮（`GET /` 健康检查） | — |
+| 立即补全（计划原稿称「重试全部待补充」） | 按钮（显示 PENDING/FAILED 计数） | — |
+| 测试连接（计划原稿称「连通性测试」） | 按钮（`GET /` 健康检查） | — |
 
 `UserSettings`/`SettingsRepository`/`DataStoreSettingsRepository.Keys`/`SettingsScreen`/`ProfileViewModel` 四处同步新增（沿用现有 setter→`launchSettings` 模式）。
 
@@ -282,7 +283,12 @@ M0 基建解禁 ──► M1 数据层v2+packId扫描(关键路径) ──┬─
 | **M5** ✅ | 剪贴板焦点读取+hash 去重+弹层；Share/ProcessText filter+singleTop+onNewIntent | 真机：从浏览器/备忘录分享导入；回前台弹层去重 |
 | **M6** ✅ | 卡片笔记/释义编辑（manual 保护）、按词库导出、待补充重试入口、文档回写 | 端到端回归 + `lintVitalRelease`（低内存机器可跳过） |
 
-> **交付状态（2026-10-14）**：M0–M6 全部实现并提交；测试从基线 404 增至 513（M6a 完成点，M6b 后另增）。实际泳道划分与计划略有偏差：M0/M1 并行开工；M4 拆为 backend/UI 两段；M5 前置在 M4-UI 期间并行；M6 拆为 M6a（编辑+展示+v3 迁移+首页入口）与 M6b（audio_url 播放回落）。M6b 完成后的最终测试数以此节之后的更新为准。
+> **交付状态（2026-10-14，后于 2026-10-17 回写）**：M0–M6 全部实现并提交；测试从基线 404 增至 513（M6a 完成点），M6b 后最终 **529 用例 / 38 测试类**（HEAD `fbfeefe`）。
+> 实际泳道划分与计划略有偏差：M0/M1 并行开工；M4 拆为 backend/UI 两段；M5 前置在 M4-UI 期间并行；M6 拆为 M6a（编辑+展示+v3 迁移+首页入口）与 M6b（audio_url 播放回落）。
+> 两处与计划字面的实质差异（已回写在正文）：**Room 实到 v3**（计划只写到 v2；§7.2 记录了视图层补列的原因），
+> 以及 **level 的消费面**——§4.5 要求 level「仅在 onboarding / 词库创建处消费」，实现时 Profile 页一度仍留有
+> 「词库级别」选择器、错题本也按 level 切包，二者都会把自定义词库的作用域踢回内置包；已按 D1 修正为
+> **只由 `activePackId` 决定学习范围**（Profile 页改由「词库管理」切换；错题本随当前词库联动）。
 
 并行策略：M1 是关键路径，**不与其他写入泳道并行**（全仓扫描冲突面太大）；M1 完成后 M2/M3/M4 三泳道可并行（不同包：`ui/screens+Routes` vs `domain/importer` vs `data/gateway+work`），M5 依赖 M2（词库选择弹层）与 M3（解析器）。各泳道单独提交，评审人=泳道作者之外的另一泳道负责人。
 

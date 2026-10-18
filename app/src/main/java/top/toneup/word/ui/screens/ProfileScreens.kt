@@ -117,26 +117,6 @@ fun ProfileScreen(
             verticalArrangement = Arrangement.spacedBy(Spacing.md),
         ) {
             item {
-                AppCard {
-                    Column(verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
-                        SectionHeader(title = "词库级别")
-                        FilterChipGroup(
-                            options = CetLevel.selectable,
-                            selected = state.settings.level,
-                            onSelect = viewModel::setLevel,
-                            label = { it.label },
-                            modifier = Modifier.testTag("profile_level"),
-                        )
-                        Text(
-                            text = "当前词库共 ${state.wordCount} 个单词；切换级别会同时切换首页计划与统计。",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = AppTheme.colors.mutedText,
-                        )
-                    }
-                }
-            }
-
-            item {
                 // EqualHeightTileRow (instead of a bare Row) because only the second tile has a
                 // caption: without it the two 色块 come out at different heights and the row looks
                 // misaligned. `fillMaxHeight()` makes whichever tile is shorter match the taller one.

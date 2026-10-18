@@ -163,18 +163,31 @@ class ExternalImportViewModel(
 
     val state: StateFlow<ExternalImportUiState> = _state.asStateFlow()
 
-    /** Selectable packs: built-in first, `legacy-other` filtered out (D9 — a bucket, not a pack). */
+    /**
+     * Selectable packs: built-in first, `legacy-other` filtered out (D9 — a bucket, not a pack).
+     *
+     * `WhileSubscribed` for the same reason as [activePackId]: the sheet is the only observer,
+     * and an eager, never-cancelled collector keeps a Room subscription alive after the screen
+     * is gone.
+     */
     val packs: StateFlow<List<WordPackEntity>> = container.wordRepository.observePacks()
         .map { list ->
             list.filter { it.id != PackIds.LEGACY_OTHER }
                 .sortedByDescending { it.isBuiltIn }
         }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    /** Default destination for a new import: the pack the learner is studying right now. */
+    /**
+     * Default destination for a new import: the pack the learner is studying right now.
+     *
+     * `WhileSubscribed` rather than `Eagerly`: the sheet is the only observer, and an eager,
+     * never-cancelled collector keeps a DataStore subscription alive after the screen is gone.
+     * When its continuation is queued on a paused (Robolectric) main looper, the DataStore write
+     * actor parks on that emission and the next write in the same JVM never completes.
+     */
     val activePackId: StateFlow<String> = container.settingsRepository.settings
         .map { it.effectivePackId }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, "")
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "")
 
     /**
      * Share / process-text entry (plan §8.2): parse the whole payload at once — one shared
