@@ -34,6 +34,29 @@
 
 ---
 
+## 下载与版本
+
+安装包都在 [Releases](https://github.com/hbt123-123/ToneUp_word/releases) 页面，下载 APK 直接安装即可：
+
+| 版本 | versionName / Code | 对应提交 | 大小 | SHA-256 | 下载 |
+| --- | --- | --- | --- | --- | --- |
+| **v0.2**（最新） | 0.2 / 2 | [`a032432`](https://github.com/hbt123-123/ToneUp_word/commit/a0324320935e06603269c0c0b4f06f78f5ca680a) | 3,277,452 B | `CEC922255813F7DD9C8D1A81EE6E260A2F277A50B84D4CB98686C87E40455F18` | [ToneUpWord-v0.2.apk](https://github.com/hbt123-123/ToneUp_word/releases/download/v0.2/ToneUpWord-v0.2.apk) |
+| v0.1 | 0.1 / 1 | [`fbfeefe`](https://github.com/hbt123-123/ToneUp_word/commit/fbfeefe228218b69cee9b96d950a6ccab762189e) | 3,601,943 B | `4E9915F3D1610AC2E8F2969A12DF183AF7D74CDEAEA25C794ABD83EF18751828` | [ToneUpWord-v0.1.apk](https://github.com/hbt123-123/ToneUp_word/releases/download/v0.1/ToneUpWord-v0.1.apk) |
+
+* **v0.2**（最新，提交 [`a032432`](https://github.com/hbt123-123/ToneUp_word/compare/fbfeefe...a032432)）：
+  移除内置四级词库（只保留六级），新增**「写词库」**——可逐条手写输入单词并填写**自己的中文注释**，
+  学习时优先展示你写的释义、未填写时才走释义补全网关；错题本收进首页，腾出的位置作为写词库入口。
+* **v0.1**：内置四级 + 六级词库的首个公开测试包；对应提交 [`fbfeefe`](https://github.com/hbt123-123/ToneUp_word/commit/fbfeefe228218b69cee9b96d950a6ccab762189e)。
+
+> 两个包由**另一台机器**构建，包名均为 `top.toneup.word`，`minSdk 26` / `targetSdk 36`，
+> 采用 **APK Signature Scheme v2** 签名（证书 `OU=ToneUp`）。其 `versionName`（0.1 / 0.2）
+> 与本仓库 `app/build.gradle.kts` 中的取值（`1.0.3`）**不一致**——上表数值才是该 APK 的真实版本。
+>
+> 安装：把 APK 传到手机后点击安装（需允许「安装未知来源应用」），或 `adb install ToneUpWord-v0.2.apk`。
+> 想自己从源码出包请见 [发布签名](docs/RELEASE_SIGNING.md) 与 [如何运行](#如何运行)。
+
+---
+
 ## 验证状态
 
 以下结果都可以在本地原样复现（命令见 [如何运行](#如何运行)）：

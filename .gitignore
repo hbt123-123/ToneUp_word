@@ -11,6 +11,9 @@ local.properties
 /app/build
 /build
 
+# 本地打包出来的安装包不入库：正式发布走 GitHub Releases
+*.apk
+
 # Python helper scripts (tools/wordpack, tools/pronunciation)
 __pycache__/
 *.pyc
