@@ -45,6 +45,9 @@ $expectedCode = [int]$parts[0] * 100 + [int]$parts[1] * 10 + [int]$parts[2]
 if ($versionCode -ne $expectedCode) {
     throw "versionCode $versionCode != major*100+minor*10+patch ($expectedCode)"
 }
+if ([int]$parts[1] -gt 9 -or [int]$parts[2] -gt 9) {
+    throw "versionName '$versionName': minor and patch must be 0-9 (versionCode = major*100 + minor*10 + patch)"
+}
 
 $tagName = "v$versionName"
 if ($Tag) {

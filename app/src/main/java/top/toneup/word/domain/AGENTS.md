@@ -1,7 +1,7 @@
 # domain/ — 纯 Kotlin 业务引擎
 
 ## OVERVIEW
-零 `android.*` 依赖的业务规则层；全部可在 JVM 单测直跑（299 个 @Test / 14 文件）。
+零 `android.*` 依赖的业务规则层；全部可在 JVM 单测直跑（319 个 @Test / 15 文件）。
 
 ## STRUCTURE
 ```
@@ -15,7 +15,8 @@ domain/
 ├── importer/    WordPackParser→Outcome<ImportPreview>, PlainTextWordParser(粘贴/分享/剪贴板), 手写 RFC4180 CsvCodec, ImportModels
 ├── mistake/     MistakeCategory(6 类)/MistakeFilter —— 纯模型，无引擎
 ├── search/      ApproximateWordMatcher（OSA 编辑距离，含相邻换位）
-└── stats/       StatsCalculator（连续天数/百分比 null≠0%）, DailyStudyPoint
+├── stats/       StatsCalculator（连续天数/百分比 null≠0%）, DailyStudyPoint
+└── update/      AppVersion 解析/比较 + AppUpdatePolicy（网络无关的更新决策）
 ```
 
 ## WHERE TO LOOK
@@ -28,6 +29,7 @@ domain/
 | 改文件导入校验限额 | `importer/WordPackParser.kt`（8 MiB / 20000 条 / 64 字符） |
 | 改纯文本/分享/剪贴板解析 | `importer/PlainTextWordParser.kt`（分隔符宽容、token 严格、大小写去重） |
 | 改选句/选语逻辑 | `motivation/MotivationEngine.kt`（哈希确定性） |
+| 改更新判定规则 | `update/AppUpdate.kt`（versionCode 优先，语义版本仅回落；有 20 测试） |
 
 ## CONVENTIONS
 - **依赖图（无环）**：`model`、`srs` 为根；`study→srs+model`；`mistake→model+srs`；`stats→model+srs`；`insight→stats`（唯一跨业务模块依赖）；`importer→model+core.result+core.json`；`exam`/`search`/`MotivationEngine` 无域依赖（考试结果经 `srs.ReviewGrade.fromExam` 回写）。
@@ -45,4 +47,4 @@ domain/
 - 洞察文案禁用词由 `InsightEngineTest` 守护（分数/提分/必过/保过/考试/还差/剩余/倒数）——改文案先看测试。
 
 ## 测试速览
-insight 50 · importer 78 · exam 38 · study 37 · stats 34 · motivation 27 · srs 26 · search 9；mistake/model 0（间接覆盖）。运行见根 COMMANDS。
+insight 50 · importer 78 · exam 38 · study 37 · stats 34 · motivation 27 · srs 26 · search 9 · update 20；mistake/model 0（间接覆盖）。运行见根 COMMANDS。

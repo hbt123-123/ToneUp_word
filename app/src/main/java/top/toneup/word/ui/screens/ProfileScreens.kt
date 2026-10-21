@@ -173,7 +173,8 @@ fun ProfileScreen(
                             updateState.phase == UpdatePhase.Available ||
                             updateState.phase == UpdatePhase.Downloading ||
                             updateState.phase == UpdatePhase.Verifying ||
-                            updateState.phase == UpdatePhase.Ready
+                            updateState.phase == UpdatePhase.Ready ||
+                            updateState.phase == UpdatePhase.Dismissed
                         if (hasStateToShow) onShowUpdate() else onCheckUpdate()
                     },
                     testTag = "profile_check_update",
@@ -274,6 +275,7 @@ private fun updateSubtitle(state: AppUpdateUiState): String = when (state.phase)
         if (state.total > 0) "后台下载中 ${(state.progress * 100).toInt()}%" else "后台下载中…"
     UpdatePhase.Verifying -> "正在校验安装包…"
     UpdatePhase.Ready -> "v${state.version} 已就绪，点击安装"
+    UpdatePhase.Dismissed -> "已跳过 v${state.version}"
     UpdatePhase.Failed -> state.error.ifBlank { "检查失败，点击重试" }
 }
 
@@ -283,7 +285,8 @@ private fun SettingsEntry(
     subtitle: String,
     onClick: () -> Unit,
     testTag: String? = null,
-) {    AppCard(onClick = onClick, modifier = if (testTag != null) Modifier.testTag(testTag) else Modifier) {
+) {
+    AppCard(onClick = onClick, modifier = if (testTag != null) Modifier.testTag(testTag) else Modifier) {
         // `spacedBy` instead of two flush Texts: the title/subtitle gap is then identical to every
         // other two-line block in the app (which all use Spacing.xs).
         Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {

@@ -15,6 +15,14 @@ enum class UpdatePhase {
     Checking,
     Latest,
     Available,
+
+    /**
+     * 新版本存在，但学习者已「跳过此版本」。
+     *
+     * 必须与 [Latest] 区分：把一个被主动跳过的版本说成「已是最新」是在对学习者撒谎，也让
+     * 「恢复此版本」无从下手。UI 因此可以显示「已跳过 vX.Y.Z」并提供撤销入口。
+     */
+    Dismissed,
     Downloading,
     Verifying,
     Ready,

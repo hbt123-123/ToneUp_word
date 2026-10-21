@@ -45,6 +45,9 @@ https://github.com/hbt123-123/ToneUp_word/releases/latest/download/ToneUpWord.ap
 
 - Release tag 必须等于 `v<versionName>`，例如 `v1.0.3`。
 - `versionCode == major*100 + minor*10 + patch`，例如 `1.0.3 → 103`。
+- `minor` 与 `patch` 只允许 0–9：公式 `major*100 + minor*10 + patch` 无法表达两位数段，
+  `1.10.0` 会与 `2.0.0` 撞成 200；需要两位段时**先**改公式，并同步 `tool/release.ps1`
+  与 `displayNameFor()`（`tool/release.ps1` 已在版本校验时拒绝越界值）。
 - 判断更新顺序：
   1. 双方都有 `versionCode` → 比较 `versionCode`；
   2. 否则回退三段语义版本；

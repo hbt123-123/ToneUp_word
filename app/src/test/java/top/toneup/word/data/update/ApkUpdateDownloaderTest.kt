@@ -26,7 +26,8 @@ class ApkUpdateDownloaderTest {
 
     private lateinit var server: MockWebServer
     private lateinit var dir: File
-    private val downloader = OkHttpApkDownloader(OkHttpClient())
+    // 静态类型刻意是接口：`onVerifying` 的默认值声明在接口上，接口类型调用才一定有它。
+    private val downloader: ApkDownloader = OkHttpApkDownloader(OkHttpClient())
 
     @Before
     fun setUp() {
@@ -51,9 +52,10 @@ class ApkUpdateDownloaderTest {
     private fun update(
         payload: ByteArray,
         digest: String = sha256(payload),
+        code: Int = 103,
     ) = RemoteUpdate(
         version = "1.0.3",
-        versionCode = 103,
+        versionCode = code,
         apkUrl = url(),
         sha256 = digest,
         size = payload.size.toLong(),
@@ -194,5 +196,56 @@ class ApkUpdateDownloaderTest {
 
         assertThat(result.isSuccess).isFalse()
         assertThat(server.requestCount).isEqualTo(0)
+    }
+
+    @Test
+    fun `a completed part file is verified without another fetch`() = runTest {
+        dir.mkdirs()
+        val payload = "ABCDEFGHIJ".toByteArray()
+        val part = File(dir, "104.apk.part")
+        part.writeBytes(payload)
+
+        // 线路全都不在（例如每个镜像都对已完整的 Range 回 416）也不能是死路：字节齐了就在本地校验。
+        val result = downloader.download(update(payload, code = 104), emptyList(), dir) { _, _ -> }
+
+        assertThat(result.isSuccess).isTrue()
+        assertThat(File(dir, "104.apk").readText()).isEqualTo("ABCDEFGHIJ")
+        assertThat(part.exists()).isFalse()
+        assertThat(server.requestCount).isEqualTo(0)
+    }
+
+    @Test
+    fun `a completed part file with a wrong digest is discarded and refetched`() = runTest {
+        dir.mkdirs()
+        val payload = "ABCDEFGHIJ".toByteArray()
+        val part = File(dir, "104.apk.part")
+        part.writeText("XXXXXXXXXX")
+        server.enqueue(MockResponse().setResponseCode(200).setBody("ABCDEFGHIJ"))
+
+        val result = downloader.download(update(payload, code = 104), listOf(""), dir) { _, _ -> }
+
+        assertThat(result.isSuccess).isTrue()
+        assertThat(File(dir, "104.apk").readText()).isEqualTo("ABCDEFGHIJ")
+        assertThat(part.exists()).isFalse()
+    }
+
+    @Test
+    fun `verifying is announced before the final progress tick`() = runTest {
+        val payload = "ABCDEFGHIJ".toByteArray()
+        server.enqueue(MockResponse().setResponseCode(200).setBody("ABCDEFGHIJ"))
+        val events = mutableListOf<String>()
+
+        val result = downloader.download(
+            update = update(payload),
+            hosts = listOf(""),
+            targetDir = dir,
+            onVerifying = { events += "verifying" },
+        ) { _, _ -> events += "progress" }
+
+        assertThat(result.isSuccess).isTrue()
+        // 下载阶段照旧上报进度，校验只在字节齐了之后插进来一次。
+        assertThat(events.first()).isEqualTo("progress")
+        assertThat(events.count { it == "verifying" }).isEqualTo(1)
+        assertThat(events.indexOf("verifying")).isGreaterThan(0)
     }
 }

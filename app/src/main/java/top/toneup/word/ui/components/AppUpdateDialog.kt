@@ -28,6 +28,7 @@ import top.toneup.word.ui.theme.Spacing
  *  * Available: "立即更新" / "稍后" / "跳过此版本";
  *  * Downloading / Verifying: live progress, the dialog can be closed and the download continues;
  *  * Ready: "立即安装" / "稍后";
+ *  * Dismissed ("跳过此版本" was tapped): "恢复提示" / "关闭";
  *  * Failed: "重试" / "关闭".
  *
  * It is raised by the launch check only when a verified APK is ready, or manually by the profile
@@ -40,6 +41,7 @@ fun AppUpdateDialog(
     onDownload: () -> Unit,
     onRetry: () -> Unit,
     onSkip: () -> Unit,
+    onRestore: () -> Unit,
     onClose: () -> Unit,
 ) {
     val phase = state.phase
@@ -68,6 +70,12 @@ fun AppUpdateDialog(
 
                     UpdatePhase.Available -> AvailableBody(state)
 
+                    UpdatePhase.Dismissed -> Text(
+                        text = "v${state.version} 已跳过。之后发布更高版本时会再次提示。",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = AppTheme.colors.mutedText,
+                    )
+
                     UpdatePhase.Downloading,
                     UpdatePhase.Verifying,
                     -> DownloadBody(state)
@@ -93,6 +101,7 @@ fun AppUpdateDialog(
                 UpdatePhase.Checking -> TextButton(onClick = onClose) { Text("取消") }
                 UpdatePhase.Latest -> TextButton(onClick = onClose) { Text("关闭") }
                 UpdatePhase.Available -> TextButton(onClick = onDownload) { Text("立即更新") }
+                UpdatePhase.Dismissed -> TextButton(onClick = onRestore) { Text("恢复提示") }
                 UpdatePhase.Downloading,
                 UpdatePhase.Verifying,
                 -> TextButton(onClick = onClose) { Text("后台下载") }
@@ -110,6 +119,7 @@ fun AppUpdateDialog(
                 }
 
                 UpdatePhase.Ready -> TextButton(onClick = onClose) { Text("稍后") }
+                UpdatePhase.Dismissed -> TextButton(onClick = onClose) { Text("关闭") }
                 UpdatePhase.Failed -> TextButton(onClick = onClose) { Text("关闭") }
                 else -> Unit
             }
@@ -121,7 +131,13 @@ fun AppUpdateDialog(
 @Composable
 private fun AvailableBody(state: AppUpdateUiState) {
     Text(
-        text = "v${state.installedVersion} → v${state.version}",
+        // During the rollout window version.json can still point at the installed build; showing
+        // "1.0.3 → 1.0.3" would read like a bug, so name the reinstall instead.
+        text = if (state.installedVersion == state.version) {
+            "v${state.version}（重新安装）"
+        } else {
+            "v${state.installedVersion} → v${state.version}"
+        },
         style = MaterialTheme.typography.titleSmall,
     )
     if (state.notes.isNotBlank()) {
@@ -172,6 +188,15 @@ private fun ReadyBody(state: AppUpdateUiState) {
         text = "版本 ${state.version} 已下载并通过 SHA-256 校验。",
         style = MaterialTheme.typography.bodyMedium,
     )
+    // A manual re-check can fail while a verified APK is still on disk: the install button below
+    // stays valid, so show the reason without turning the whole dialog into the Failed phase.
+    if (state.error.isNotBlank()) {
+        Text(
+            text = state.error,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error,
+        )
+    }
     if (state.notes.isNotBlank()) {
         Text(
             text = state.notes,
@@ -192,6 +217,7 @@ private fun titleFor(phase: UpdatePhase): String = when (phase) {
     UpdatePhase.Checking -> "正在检查更新"
     UpdatePhase.Latest -> "已是最新版本"
     UpdatePhase.Available -> "发现新版本"
+    UpdatePhase.Dismissed -> "已跳过此版本"
     UpdatePhase.Downloading,
     UpdatePhase.Verifying,
     -> "正在下载更新"

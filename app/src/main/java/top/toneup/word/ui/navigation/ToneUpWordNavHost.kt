@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -62,10 +63,16 @@ fun ToneUpWordNavHost(
     updateState: AppUpdateUiState = AppUpdateUiState(),
     onCheckUpdate: () -> Unit = {},
     onShowUpdate: () -> Unit = {},
+    onCurrentRoute: (String) -> Unit = {},
 ) {
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = TopLevelDestination.fromRoute(backStackEntry?.destination?.route)
+
+    // Publish the active route to the host: it defers the automatic update prompt to
+    // home/profile so the dialog can never interrupt onboarding or an exam.
+    val route = backStackEntry?.destination?.route
+    LaunchedEffect(route) { route?.let(onCurrentRoute) }
 
     // One exam ViewModel for the setup → run → result flow, so an exam survives navigation
     // between those three screens without re-reading the database on every step.

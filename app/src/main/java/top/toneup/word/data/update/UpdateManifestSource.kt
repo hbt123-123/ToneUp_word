@@ -9,7 +9,9 @@ import okhttp3.Request
 import top.toneup.word.core.json.JsonCodec
 import top.toneup.word.core.result.AppError
 import top.toneup.word.domain.update.RemoteUpdate
+import java.io.ByteArrayOutputStream
 import java.io.IOException
+import java.io.InputStream
 import java.net.URI
 import java.util.concurrent.TimeUnit
 
@@ -20,6 +22,9 @@ import java.util.concurrent.TimeUnit
  *
  * Contract (see docs/UPDATE_PROTOCOL.md): `version`, `versionCode` (required), `url`, `sha256`,
  * `size`, `notes`. Unknown keys are ignored, so the manifest may grow without breaking old apps.
+ *
+ * 响应体有 64 KiB 上限（`AppUpdateDefaults.MAX_MANIFEST_BYTES`）：清单只有几百字节，超限就说明
+ * 这不是我们的 `version.json`，直接换下一个 host，绝不为它缓冲整个响应体。
  */
 interface UpdateManifestSource {
     suspend fun fetch(
@@ -51,8 +56,10 @@ class OkHttpUpdateManifestSource(
         deadHosts: Map<String, Long>,
         nowMillis: Long,
     ): ManifestResult = withContext(Dispatchers.IO) {
-        val hosts = orderedHosts(preferredHost, deadHosts, nowMillis)
-            .take(AppUpdateDefaults.PROBE_BUDGET)
+        val hosts = AppUpdateDefaults.orderedHosts(
+            preferredHost = preferredHost,
+            blocked = deadHosts.filterValues { it > nowMillis }.keys,
+        ).take(AppUpdateDefaults.PROBE_BUDGET)
         if (hosts.isEmpty()) {
             return@withContext ManifestResult.Failure(
                 error = AppError.network("没有可用的更新线路"),
@@ -67,7 +74,7 @@ class OkHttpUpdateManifestSource(
 
         for (host in hosts) {
             val request = Request.Builder()
-                .url(via(host, AppUpdateDefaults.MANIFEST_URL))
+                .url(AppUpdateDefaults.url(host, AppUpdateDefaults.MANIFEST_URL))
                 .header("Accept", "application/json")
                 .header("User-Agent", AppUpdateDefaults.USER_AGENT)
                 .build()
@@ -84,15 +91,29 @@ class OkHttpUpdateManifestSource(
                         lastError = AppError.network("检查更新 HTTP ${response.code}")
                         return@use
                     }
-                    val parsed = parse(response.body.string())
+                    val body = response.body
+                    // 先看声明长度：明显超长的响应连读都不读。真正的保险是 readCapped 的
+                    // 循环上限（镜像可以撒谎或干脆不给 Content-Length）。
+                    val declared = body.contentLength()
+                    val payload = if (declared > AppUpdateDefaults.MAX_MANIFEST_BYTES) {
+                        null
+                    } else {
+                        readCapped(body.byteStream(), AppUpdateDefaults.MAX_MANIFEST_BYTES)
+                    }
+                    val parsed = payload?.let { parse(it) }
                     if (parsed != null) {
                         return@withContext ManifestResult.Success(parsed, host)
                     }
+                    // 截断/超长/字段不全都算「这条路给不出可信清单」，换下一个 host 继续。
                     lastError = AppError.updateParse("version.json 内容不完整")
                 }
             } catch (e: IOException) {
                 dead += host
                 lastError = AppError.network(e.message ?: e::class.java.simpleName)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                // 取消（超时看门狗 / 页面离开）不是「线路坏了」：不拉黑 host，也必须向上传播，
+                // 否则 withContext 的取消会被吞掉，协程继续跑完剩下的镜像。
+                throw e
             } catch (e: Exception) {
                 dead += host
                 lastError = AppError.network(e.message ?: e::class.java.simpleName)
@@ -126,23 +147,25 @@ class OkHttpUpdateManifestSource(
         null
     }
 
-    private fun orderedHosts(
-        preferredHost: String,
-        deadHosts: Map<String, Long>,
-        nowMillis: Long,
-    ): List<String> {
-        val blocked = deadHosts.filterValues { it > nowMillis }.keys
-        val all = listOf(AppUpdateDefaults.DIRECT_HOST) + AppUpdateDefaults.MIRROR_HOSTS
-        val ordered = if (preferredHost in all) {
-            listOf(preferredHost) + all.filter { it != preferredHost }
-        } else {
-            all
+    /**
+     * 读满 [maxBytes] 就放弃，返回 `null`。
+     *
+     * 不能用 `InputStream.readNBytes`（API 33+，minSdk 26 不可用），也不读 `body.string()`
+     * ——后者会把镜像吐出的任意长度内容塞进内存。
+     */
+    private fun readCapped(input: InputStream, maxBytes: Int): String? {
+        val out = ByteArrayOutputStream()
+        val buffer = ByteArray(READ_BUFFER_BYTES)
+        var total = 0
+        while (true) {
+            val read = input.read(buffer)
+            if (read == -1) break
+            total += read
+            if (total > maxBytes) return null
+            out.write(buffer, 0, read)
         }
-        return ordered.filterNot { it in blocked }
+        return String(out.toByteArray(), Charsets.UTF_8)
     }
-
-    private fun via(host: String, url: String): String =
-        if (host == AppUpdateDefaults.DIRECT_HOST) url else "https://$host/$url"
 
     private fun isAllowedUrl(raw: String): Boolean {
         val uri = runCatching { URI(raw) }.getOrNull() ?: return false
@@ -165,6 +188,9 @@ class OkHttpUpdateManifestSource(
 
     private companion object {
         val SHA256_PATTERN = Regex("^[0-9a-f]{64}$")
+
+        /** 清单只有几百字节；4 KiB 足够一次读完，又不会为大响应分配缓冲。 */
+        const val READ_BUFFER_BYTES = 4 * 1024
     }
 }
 

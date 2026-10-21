@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withContext
 import top.toneup.word.core.result.Outcome
 import top.toneup.word.core.time.SystemTimeProvider
@@ -40,6 +41,9 @@ import java.io.File
  *
  * Ready state is derived from disk (`cacheDir/updates/<versionCode>.apk`), not from a flag, so a
  * killed process or an evicted cache degrades to "no update" instead of a broken install.
+ *
+ * 阶段语义（与 `ToneUp_read` 对齐）：[UpdatePhase.Available] 等学习者确认，[UpdatePhase.Ready]
+ * 等学习者安装，[UpdatePhase.Dismissed] 是他主动跳过的那一版——三者都不能被说成「已是最新」。
  */
 interface AppUpdateRepository {
     val state: StateFlow<AppUpdateUiState>
@@ -58,6 +62,14 @@ interface AppUpdateRepository {
 
     /** "跳过此版本": suppress this versionCode and delete its downloaded APK. */
     suspend fun skipVersion()
+
+    /**
+     * "恢复此版本": 撤销 [skipVersion] 的跳过记录并立刻重新检查。
+     *
+     * 跳过是临时意愿而非永久屏蔽（见 `AppUpdateStore.clearDismissed`），所以撤销后必须重新走
+     * 一次真实检查，而不是凭内存里的旧结论直接显示「发现新版本」——那份清单可能已经过期。
+     */
+    suspend fun restoreSkipped()
 
     /** "立即安装": raise an install request for the verified APK. */
     suspend fun installReady()
@@ -86,6 +98,9 @@ class DefaultAppUpdateRepository(
     override val state: StateFlow<AppUpdateUiState> = _state.asStateFlow()
 
     private var remote: RemoteUpdate? = null
+
+    /** 下载闸门：手动「立即更新」与后台静默下载不能同时写同一个 `.part` 文件。 */
+    private val downloadMutex = Mutex()
 
     override suspend fun init() = withContext(Dispatchers.IO) {
         pruneLocal()
@@ -158,14 +173,22 @@ class DefaultAppUpdateRepository(
             is ManifestResult.Failure -> {
                 // Only connection failures enter the cooldown; a 404 still proves the channel works.
                 store.setDeadHosts(mergeDeadHosts(stored.deadHosts, result.deadHosts, now))
+                // 检查失败不该抹掉「已经能装的东西」：手上有一个校验过的安装包或已确认的新版本时，
+                // 一次断网的手动检查若直接跳 Failed，学习者会以为更新没了。只有本来就没内容
+                // （Idle）才允许把 Failed 显示出来。
                 val fallback = when (previous.phase) {
                     UpdatePhase.Ready -> UpdatePhase.Ready
                     UpdatePhase.Available -> UpdatePhase.Available
+                    UpdatePhase.Dismissed -> UpdatePhase.Dismissed
                     else -> UpdatePhase.Idle
                 }
                 _state.update {
                     it.copy(
-                        phase = if (manual) UpdatePhase.Failed else fallback,
+                        phase = if (manual && fallback == UpdatePhase.Idle) {
+                            UpdatePhase.Failed
+                        } else {
+                            fallback
+                        },
                         error = if (manual) result.error.message else "",
                     )
                 }
@@ -221,10 +244,24 @@ class DefaultAppUpdateRepository(
         )) {
             UpdateDecision.Unknown,
             UpdateDecision.UpToDate,
-            UpdateDecision.Dismissed,
             -> _state.update {
                 it.copy(
                     phase = UpdatePhase.Latest,
+                    version = update.version,
+                    versionCode = update.versionCode,
+                    notes = update.notes,
+                    size = update.size,
+                    received = 0,
+                    total = 0,
+                    error = "",
+                )
+            }
+
+            UpdateDecision.Dismissed -> _state.update {
+                // 跳过的那一版必须自报家门：说成「已是最新」既误导学习者，也让「恢复此版本」
+                // 找不到要恢复的版本号，所以版本/说明照样填进 state。
+                it.copy(
+                    phase = UpdatePhase.Dismissed,
                     version = update.version,
                     versionCode = update.versionCode,
                     notes = update.notes,
@@ -266,57 +303,89 @@ class DefaultAppUpdateRepository(
     }
 
     private suspend fun download(update: RemoteUpdate, silent: Boolean) {
-        val hosts = orderedHosts(store.read().okHost, emptyMap(), time.nowMillis())
-        _state.update {
-            it.copy(
-                phase = UpdatePhase.Downloading,
-                version = update.version,
-                versionCode = update.versionCode,
-                notes = update.notes,
-                size = update.size,
-                received = 0,
-                total = update.size,
-                error = "",
+        // 同一时刻只允许一个下载：后台静默下载与「立即更新」会写同一个 `<code>.apk.part`，
+        // 并发写会把文件写成乱码。拿不到锁说明已有下载在跑，直接忽略这次点击（状态不发散）。
+        if (!downloadMutex.tryLock()) return
+        try {
+            val stored = store.read()
+            val now = time.nowMillis()
+            // 与 manifest 阶段共用同一套线路排序/冷却规则，避免「检查走镜像、下载走直连」。
+            val hosts = AppUpdateDefaults.orderedHosts(
+                preferredHost = stored.okHost,
+                blocked = stored.deadHosts.filterValues { it > now }.keys,
             )
-        }
-
-        when (val result = downloader.download(update, hosts, updateDir) { got, total ->
             _state.update {
-                it.copy(received = got, total = if (total > 0) total else update.size)
+                it.copy(
+                    phase = UpdatePhase.Downloading,
+                    version = update.version,
+                    versionCode = update.versionCode,
+                    notes = update.notes,
+                    size = update.size,
+                    received = 0,
+                    total = update.size,
+                    error = "",
+                )
             }
-        }) {
-            is Outcome.Failure -> {
+
+            val result = downloader.download(
+                update = update,
+                hosts = hosts,
+                targetDir = updateDir,
+                onVerifying = {
+                    _state.update { it.copy(phase = UpdatePhase.Verifying, error = "") }
+                },
+            ) { got, total ->
                 _state.update {
-                    it.copy(
-                        // Automatic downloads fail quietly; the manual path explains the reason.
-                        phase = if (silent) UpdatePhase.Available else UpdatePhase.Failed,
-                        error = if (silent) "" else result.error.message,
-                    )
+                    it.copy(received = got, total = if (total > 0) total else update.size)
                 }
             }
 
-            is Outcome.Success -> {
-                val file = result.value
-                store.setReady(update.versionCode, update.version, file.length())
-                _state.update {
-                    it.copy(
-                        phase = UpdatePhase.Ready,
-                        received = file.length(),
-                        total = file.length(),
-                        error = "",
-                    )
+            when (result) {
+                is Outcome.Failure -> {
+                    _state.update {
+                        it.copy(
+                            // Automatic downloads fail quietly; the manual path explains the reason.
+                            phase = if (silent) UpdatePhase.Available else UpdatePhase.Failed,
+                            error = if (silent) "" else result.error.message,
+                        )
+                    }
+                }
+
+                is Outcome.Success -> {
+                    val file = result.value
+                    store.setReady(update.versionCode, update.version, file.length())
+                    _state.update {
+                        it.copy(
+                            phase = UpdatePhase.Ready,
+                            received = file.length(),
+                            total = file.length(),
+                            error = "",
+                        )
+                    }
                 }
             }
+        } finally {
+            downloadMutex.unlock()
         }
     }
 
     override suspend fun downloadAndInstall() {
-        val current = _state.value
-        if (current.phase == UpdatePhase.Ready) {
+        if (_state.value.phase == UpdatePhase.Ready) {
             installReady()
             return
         }
-        val update = remote ?: return
+        // `remote` 只在内存里，进程重启后由 init() 恢复 Ready 时是 null。此时直接 return 会让
+        // 「安装包被清理/被删」的学习者永远卡住——所以先补一次真实检查，再按结果决定。
+        val update = remote ?: run {
+            check(manual = true)
+            if (_state.value.phase == UpdatePhase.Ready) {
+                installReady()
+                return
+            }
+            // Latest / Dismissed / Failed：没有可下载的东西，交给 UI 展示。
+            if (_state.value.phase != UpdatePhase.Available) return
+            remote ?: return
+        }
         // Never download a release at or below the installed versionCode; the manifest is
         // normally trusted, but a stale "latest" must not become a downgrade.
         if (update.versionCode > 0 && update.versionCode <= installedVersionCode) return
@@ -348,6 +417,13 @@ class DefaultAppUpdateRepository(
             )
         }
         remote = null
+    }
+
+    override suspend fun restoreSkipped() {
+        // 先落盘再检查：即便紧接着的检查失败，下次启动也不会又把这个版本当成「已跳过」。
+        store.clearDismissed()
+        _state.update { it.copy(phase = UpdatePhase.Idle, error = "") }
+        check(manual = true)
     }
 
     override suspend fun installReady() {
@@ -423,21 +499,6 @@ class DefaultAppUpdateRepository(
         }
         val stored = store.read()
         if (stored.readyVersionCode in 1..installedVersionCode) store.clearReady()
-    }
-
-    private fun orderedHosts(
-        preferredHost: String,
-        deadHosts: Map<String, Long>,
-        nowMillis: Long,
-    ): List<String> {
-        val blocked = deadHosts.filterValues { it > nowMillis }.keys
-        val all = listOf(AppUpdateDefaults.DIRECT_HOST) + AppUpdateDefaults.MIRROR_HOSTS
-        val ordered = if (preferredHost in all) {
-            listOf(preferredHost) + all.filter { it != preferredHost }
-        } else {
-            all
-        }
-        return ordered.filterNot { it in blocked }
     }
 
     private fun mergeDeadHosts(

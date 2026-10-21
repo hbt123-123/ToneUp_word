@@ -61,6 +61,7 @@ class MainActivity : ComponentActivity() {
             val importActivePackId = externalImport.activePackId.collectAsStateWithLifecycle()
             val updateState = mainViewModel.updateState.collectAsStateWithLifecycle()
             val updateDialogVisible = mainViewModel.updateDialogVisible.collectAsStateWithLifecycle()
+            val updateAutoPrompt = mainViewModel.updateAutoPrompt.collectAsStateWithLifecycle()
 
             // The repository raises a one-shot Intent request; the Activity is the only place
             // allowed to launch it. Consuming it immediately keeps a recomposition/rotation from
@@ -89,12 +90,14 @@ class MainActivity : ComponentActivity() {
                 ),
                 updateState = updateState.value,
                 updateDialogVisible = updateDialogVisible.value,
+                updateAutoPrompt = updateAutoPrompt.value,
                 onCheckUpdate = mainViewModel::checkForUpdates,
                 onShowUpdate = mainViewModel::showUpdateDialog,
                 onCloseUpdate = mainViewModel::closeUpdateDialog,
                 onDownloadUpdate = mainViewModel::downloadUpdate,
                 onInstallUpdate = mainViewModel::installUpdate,
                 onSkipUpdate = mainViewModel::skipUpdateVersion,
+                onRestoreSkipped = mainViewModel::restoreSkippedVersion,
                 onRetryUpdate = mainViewModel::retryUpdate,
             )
         }
@@ -172,16 +175,26 @@ class MainActivity : ComponentActivity() {
      * user grants and returns, a second tap installs without re-downloading.
      */
     private fun launchInstallRequest(request: AppInstallRequest) {
+        // A merged `is Ready, is NeedPermission` branch loses the smart cast, so both arms stay
+        // explicit and share one launcher.
         when (request) {
-            is AppInstallRequest.Ready ->
-                runCatching { startActivity(request.intent) }
-
-            is AppInstallRequest.NeedPermission ->
-                runCatching { startActivity(request.intent) }
+            is AppInstallRequest.Ready -> launchSystemIntent(request.intent)
+            is AppInstallRequest.NeedPermission -> launchSystemIntent(request.intent)
 
             // Cache evicted between the download and the tap: say so instead of a dead button.
             AppInstallRequest.Unavailable ->
                 Toast.makeText(applicationContext, "安装包不存在，请重新检查更新", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /**
+     * Both the installer Intent and the "install unknown apps" settings Intent can be refused by
+     * the platform (no such Activity, OEM restrictions); say so instead of leaving the tap with
+     * no visible result.
+     */
+    private fun launchSystemIntent(intent: Intent) {
+        runCatching { startActivity(intent) }.onFailure {
+            Toast.makeText(applicationContext, "无法打开系统安装程序", Toast.LENGTH_SHORT).show()
         }
     }
 }

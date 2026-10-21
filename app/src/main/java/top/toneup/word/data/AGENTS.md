@@ -61,4 +61,4 @@ data/
 - SQLite 3.18 约束：升级迁移勿用新语法。
 
 ## 测试
-`data/` 下：DatabaseTest（全 DAO + version 断言）、ProgressRecorderTest(20)、Migration1To2Test(3，种子保真+索引语义)、Migration2To3Test(2，视图 DDL)、PackIdsTest(4)、AddWordsToPackTest(18)、WordEditRepositoryTest(11)、gateway/MeaningLookupServiceTest(12)、gateway/MeaningSyncRepositoryTest(10)、seed/BuiltInPackSeedTest(7)、seed/BuiltInPackAssetTest(8)、speech/AudioUrlPlayerTest(4)、update/ApkUpdateDownloaderTest(10)、update/UpdateManifestSourceTest(7)、AppUpdateRepositoryTest(14)、domain/update/AppVersionTest(20)。其余 Repository（Study/Mistake/Exam/Stats/Insight/Backup）**无直接测试**。
+`data/` 下：DatabaseTest（全 DAO + version 断言）、ProgressRecorderTest(20)、Migration1To2Test(3，种子保真+索引语义)、Migration2To3Test(2，视图 DDL)、PackIdsTest(4)、AddWordsToPackTest(18)、WordEditRepositoryTest(11)、gateway/MeaningLookupServiceTest(12)、gateway/MeaningSyncRepositoryTest(10)、seed/BuiltInPackSeedTest(7)、seed/BuiltInPackAssetTest(8)、speech/AudioUrlPlayerTest(4)、update/ApkUpdateDownloaderTest(13)、update/UpdateManifestSourceTest(11)、AppUpdateRepositoryTest(18)、domain/update/AppVersionTest(20)。其余 Repository（Study/Mistake/Exam/Stats/Insight/Backup）**无直接测试**。

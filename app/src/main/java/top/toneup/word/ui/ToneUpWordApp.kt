@@ -9,12 +9,17 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import top.toneup.word.AppContainer
 import top.toneup.word.data.local.entity.WordPackEntity
 import top.toneup.word.data.update.AppUpdateUiState
 import top.toneup.word.ui.components.AppUpdateDialog
 import top.toneup.word.ui.components.LoadingState
+import top.toneup.word.ui.navigation.Routes
 import top.toneup.word.ui.navigation.ToneUpWordNavHost
 import top.toneup.word.ui.screens.StartupTipScreen
 import top.toneup.word.ui.theme.AppTheme
@@ -52,15 +57,20 @@ fun ToneUpWordApp(
     // automatically once a verified APK is ready.
     updateState: AppUpdateUiState = AppUpdateUiState(),
     updateDialogVisible: Boolean = false,
+    updateAutoPrompt: Boolean = false,
     onCheckUpdate: () -> Unit = {},
     onShowUpdate: () -> Unit = {},
     onCloseUpdate: () -> Unit = {},
     onDownloadUpdate: () -> Unit = {},
     onInstallUpdate: () -> Unit = {},
     onSkipUpdate: () -> Unit = {},
+    onRestoreSkipped: () -> Unit = {},
     onRetryUpdate: () -> Unit = {},
 ) {
     val settings = state.settings
+    // The route the learner is actually on. Only used to defer the *automatic* update prompt:
+    // it must never cover an exam or the onboarding flow.
+    var currentRoute by remember { mutableStateOf("") }
 
     ToneUpWordTheme(
         themeMode = settings.themeMode,
@@ -79,6 +89,7 @@ fun ToneUpWordApp(
                         updateState = updateState,
                         onCheckUpdate = onCheckUpdate,
                         onShowUpdate = onShowUpdate,
+                        onCurrentRoute = { currentRoute = it },
                     )
                 } else {
                     // Cold start: the built-in CET-4/CET-6 packs are being written to the database.
@@ -116,13 +127,19 @@ fun ToneUpWordApp(
                 // launch check when a verified APK is ready, or by the profile "检查更新" row.
                 // While the cold-start line is on top, wait: two full-screen overlays at once
                 // would bury the encouragement and look like a second launch screen.
-                if (updateDialogVisible && !state.startupTipVisible) {
+                // The automatic prompt is additionally held back to home/profile, so it can never
+                // cover the onboarding flow or an exam in progress; a manual tap opens the dialog
+                // wherever the learner is, because that is their own action.
+                val autoPromptHere = updateAutoPrompt &&
+                    (currentRoute == Routes.HOME || currentRoute == Routes.PROFILE)
+                if ((updateDialogVisible || autoPromptHere) && !state.startupTipVisible) {
                     AppUpdateDialog(
                         state = updateState,
                         onInstall = onInstallUpdate,
                         onDownload = onDownloadUpdate,
                         onRetry = onRetryUpdate,
                         onSkip = onSkipUpdate,
+                        onRestore = onRestoreSkipped,
                         onClose = onCloseUpdate,
                     )
                 }

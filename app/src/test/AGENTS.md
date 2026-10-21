@@ -1,7 +1,7 @@
 # app/src/test/ — JVM 单元测试（唯一测试层）
 
 ## OVERVIEW
-38 类 / 529 用例；镜像 main 包结构；无 androidTest——Compose/Room/网关测试全在 JVM（Robolectric）跑。
+43 类 / 596 用例；镜像 main 包结构；无 androidTest——Compose/Room/网关测试全在 JVM（Robolectric）跑。
 
 ## STRUCTURE
 ```
@@ -12,8 +12,10 @@ app/src/test/java/top/toneup/word/
 │                                          AddWordsToPackTest(18), WordEditRepositoryTest(11),
 │                                          gateway/(MeaningLookupServiceTest 12, MeaningSyncRepositoryTest 10),
 │                                          seed/(BuiltInPackSeedTest 7, BuiltInPackAssetTest 8),
-│                                          speech/AudioUrlPlayerTest(4)
-├── domain/                                14 文件 299 用例（见下覆盖表）
+│                                          speech/AudioUrlPlayerTest(4),
+│                                          update/(ApkUpdateDownloaderTest 13, UpdateManifestSourceTest 11),
+│                                          AppUpdateRepositoryTest(18)
+├── domain/                                15 文件 319 用例（见下覆盖表）
 ├── ui/                                    ComposeFlowTest(15), ExternalImportViewModelTest(16), GatewaySettingsTest(5),
 │                                          UiStateStabilityTest(5), WordBrowserScreenTest(8),
 │                                          components/(WordCardExampleTest 3, StatDefinitionTest 5),
@@ -38,6 +40,7 @@ app/src/test/java/top/toneup/word/
 | 文案禁用词 | `domain/motivation/StartupTipTest.kt`、`domain/insight/InsightEngineTest.kt` |
 | TTS 失败路径 | `ui/speech/SpeechControllerTest.kt` |
 | 全导航流程 | `ui/ComposeFlowTest.kt`（@Config sdk=26） |
+| 应用更新（清单/下载/阶段机） | `data/update/UpdateManifestSourceTest.kt`、`ApkUpdateDownloaderTest.kt`、`data/repository/AppUpdateRepositoryTest.kt` |
 
 ## CONVENTIONS（测试特有）
 - 断言以 Truth `assertThat` 为主（个别 `org.junit.Assert`）；协程 `runTest`；Compose 用 `createComposeRule`（Robolectric 下运行）；网关用 `MockWebServer`。
@@ -59,10 +62,12 @@ app/src/test/java/top/toneup/word/
 | domain·motivation | MotivationEngineTest(21) + StartupTipTest(6) | 27 |
 | domain·srs | SpacedRepetitionTest | 26 |
 | domain·search | ApproximateWordMatcherTest | 9 |
+| domain·update | AppVersionTest | 20 |
 | data·core | DatabaseTest(22) + ProgressRecorderTest(20) + AddWordsToPackTest(18) | 60 |
 | data·gateway | MeaningLookupServiceTest(12) + MeaningSyncRepositoryTest(10) | 22 |
 | data·迁移/pack | Migration1To2Test(3) + Migration2To3Test(2) + PackIdsTest(4) + WordEditRepositoryTest(11) | 20 |
 | data·seed/speech | BuiltInPackAssetTest(8) + BuiltInPackSeedTest(7) + AudioUrlPlayerTest(4) | 19 |
+| data·update | AppUpdateRepositoryTest(18) + ApkUpdateDownloaderTest(13) + UpdateManifestSourceTest(11) | 42 |
 | ui | ComposeFlowTest(15) + ExternalImportViewModelTest(16) + SpeechAudioRoutingTest(12) + SpeechControllerTest(10) + WordBrowserScreenTest(8) + GatewaySettingsTest(5) + UiStateStabilityTest(5) + SystemBarsTest(5) + StatDefinitionTest(5) + StartupTipScreenTest(4) + WordCardExampleTest(3) | 88 |
 | core·time | StudyDayTest | 21 |
 | domain·mistake/model | —（无专测，间接覆盖） | 0 |

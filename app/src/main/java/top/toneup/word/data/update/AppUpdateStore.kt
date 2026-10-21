@@ -56,6 +56,12 @@ object AppUpdateDefaults {
     /** Downloaded APKs live under `cacheDir/updates/<versionCode>.apk(.part)`. */
     const val UPDATE_DIR = "updates"
 
+    /**
+     * Hard cap on the manifest body. `version.json` is a few hundred bytes; anything larger is a
+     * broken/hostile mirror and must not be buffered into memory (see `readCapped`).
+     */
+    const val MAX_MANIFEST_BYTES = 64 * 1024
+
     /** `""` means the direct GitHub URL; every other entry is a path-prefix mirror. */
     const val DIRECT_HOST = ""
 
@@ -80,6 +86,30 @@ object AppUpdateDefaults {
         "gh.inkchills.cn",
         "ghproxy.net",
     )
+
+    /**
+     * 线路优先级：上次成功的 host 排首位，其余按 `DIRECT_HOST` + 镜像表顺序，冷却中的 host 剔除。
+     *
+     * 检查与下载必须用**同一套**排序规则（以前两处各写一份，改一处就会让「检查走镜像、下载
+     * 走直连」），所以统一收在这里。
+     *
+     * 冷却只是优化，不是硬规则：若所有线路都在冷却（同一次会话里连续手动重试就能做到），仍然
+     * 返回完整列表。宁可多试一个刚失败的 host，也不要让「检查更新」直接报「没有可用的线路」。
+     */
+    fun orderedHosts(preferredHost: String, blocked: Set<String>): List<String> {
+        val all = listOf(DIRECT_HOST) + MIRROR_HOSTS
+        val ordered = if (preferredHost in all) {
+            listOf(preferredHost) + all.filter { it != preferredHost }
+        } else {
+            all
+        }
+        val available = ordered.filterNot { it in blocked }
+        return available.ifEmpty { ordered }
+    }
+
+    /** `""`（直连）原样返回；镜像则拼成 `https://<host>/<完整原始地址>`。 */
+    fun url(host: String, target: String): String =
+        if (host == DIRECT_HOST) target else "https://$host/$target"
 }
 
 /** Everything the update flow remembers between app starts. */
@@ -102,12 +132,16 @@ data class AppUpdateStoredState(
  *
  * `markChecked` is only written after a *successful* manifest fetch: a network failure must not
  * push the next attempt out by a whole day.
+ *
+ * [setDismissed] 必须可撤销（[clearDismissed]）：跳过是学习者在「不想现在更新」时给出的临时
+ * 意愿，不是永久黑名单——否则一次误触就再也收不到那个版本的提醒。
  */
 interface AppUpdateStore {
     fun state(): Flow<AppUpdateStoredState>
     suspend fun read(): AppUpdateStoredState
     suspend fun markChecked(nowMillis: Long)
     suspend fun setDismissed(versionCode: Int)
+    suspend fun clearDismissed()
     suspend fun setOkHost(host: String)
     suspend fun setDeadHosts(deadHosts: Map<String, Long>)
     suspend fun setReady(versionCode: Int, versionName: String, size: Long)
@@ -140,6 +174,11 @@ class DataStoreAppUpdateStore(private val context: Context) : AppUpdateStore {
 
     override suspend fun setDismissed(versionCode: Int) {
         safeEdit { it[Keys.DISMISSED_VERSION_CODE] = versionCode }
+    }
+
+    override suspend fun clearDismissed() {
+        // 删除该 key，而不是写 0：让「没有跳过记录」只有一种表示（读取端默认 0）。
+        safeEdit { it.remove(Keys.DISMISSED_VERSION_CODE) }
     }
 
     override suspend fun setOkHost(host: String) {

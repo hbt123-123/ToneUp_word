@@ -82,8 +82,13 @@ sealed interface UpdateDecision {
 object AppUpdatePolicy {
 
     /**
-     * Order matters: installed wins first (an old manifest must not resurrect a prompt), then the
-     * learner's dismissal, then the downloaded-but-uninstalled file.
+     * 判定顺序即产品语义：先「已装的更新」（旧清单不能让已安装的版本再次弹窗），再学习者跳过
+     * 的版本，最后才是磁盘上已下载未安装的包。
+     *
+     * [RemoteUpdate.versionCode] 是生产契约的必填字段（`OkHttpUpdateManifestSource.parse`
+     * 会拒绝 `versionCode <= 0` 的清单），所以生产路径上版本比较永远走 versionCode；
+     * [isNewer] 的语义版本回退只服务于直接构造 [RemoteUpdate] 的调用方（单测、诊断脚本）。
+     * 回退的基调是「宁可漏报，不可误报」：任何一边解析不出来都判不出更新，而不是猜测。
      */
     fun decide(
         remote: RemoteUpdate,
@@ -108,8 +113,12 @@ object AppUpdatePolicy {
     }
 
     /**
-     * `versionCode` is authoritative when both sides have one. Otherwise fall back to the
-     * semantic version. `null` = cannot tell, which callers treat as "do not prompt".
+     * 两边都有 versionCode 时以它为准（它是发布脚本算出来的单调整数）。
+     *
+     * 否则回退到语义版本比较。这条回退在**生产路径不可达**——清单解析已经强制
+     * `versionCode > 0`——保留它只为直接构造 [RemoteUpdate] 的调用方（`AppVersionTest` 与
+     * 诊断/迁移场景），因为手工构造的对象可能只有 `version` 字符串。
+     * `null` = 无从判断：调用方一律当作「不提示更新」，宁可漏报一次，也不把老版本塞给学习者。
      */
     fun isNewer(
         remote: RemoteUpdate,

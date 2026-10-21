@@ -207,6 +207,17 @@ class MainViewModel(private val container: AppContainer) : ViewModel() {
     /** Whether the host-level update dialog is on screen. */
     val updateDialogVisible: StateFlow<Boolean> = updateDialog.asStateFlow()
 
+    private val autoUpdatePrompt = MutableStateFlow(false)
+
+    /**
+     * Raised by the launch check (not by the learner) once a verified APK is ready.
+     *
+     * Kept apart from [updateDialogVisible] because the host may defer it: an automatic dialog
+     * must never cover the exam or the onboarding flow, while a manual "检查更新" tap opens
+     * [updateDialogVisible] on whatever screen the learner is on.
+     */
+    val updateAutoPrompt: StateFlow<Boolean> = autoUpdatePrompt.asStateFlow()
+
     private var readyPrompted = false
 
     init {
@@ -228,7 +239,7 @@ class MainViewModel(private val container: AppContainer) : ViewModel() {
                 // Prompt once per process when the silent background download becomes installable.
                 if (update.phase == UpdatePhase.Ready && !readyPrompted) {
                     readyPrompted = true
-                    updateDialog.value = true
+                    autoUpdatePrompt.value = true
                 }
             }
         }
@@ -236,18 +247,21 @@ class MainViewModel(private val container: AppContainer) : ViewModel() {
 
     /** "检查更新" tap: open the dialog immediately so "正在检查…" has somewhere to render. */
     fun checkForUpdates() {
+        autoUpdatePrompt.value = false
         updateDialog.value = true
         viewModelScope.launch { runCatching { container.appUpdateRepository.checkNow() } }
     }
 
     /** Re-open the dialog for an already available/ready/downloading update. */
     fun showUpdateDialog() {
+        autoUpdatePrompt.value = false
         updateDialog.value = true
     }
 
     /** "稍后": close the dialog but keep the verified APK and the profile row entry. */
     fun closeUpdateDialog() {
         updateDialog.value = false
+        autoUpdatePrompt.value = false
     }
 
     fun downloadUpdate() {
@@ -267,12 +281,12 @@ class MainViewModel(private val container: AppContainer) : ViewModel() {
             val canRetryDownload = update.phase == UpdatePhase.Available ||
                 (update.phase == UpdatePhase.Failed && update.versionCode > 0)
             if (canRetryDownload) {
-                container.appUpdateRepository.downloadAndInstall()
+                runCatching { container.appUpdateRepository.downloadAndInstall() }
                 if (container.appUpdateRepository.state.value.installRequest != null) {
                     updateDialog.value = false
                 }
             } else {
-                container.appUpdateRepository.checkNow()
+                runCatching { container.appUpdateRepository.checkNow() }
             }
         }
     }
@@ -280,13 +294,26 @@ class MainViewModel(private val container: AppContainer) : ViewModel() {
     /** "立即安装": raise a one-shot Intent request; MainActivity launches it. */
     fun installUpdate() {
         updateDialog.value = false
+        autoUpdatePrompt.value = false
         viewModelScope.launch { runCatching { container.appUpdateRepository.installReady() } }
     }
 
     /** "跳过此版本": suppress this versionCode and delete its downloaded APK. */
     fun skipUpdateVersion() {
         updateDialog.value = false
+        autoUpdatePrompt.value = false
         viewModelScope.launch { runCatching { container.appUpdateRepository.skipVersion() } }
+    }
+
+    /**
+     * "恢复提示" in the skipped state: forget the dismissed versionCode and re-check at once.
+     *
+     * The dialog is deliberately left open — the repository walks straight through
+     * Checking → Available, and the learner watches that happen in place instead of the dialog
+     * blinking out and back in.
+     */
+    fun restoreSkippedVersion() {
+        viewModelScope.launch { runCatching { container.appUpdateRepository.restoreSkipped() } }
     }
 
     fun consumeInstallRequest() {

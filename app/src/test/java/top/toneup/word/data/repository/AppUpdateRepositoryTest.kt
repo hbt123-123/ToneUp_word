@@ -73,6 +73,7 @@ class AppUpdateRepositoryTest {
     private fun repository(
         installedVersion: String = installed,
         installedVersionCode: Int = installedCode,
+        canRequestInstall: () -> Boolean = { true },
     ): DefaultAppUpdateRepository = DefaultAppUpdateRepository(
         context = ApplicationProvider.getApplicationContext(),
         time = time,
@@ -82,7 +83,7 @@ class AppUpdateRepositoryTest {
         installedVersion = installedVersion,
         installedVersionCode = installedVersionCode,
         updateDir = updateDir,
-        canRequestInstall = { true },
+        canRequestInstall = canRequestInstall,
     )
 
     private fun readyFile(code: Int = 104, length: Int = 10): File {
@@ -95,11 +96,14 @@ class AppUpdateRepositoryTest {
     @Test
     fun `a newer manifest is downloaded silently and becomes ready`() = runTest {
         val repo = repository()
+        // 校验阶段必须真的通知出去，否则 UI 会停在「下载中 100%」看起来像卡死。
+        downloader.phaseProbe = { repo.state.value.phase }
 
         repo.autoCheck()
 
         assertThat(source.calls).isEqualTo(1)
         assertThat(downloader.calls).isEqualTo(1)
+        assertThat(downloader.observedPhaseDuringVerify).isEqualTo(UpdatePhase.Verifying)
         assertThat(repo.state.value.phase).isEqualTo(UpdatePhase.Ready)
         assertThat(repo.state.value.version).isEqualTo("1.0.4")
         assertThat(repo.state.value.versionCode).isEqualTo(104)
@@ -128,7 +132,8 @@ class AppUpdateRepositoryTest {
         repo.autoCheck()
 
         assertThat(downloader.calls).isEqualTo(0)
-        assertThat(repo.state.value.phase).isEqualTo(UpdatePhase.Latest)
+        // 跳过 ≠ 已是最新：UI 要靠这个阶段给出「恢复此版本」。
+        assertThat(repo.state.value.phase).isEqualTo(UpdatePhase.Dismissed)
     }
 
     @Test
@@ -142,6 +147,41 @@ class AppUpdateRepositoryTest {
         assertThat(downloader.calls).isEqualTo(1)
         assertThat(repo.state.value.phase).isEqualTo(UpdatePhase.Ready)
         assertThat(store.value.readyVersionCode).isEqualTo(105)
+    }
+
+    @Test
+    fun `a dismissed version is reported as dismissed and not as latest`() = runTest {
+        store.setDismissed(104)
+        // 让 Dismissed 分支的 notes 断言真正有内容可验（FakeManifestSource 默认 notes 为空）。
+        source.update = source.update.copy(notes = "更新说明")
+
+        val repo = repository()
+        repo.checkNow()
+
+        assertThat(repo.state.value.phase).isEqualTo(UpdatePhase.Dismissed)
+        assertThat(repo.state.value.version).isEqualTo("1.0.4")
+        assertThat(repo.state.value.versionCode).isEqualTo(104)
+        assertThat(repo.state.value.notes).isEqualTo("更新说明")
+        assertThat(downloader.calls).isEqualTo(0)
+    }
+
+    @Test
+    fun `restoring a skipped version checks again and offers the download`() = runTest {
+        val repo = repository()
+        repo.checkNow()
+        assertThat(repo.state.value.phase).isEqualTo(UpdatePhase.Available)
+
+        repo.skipVersion()
+        assertThat(store.value.dismissedVersionCode).isEqualTo(104)
+        assertThat(repo.state.value.phase).isEqualTo(UpdatePhase.Idle)
+
+        repo.restoreSkipped()
+
+        assertThat(store.value.dismissedVersionCode).isEqualTo(0)
+        // 撤销后必须重新走一次真实检查（2 次 fetch），而不是凭内存里的旧结论直接说「发现新版本」。
+        assertThat(source.calls).isEqualTo(2)
+        assertThat(repo.state.value.phase).isEqualTo(UpdatePhase.Available)
+        assertThat(repo.state.value.versionCode).isEqualTo(104)
     }
 
     @Test
@@ -215,6 +255,47 @@ class AppUpdateRepositoryTest {
 
         assertThat(downloader.calls).isEqualTo(1)
         assertThat(repo.state.value.phase).isEqualTo(UpdatePhase.Ready)
+    }
+
+    @Test
+    fun `a failed manual check keeps the ready apk installable`() = runTest {
+        readyFile()
+        store.setReady(104, "1.0.4", 10)
+
+        val repo = repository()
+        repo.init()
+        assertThat(repo.state.value.phase).isEqualTo(UpdatePhase.Ready)
+        source.failure = AppError.network("boom")
+
+        repo.checkNow()
+
+        // 一次断网不该抹掉已经校验过的安装包；错误信息保留，供 UI 说明「检查失败」。
+        assertThat(repo.state.value.phase).isEqualTo(UpdatePhase.Ready)
+        assertThat(repo.state.value.error).isNotEmpty()
+    }
+
+    @Test
+    fun `retrying after the restored apk vanished fetches the manifest again`() = runTest {
+        val apk = readyFile()
+        store.setReady(104, "1.0.4", 10)
+
+        // 走「需授予未知来源权限」分支，只构造系统设置 Intent，不触碰 FileProvider 路径。
+        val repo = repository(canRequestInstall = { false })
+        repo.init()
+        assertThat(repo.state.value.phase).isEqualTo(UpdatePhase.Ready)
+
+        apk.delete()
+        repo.installReady()
+        assertThat(repo.state.value.installRequest).isEqualTo(AppInstallRequest.Unavailable)
+        assertThat(repo.state.value.phase).isEqualTo(UpdatePhase.Failed)
+
+        // init() 恢复的 Ready 没有任何内存中的 RemoteUpdate：必须自己补一次清单检查。
+        repo.downloadAndInstall()
+
+        assertThat(source.calls).isEqualTo(1)
+        assertThat(downloader.calls).isEqualTo(1)
+        assertThat(repo.state.value.phase).isEqualTo(UpdatePhase.Ready)
+        assertThat(File(updateDir, "104.apk").exists()).isTrue()
     }
 
     @Test
@@ -299,10 +380,15 @@ class AppUpdateRepositoryTest {
         var calls = 0
         var failure: AppError? = null
 
+        /** 校验通知到达时的 phase 快照，用来证明 repository 真的把「校验中」发给了 UI。 */
+        var phaseProbe: (() -> UpdatePhase)? = null
+        var observedPhaseDuringVerify: UpdatePhase? = null
+
         override suspend fun download(
             update: RemoteUpdate,
             hosts: List<String>,
             targetDir: File,
+            onVerifying: () -> Unit,
             onProgress: (received: Long, total: Long) -> Unit,
         ): Outcome<File> {
             calls++
@@ -310,6 +396,9 @@ class AppUpdateRepositoryTest {
             targetDir.mkdirs()
             val file = File(targetDir, "${update.versionCode}.apk")
             file.writeBytes(ByteArray(update.size.toInt()))
+            // 先发校验通知，再快照 phase：否则观察到的是 Downloading，这条断言就失去意义。
+            onVerifying()
+            observedPhaseDuringVerify = phaseProbe?.invoke()
             onProgress(file.length(), file.length())
             return Outcome.Success(file)
         }
@@ -331,6 +420,10 @@ class AppUpdateRepositoryTest {
 
         override suspend fun setDismissed(versionCode: Int) {
             flow.value = flow.value.copy(dismissedVersionCode = versionCode)
+        }
+
+        override suspend fun clearDismissed() {
+            flow.value = flow.value.copy(dismissedVersionCode = 0)
         }
 
         override suspend fun setOkHost(host: String) {

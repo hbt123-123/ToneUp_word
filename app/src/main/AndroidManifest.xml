@@ -20,7 +20,7 @@
         in the system UI (plus the per-app "install unknown apps" grant on API 26+).
 
       ACCESS_NETWORK_STATE is not declared here either. It appears in the merged manifest only
-      because androidx.work (study reminders, meaning-sync worker, update worker) declares it
+      because androidx.work (study reminders, meaning-sync worker) declares it
       for its network constraints; a WorkManager NetworkType constraint (CONNECTED /
       UNMETERED "Wi-Fi only") needs no permission from us, and the app itself never reads
       connectivity state.

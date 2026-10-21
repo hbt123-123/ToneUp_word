@@ -13,7 +13,7 @@ ToneUp_word/
 ├── app/                    # 唯一 Gradle 模块；schemas/ 为 Room 导出 schema（迁移测试依据，含 1/2/3.json）
 │   └── src/main/java/top/toneup/word/
 │       ├── core/           # Outcome 结果类型、StudyDay(04:00 学习日边界)、JsonCodec、TimeProvider
-│       ├── domain/         # 纯 Kotlin 业务引擎（10 子包，零 Android 依赖）
+│       ├── domain/         # 纯 Kotlin 业务引擎（11 子包，零 Android 依赖）
 │       ├── data/           # Room + Repository + DataStore + SAF + TTS + 网关 + 应用更新（10 子包）
 │       ├── ui/             # Compose 屏幕/组件/主题/导航 + ViewModels.kt 单文件 + ExternalImport/OptIns
 │       └── work/           # WorkManager：学习提醒 + 释义补全同步（MeaningSyncWorker）
@@ -99,7 +99,7 @@ ToneUp_word/
 ```bash
 .\gradlew.bat :app:assembleDebug          # 调试 APK → app\build\outputs\apk\debug\
 .\gradlew.bat :app:installDebug           # 安装到设备/模拟器
-.\gradlew.bat :app:testDebugUnitTest      # 全部单测（585 用例 / 43 类）
+.\gradlew.bat :app:testDebugUnitTest      # 全部单测（596 用例 / 43 类）
 .\gradlew.bat :app:testDebugUnitTest --tests "*.SpacedRepetitionTest*"   # 单类
 .\gradlew.bat :app:assembleRelease -x lintVitalRelease   # R8 发布包（本机约定跳过 lint）
 .\gradlew.bat :app:lintVitalRelease       # Android Lint（唯一静态检查；低内存机会 OOM）

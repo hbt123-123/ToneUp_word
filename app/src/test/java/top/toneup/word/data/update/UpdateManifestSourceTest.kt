@@ -72,4 +72,55 @@ class UpdateManifestSourceTest {
     fun `returns null for malformed json`() {
         assertThat(source.parse("not json")).isNull()
     }
+
+    // --- host ordering (shared by the manifest and the APK download) --------------------------
+
+    @Test
+    fun `the preferred host is tried first and dead hosts are skipped`() {
+        val ordered = AppUpdateDefaults.orderedHosts(
+            preferredHost = "gh-proxy.com",
+            blocked = setOf(AppUpdateDefaults.DIRECT_HOST),
+        )
+
+        assertThat(ordered.first()).isEqualTo("gh-proxy.com")
+        assertThat(ordered).doesNotContain(AppUpdateDefaults.DIRECT_HOST)
+        assertThat(ordered).containsNoDuplicates()
+        assertThat(ordered).hasSize(AppUpdateDefaults.MIRROR_HOSTS.size)
+    }
+
+    @Test
+    fun `an unknown preferred host does not reorder anything`() {
+        val ordered = AppUpdateDefaults.orderedHosts(
+            preferredHost = "not-a-mirror.example.com",
+            blocked = emptySet(),
+        )
+
+        assertThat(ordered.first()).isEqualTo(AppUpdateDefaults.DIRECT_HOST)
+        assertThat(ordered).hasSize(AppUpdateDefaults.MIRROR_HOSTS.size + 1)
+    }
+
+    @Test
+    fun `an all-cooled-down list still returns every host`() {
+        val everyHost = (listOf(AppUpdateDefaults.DIRECT_HOST) + AppUpdateDefaults.MIRROR_HOSTS).toSet()
+
+        // 冷却只是优化：同一次会话里连续手动重试可以把所有线路都拉黑，此时必须继续尝试，
+        // 否则「检查更新」会直接报「没有可用的线路」而永远好不了。
+        val ordered = AppUpdateDefaults.orderedHosts(
+            preferredHost = "gh-proxy.com",
+            blocked = everyHost,
+        )
+
+        assertThat(ordered).hasSize(everyHost.size)
+        assertThat(ordered.first()).isEqualTo("gh-proxy.com")
+        assertThat(ordered).containsNoDuplicates()
+    }
+
+    @Test
+    fun `mirror urls are prefixed while the direct host is untouched`() {
+        val target = "https://github.com/hbt123-123/ToneUp_word/releases/latest/download/version.json"
+
+        assertThat(AppUpdateDefaults.url(AppUpdateDefaults.DIRECT_HOST, target)).isEqualTo(target)
+        assertThat(AppUpdateDefaults.url("gh-proxy.com", target))
+            .isEqualTo("https://gh-proxy.com/$target")
+    }
 }

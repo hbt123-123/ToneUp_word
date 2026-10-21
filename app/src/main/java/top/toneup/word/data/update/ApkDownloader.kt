@@ -25,12 +25,16 @@ import java.security.MessageDigest
  * A checksum mismatch deletes the part file and tries the next mirror (a proxy may have served
  * corrupted bytes), then fails without leaving anything installable. A transport failure keeps
  * the part file so the next run resumes exactly where it stopped.
+ *
+ * [onVerifying] 是「字节已齐、正在算哈希」的一次性通知：大包校验要几百毫秒，UI 若仍停在
+ * 「下载中 100%」会看起来像卡死。它是独立回调而不是一个进度值，因为校验阶段没有进度可言。
  */
 interface ApkDownloader {
     suspend fun download(
         update: RemoteUpdate,
         hosts: List<String>,
         targetDir: File,
+        onVerifying: () -> Unit = {},
         onProgress: (received: Long, total: Long) -> Unit,
     ): Outcome<File>
 }
@@ -44,6 +48,7 @@ class OkHttpApkDownloader(
         update: RemoteUpdate,
         hosts: List<String>,
         targetDir: File,
+        onVerifying: () -> Unit,
         onProgress: (received: Long, total: Long) -> Unit,
     ): Outcome<File> = withContext(ioDispatcher) {
         targetDir.mkdirs()
@@ -57,6 +62,22 @@ class OkHttpApkDownloader(
 
         val part = File(targetDir, "${update.versionCode}.apk.part")
         if (expected > 0 && part.isFile && part.length() > expected) part.delete()
+
+        // 上次可能已经把字节下齐、只是在校验/改名前被杀进程（或者所有线路随后都 416/不可用）。
+        // 长度已对上就先本地校验：不这样会因为「part 已完整 → 发 Range 被 416」而永远卡死。
+        if (expected > 0 && part.isFile && part.length() == expected) {
+            onVerifying()
+            val digest = sha256(part)
+            if (digest.equals(update.sha256, ignoreCase = true)) {
+                if (ready.exists()) ready.delete()
+                if (!part.renameTo(ready)) {
+                    return@withContext Outcome.Failure(AppError.io("无法保存安装包"))
+                }
+                onProgress(ready.length(), expected)
+                return@withContext Outcome.Success(ready)
+            }
+            part.delete() // 完整但哈希不符：丢弃后重下
+        }
 
         if (hosts.isEmpty()) {
             return@withContext Outcome.Failure(AppError.network("没有可用的下载线路"))
@@ -90,6 +111,7 @@ class OkHttpApkDownloader(
                 lastError = AppError.network("下载不完整：$length/$expected 字节")
                 continue
             }
+            onVerifying()
             val digest = sha256(part)
             if (!digest.equals(update.sha256, ignoreCase = true)) {
                 part.delete()
@@ -117,7 +139,7 @@ class OkHttpApkDownloader(
     ) {
         var offset = if (part.isFile) part.length() else 0L
         val request = Request.Builder()
-            .url(via(host, update.apkUrl))
+            .url(AppUpdateDefaults.url(host, update.apkUrl))
             .header("User-Agent", AppUpdateDefaults.USER_AGENT)
             .apply { if (offset > 0) header("Range", "bytes=$offset-") }
             .build()
@@ -186,9 +208,6 @@ class OkHttpApkDownloader(
         }
         return digest.digest().joinToString("") { "%02x".format(it.toInt() and 0xff) }
     }
-
-    private fun via(host: String, url: String): String =
-        if (host == AppUpdateDefaults.DIRECT_HOST) url else "https://$host/$url"
 
     private class HttpStatusException(val code: Int) : IOException("HTTP $code")
 
