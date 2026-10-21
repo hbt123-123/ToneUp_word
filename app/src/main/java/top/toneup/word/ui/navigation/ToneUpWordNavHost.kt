@@ -7,6 +7,7 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -14,8 +15,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -94,13 +98,25 @@ fun ToneUpWordNavHost(
     val popExitTransition = fadeOut(tween(transitionMillis)) +
         slideOutHorizontally(tween(transitionMillis), targetOffsetX = { it / 16 })
 
+    // The bottom bar has no job while the keyboard is up — it only sat flush against the IME
+    // (colliding with the input method's floating composing bar) and stole ~80dp from the form.
+    // `WindowInsets.isImeVisible` is still an experimental API in this Compose version, so the
+    // visibility is derived from the stable `WindowInsets.ime` object instead: `getBottom` reads
+    // snapshot-backed inset state inside `derivedStateOf`, so during the IME slide only this
+    // boolean is invalidated — the tree below recomposes twice (shown/hidden), not every frame.
+    val imeInsets = WindowInsets.ime
+    val density = LocalDensity.current
+    val imeVisible by remember(imeInsets, density) {
+        derivedStateOf { imeInsets.getBottom(density) > 0 }
+    }
+
     Scaffold(
         modifier = Modifier
             .fillMaxSize()
             .windowInsetsPadding(WindowInsets.safeDrawing),
         containerColor = MaterialTheme.colorScheme.background,
         bottomBar = {
-            if (currentDestination != null) {
+            if (currentDestination != null && !imeVisible) {
                 AppBottomNavigation(
                     current = currentDestination,
                     onSelect = { destination ->

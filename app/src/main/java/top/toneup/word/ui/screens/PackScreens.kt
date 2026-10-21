@@ -1,6 +1,7 @@
 package top.toneup.word.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -40,10 +41,18 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.times
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -531,6 +540,12 @@ fun ImportWordsScreen(
 // ---------------------------------------------------------------------------------------------
 
 /**
+ * The inline status slot under the「写入」button reserves this many `bodySmall` lines: one for
+ * the usual message, a second so a longer error can wrap without moving anything around it.
+ */
+private const val InlineStatusLines = 2
+
+/**
  * Hand-type the words met while reading, one at a time, with an optional Chinese note.
  *
  * The note is the answer to "the dictionary meaning is not what I need here": it is stored in
@@ -547,13 +562,33 @@ fun WriteWordScreen(
         viewModel(factory = ViewModelFactories.writeWord(container))
     val state by viewModel.state.collectAsStateWithLifecycle()
 
-    val snackbarHostState = remember { SnackbarHostState() }
-    val message = state.message
-    LaunchedEffect(message) {
-        if (message != null) {
-            snackbarHostState.showSnackbar(message)
-            viewModel.dismissMessage()
+    // No focus request on entry: pulling focus (and the IME) up during the navigation transition
+    // resizes the entering screen mid-animation — the very jump this screen is meant to fix.
+    // The cursor is returned after each successful write instead.
+    val wordFocus = remember { FocusRequester() }
+    val keyboard = LocalSoftwareKeyboardController.current
+    // Fixed status-slot height, derived from the typography line height: the line height is in
+    // sp, and `toDp()` folds the system font scale in, so large-font users get a taller fixed
+    // slot instead of clipped glyphs. The height still never depends on the message itself, so
+    // the "appears without moving anything" guarantee is kept.
+    val statusSlotHeight = with(LocalDensity.current) {
+        (MaterialTheme.typography.bodySmall.lineHeight * InlineStatusLines.toFloat()).toDp()
+    }
+    val commitTick = state.commitTick
+    LaunchedEffect(commitTick) {
+        if (commitTick == 0) return@LaunchedEffect
+        try {
+            wordFocus.requestFocus()
+        } catch (_: IllegalStateException) {
+            // The input card was recycled by the LazyColumn between commit and now — the word
+            // was saved, there is simply nothing to refocus. Don't break the flow over it.
         }
+        // Unconditional on purpose: the learner has just committed and the next step is typing
+        // the next word, so an IME that collapsed itself on IME_ACTION_DONE is brought back up
+        // (`requestFocus()` alone cannot — the field never lost focus, so nothing changes).
+        // This also re-shows a keyboard the learner dismissed by gesture; accepted on a tab
+        // whose only job is typing. The app itself never hides the keyboard.
+        keyboard?.show()
     }
 
     Scaffold(
@@ -565,7 +600,6 @@ fun WriteWordScreen(
                 ),
             )
         },
-        snackbarHost = { SnackbarHost(snackbarHostState) },
         containerColor = MaterialTheme.colorScheme.background,
     ) { padding ->
         LazyColumn(
@@ -600,10 +634,24 @@ fun WriteWordScreen(
                             onValueChange = viewModel::onWordChanged,
                             label = { Text("单词") },
                             singleLine = true,
-                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                            // Ascii maps to TYPE_TEXT_VARIATION_VISIBLE_PASSWORD, which makes
+                            // mainstream Chinese IMEs drop their pinyin composing state and show a
+                            // plain English layout, so the letters are visible as they are typed.
+                            // The input is deliberately NOT character-filtered: any filtering here
+                            // would also rewrite the IME's composing string mid-word.
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Ascii,
+                                imeAction = ImeAction.Done,
+                                capitalization = KeyboardCapitalization.None,
+                                autoCorrectEnabled = false,
+                            ),
+                            // "Done" commits straight from the word field, so a word-only entry
+                            // is one keystroke instead of Next → Done.
+                            keyboardActions = KeyboardActions(onDone = { viewModel.write() }),
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .testTag("write_word_field"),
+                                .testTag("write_word_field")
+                                .focusRequester(wordFocus),
                         )
                         OutlinedTextField(
                             value = state.noteInput,
@@ -611,7 +659,10 @@ fun WriteWordScreen(
                             label = { Text("我的释义 / 注释（可选，中文）") },
                             minLines = 2,
                             maxLines = 4,
-                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Text,
+                                imeAction = ImeAction.Done,
+                            ),
                             keyboardActions = KeyboardActions(onDone = { viewModel.write() }),
                             supportingText = {
                                 Text("填写后会优先展示，覆盖词典里不符合语境的意思。")
@@ -630,12 +681,45 @@ fun WriteWordScreen(
                                 .fillMaxWidth()
                                 .testTag("write_submit"),
                         )
+                        // Fixed-height status slot: the confirmation / error line appears and
+                        // disappears inside a box that is always laid out at the same height, so
+                        // nothing around it moves (no snackbar covering the form, no jump when
+                        // the message changes).
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(statusSlotHeight),
+                            contentAlignment = Alignment.CenterStart,
+                        ) {
+                            val message = state.message
+                            if (message != null) {
+                                Text(
+                                    text = message,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    maxLines = InlineStatusLines,
+                                    // Long messages truncate with dots instead of hard-clipping
+                                    // half a glyph.
+                                    overflow = TextOverflow.Ellipsis,
+                                    color = if (state.messageIsError) {
+                                        MaterialTheme.colorScheme.error
+                                    } else {
+                                        AppTheme.colors.mutedText
+                                    },
+                                )
+                            }
+                        }
                     }
                 }
             }
 
             item(key = "write_written_header") {
-                SectionHeader(title = "本次已写入")
+                SectionHeader(
+                    title = if (state.sessionCount > 0) {
+                        "本次已写入 · ${state.sessionCount} 词"
+                    } else {
+                        "本次已写入"
+                    },
+                )
             }
 
             if (state.written.isEmpty()) {

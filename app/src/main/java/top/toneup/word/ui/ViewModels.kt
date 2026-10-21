@@ -2143,6 +2143,20 @@ data class WriteWordUiState(
     /** Most recent writes first, capped at [WriteWordViewModel.MAX_RECENT]. */
     val written: List<WrittenWordEntry> = emptyList(),
     val message: String? = null,
+    /** True when [message] reports a refusal or a failed write; false after a success. */
+    val messageIsError: Boolean = false,
+    /**
+     * Bumped on every successful write. The screen keys its "return the cursor to the word
+     * field" effect on this value so each commit re-focuses exactly once, without collapsing
+     * the keyboard (write-word UX: focus must snap back for the next word).
+     */
+    val commitTick: Int = 0,
+    /**
+     * Distinct words written during this visit (deduplicated by row id, so writing the same
+     * word twice counts once) — shown as「本次已写入 · N 词」. Unlike [written] this is not
+     * capped by [WriteWordViewModel.MAX_RECENT], so a long batch still reports its true size.
+     */
+    val sessionCount: Int = 0,
 )
 
 /**
@@ -2171,29 +2185,42 @@ class WriteWordViewModel(
         val saving: Boolean = false,
         val written: List<WrittenWordEntry> = emptyList(),
         val message: String? = null,
+        val messageIsError: Boolean = false,
+        val commitTick: Int = 0,
+        /** Row ids written during this visit — a [Set] so repeats count as one word. */
+        val sessionWordIds: Set<Long> = emptySet(),
     )
 
+    /**
+     * The pack name is resolved from [WordRepository.observePacks] instead of a suspending
+     * `packById` lookup: every keystroke flows through this pipeline, and a Room round-trip per
+     * key made the field's visible value trail behind the IME's composing string (text flicker
+     * and lost letters while typing). With the pack list cached upstream of the combine, the
+     * transform below is a pure, non-suspending mapping — a keystroke reaches the UI in the same
+     * main-loop turn with zero suspension in between.
+     */
     val state: StateFlow<WriteWordUiState> = combine(
         container.settingsRepository.settings,
+        container.wordRepository.observePacks(),
         _input,
-    ) { settings, input -> settings to input }
-        .map { (settings, input) ->
-            val packName = runCatching {
-                container.wordRepository.packById(settings.effectivePackId)?.name
-            }.getOrNull().orEmpty()
-            WriteWordUiState(
-                packId = settings.effectivePackId,
-                packName = packName,
-                wordInput = input.word,
-                noteInput = input.note,
-                saving = input.saving,
-                written = input.written,
-                message = input.message,
-            )
-        }
+    ) { settings, packs, input ->
+        WriteWordUiState(
+            packId = settings.effectivePackId,
+            packName = packs.firstOrNull { it.id == settings.effectivePackId }?.name.orEmpty(),
+            wordInput = input.word,
+            noteInput = input.note,
+            saving = input.saving,
+            written = input.written,
+            message = input.message,
+            messageIsError = input.messageIsError,
+            commitTick = input.commitTick,
+            sessionCount = input.sessionWordIds.size,
+        )
+    }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), WriteWordUiState())
 
-    fun onWordChanged(value: String) = _input.update { it.copy(word = value, message = null) }
+    fun onWordChanged(value: String) =
+        _input.update { it.copy(word = value, message = null, messageIsError = false) }
 
     fun onNoteChanged(value: String) = _input.update { it.copy(note = value) }
 
@@ -2202,11 +2229,13 @@ class WriteWordViewModel(
         val current = _input.value
         val word = current.word.trim()
         if (word.isEmpty()) {
-            _input.update { it.copy(message = "请输入要写入的单词。") }
+            _input.update {
+                it.copy(message = "请输入要写入的单词。", messageIsError = true)
+            }
             return
         }
         if (current.saving) return
-        _input.update { it.copy(saving = true, message = null) }
+        _input.update { it.copy(saving = true, message = null, messageIsError = false) }
         viewModelScope.launch {
             val packId = container.settingsRepository.current().effectivePackId
             when (
@@ -2218,7 +2247,7 @@ class WriteWordViewModel(
                 )
             ) {
                 is Outcome.Failure -> _input.update {
-                    it.copy(saving = false, message = result.error.message)
+                    it.copy(saving = false, message = result.error.message, messageIsError = true)
                 }
 
                 is Outcome.Success -> {
@@ -2243,14 +2272,18 @@ class WriteWordViewModel(
                                     it.written.filterNot { old -> old.wordId == entry.wordId }
                                 ).take(MAX_RECENT),
                             message = "已写入「$word」。",
+                            messageIsError = false,
+                            // The commit tick (one per successful write) drives the screen's
+                            // refocus effect; the distinct-word set sizes the
+                            // 「本次已写入 · N 词」header — writing the same word twice counts once.
+                            commitTick = it.commitTick + 1,
+                            sessionWordIds = it.sessionWordIds + entry.wordId,
                         )
                     }
                 }
             }
         }
     }
-
-    fun dismissMessage() = _input.update { it.copy(message = null) }
 
     companion object {
         /** How many freshly written words the screen keeps on show. */

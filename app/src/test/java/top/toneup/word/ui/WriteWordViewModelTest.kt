@@ -141,9 +141,10 @@ class WriteWordViewModelTest {
         viewModel.onWordChanged(word)
         viewModel.onNoteChanged(note)
         viewModel.write()
-        // Wait for *this* word's confirmation, not just "a message is showing": `state` lags one
-        // emission behind the input (its pipeline does a suspending pack lookup), so a stale value
-        // still carrying the previous write's line must not be mistaken for completion.
+        // Wait for *this* word's confirmation, not just "a message is showing": the previous
+        // write's line is still up when this one starts and would be mistaken for completion by
+        // a `!= null` check. (Callers writing the *same* word twice await a counter instead —
+        // the message text would be identical.)
         awaitCondition("the write of $word to land") {
             viewModel.state.value.message == "已写入「$word」。"
         }
@@ -215,6 +216,55 @@ class WriteWordViewModelTest {
         assertThat(written).hasSize(WriteWordViewModel.MAX_RECENT)
         assertThat(written.first().word).isEqualTo("word-$total")
         assertThat(written.last().word).isEqualTo("word-2") // word-1 fell off the end
+    }
+
+    // --- commit feedback (focus tick, session counter, inline message) ------------------------
+
+    @Test
+    fun `a successful write bumps the commit tick and the session count`() {
+        writeAndAwait("apple", "苹果")
+
+        // All three land in the same state emission as the confirmation message, so once
+        // [writeAndAwait] returned they are guaranteed visible — the screen keys its
+        // "cursor back to the word field" effect on `commitTick` and its header on
+        // `sessionCount`.
+        val state = viewModel.state.value
+        assertThat(state.commitTick).isEqualTo(1)
+        assertThat(state.sessionCount).isEqualTo(1)
+        assertThat(state.messageIsError).isFalse()
+    }
+
+    @Test
+    fun `writing the same word twice counts one distinct word but two commits`() {
+        writeAndAwait("apple", "第一版")
+        // Same word again: the confirmation text would be identical, so await the commit counter.
+        viewModel.onWordChanged("apple")
+        viewModel.onNoteChanged("第二版")
+        viewModel.write()
+        awaitCondition("the second write of apple to land") {
+            viewModel.state.value.commitTick == 2
+        }
+
+        val state = viewModel.state.value
+        assertThat(state.commitTick).isEqualTo(2)
+        assertThat(state.sessionCount).isEqualTo(1) // distinct words, not commits
+        assertThat(state.written).hasSize(1)
+        assertThat(state.written.single().note).isEqualTo("第二版")
+        assertThat(countInPack()).isEqualTo(1)
+    }
+
+    @Test
+    fun `a blank word leaves the counters untouched and flags an error`() {
+        viewModel.onWordChanged("   ")
+        viewModel.write()
+        awaitCondition("the empty-input message") { viewModel.state.value.message != null }
+
+        val state = viewModel.state.value
+        assertThat(state.commitTick).isEqualTo(0)
+        assertThat(state.sessionCount).isEqualTo(0)
+        assertThat(state.messageIsError).isTrue()
+        assertThat(state.message).isEqualTo("请输入要写入的单词。")
+        assertThat(countInPack()).isEqualTo(0)
     }
 
     private companion object {
