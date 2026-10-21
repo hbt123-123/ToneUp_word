@@ -3,9 +3,11 @@ package top.toneup.word
 import android.content.ClipboardManager
 import android.content.Intent
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -57,7 +59,19 @@ class MainActivity : ComponentActivity() {
             val importState = externalImport.state.collectAsStateWithLifecycle()
             val importPacks = externalImport.packs.collectAsStateWithLifecycle()
             val importActivePackId = externalImport.activePackId.collectAsStateWithLifecycle()
-            val pendingUpdate = mainViewModel.pendingUpdate.collectAsStateWithLifecycle()
+            val updateState = mainViewModel.updateState.collectAsStateWithLifecycle()
+            val updateDialogVisible = mainViewModel.updateDialogVisible.collectAsStateWithLifecycle()
+
+            // The repository raises a one-shot Intent request; the Activity is the only place
+            // allowed to launch it. Consuming it immediately keeps a recomposition/rotation from
+            // opening the installer twice.
+            LaunchedEffect(updateState.value.installRequest) {
+                val request = updateState.value.installRequest ?: return@LaunchedEffect
+                // Consume first so a rotation between the launch and the next composition cannot
+                // open the system installer twice.
+                mainViewModel.consumeInstallRequest()
+                launchInstallRequest(request)
+            }
 
             ToneUpWordApp(
                 container = container,
@@ -73,9 +87,15 @@ class MainActivity : ComponentActivity() {
                     onCreatePackAndImport = externalImport::createPackAndImport,
                     onDismiss = externalImport::dismiss,
                 ),
-                pendingUpdate = pendingUpdate.value,
-                onInstallUpdate = { launchPendingUpdateInstall() },
-                onDismissUpdate = mainViewModel::dismissPendingUpdate,
+                updateState = updateState.value,
+                updateDialogVisible = updateDialogVisible.value,
+                onCheckUpdate = mainViewModel::checkForUpdates,
+                onShowUpdate = mainViewModel::showUpdateDialog,
+                onCloseUpdate = mainViewModel::closeUpdateDialog,
+                onDownloadUpdate = mainViewModel::downloadUpdate,
+                onInstallUpdate = mainViewModel::installUpdate,
+                onSkipUpdate = mainViewModel::skipUpdateVersion,
+                onRetryUpdate = mainViewModel::retryUpdate,
             )
         }
 
@@ -151,18 +171,17 @@ class MainActivity : ComponentActivity() {
      * the "install unknown apps" grant when it is missing. The APK stays on disk, so after the
      * user grants and returns, a second tap installs without re-downloading.
      */
-    private fun launchPendingUpdateInstall() {
-        lifecycleScope.launch {
-            when (val request = runCatching { container.appUpdateRepository.installRequest() }
-                .getOrNull() ?: return@launch) {
-                is AppInstallRequest.Ready ->
-                    runCatching { startActivity(request.intent) }
+    private fun launchInstallRequest(request: AppInstallRequest) {
+        when (request) {
+            is AppInstallRequest.Ready ->
+                runCatching { startActivity(request.intent) }
 
-                is AppInstallRequest.NeedPermission ->
-                    runCatching { startActivity(request.intent) }
+            is AppInstallRequest.NeedPermission ->
+                runCatching { startActivity(request.intent) }
 
-                AppInstallRequest.Unavailable -> Unit
-            }
+            // Cache evicted between the download and the tap: say so instead of a dead button.
+            AppInstallRequest.Unavailable ->
+                Toast.makeText(applicationContext, "安装包不存在，请重新检查更新", Toast.LENGTH_SHORT).show()
         }
     }
 }

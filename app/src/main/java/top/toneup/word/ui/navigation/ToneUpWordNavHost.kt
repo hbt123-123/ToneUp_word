@@ -23,6 +23,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import top.toneup.word.AppContainer
+import top.toneup.word.data.update.AppUpdateUiState
 import top.toneup.word.ui.ExamViewModel
 import top.toneup.word.ui.ViewModelFactories
 import top.toneup.word.ui.screens.AboutScreen
@@ -58,6 +59,9 @@ import top.toneup.word.ui.theme.AppTheme
 fun ToneUpWordNavHost(
     container: AppContainer,
     onboardingCompleted: Boolean,
+    updateState: AppUpdateUiState = AppUpdateUiState(),
+    onCheckUpdate: () -> Unit = {},
+    onShowUpdate: () -> Unit = {},
 ) {
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
@@ -241,6 +245,9 @@ fun ToneUpWordNavHost(
             composable(Routes.PROFILE) {
                 ProfileScreen(
                     container = container,
+                    updateState = updateState,
+                    onCheckUpdate = onCheckUpdate,
+                    onShowUpdate = onShowUpdate,
                     onOpenSettings = { navController.navigate(Routes.SETTINGS) },
                     onOpenDataTransfer = { navController.navigate(Routes.DATA_TRANSFER) },
                     onOpenWordBrowser = { navController.navigate(Routes.WORD_BROWSER) },

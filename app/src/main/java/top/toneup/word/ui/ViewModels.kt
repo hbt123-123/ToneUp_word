@@ -19,7 +19,8 @@ import top.toneup.word.data.repository.RestoreResult
 import top.toneup.word.data.repository.SeedProgress
 import top.toneup.word.data.repository.SessionStatus
 import top.toneup.word.data.repository.WordRepository
-import top.toneup.word.data.update.PendingAppUpdate
+import top.toneup.word.data.update.AppUpdateUiState
+import top.toneup.word.data.update.UpdatePhase
 import top.toneup.word.data.speech.SpeechRateMode
 import top.toneup.word.domain.insight.Insight
 import top.toneup.word.domain.insight.InsightEngine
@@ -198,6 +199,16 @@ class MainViewModel(private val container: AppContainer) : ViewModel() {
         )
     }.stateIn(viewModelScope, SharingStarted.Eagerly, MainUiState())
 
+    /** The whole update flow (phase, progress, notes, errors) rendered by the dialog. */
+    val updateState: StateFlow<AppUpdateUiState> = container.appUpdateRepository.state
+
+    private val updateDialog = MutableStateFlow(false)
+
+    /** Whether the host-level update dialog is on screen. */
+    val updateDialogVisible: StateFlow<Boolean> = updateDialog.asStateFlow()
+
+    private var readyPrompted = false
+
     init {
         viewModelScope.launch {
             // Seeding the built-in packs (and upgrading them when the shipped data changed) and
@@ -206,23 +217,80 @@ class MainViewModel(private val container: AppContainer) : ViewModel() {
             ready.value = true
         }
         viewModelScope.launch { showStartupTip() }
-        // In-app update: silent GitHub-Releases check + resumable background download; the
-        // install prompt surfaces through [pendingUpdate] once an intact APK is on disk.
-        viewModelScope.launch { runCatching { container.appUpdateRepository.enqueueCheckOnLaunch() } }
+        // In-app update: restore a previously verified APK, then run the throttled launch check.
+        // The check and the manual "检查更新" row share the repository's single state machine.
+        viewModelScope.launch {
+            runCatching { container.appUpdateRepository.init() }
+            runCatching { container.appUpdateRepository.autoCheck() }
+        }
+        viewModelScope.launch {
+            container.appUpdateRepository.state.collect { update ->
+                // Prompt once per process when the silent background download becomes installable.
+                if (update.phase == UpdatePhase.Ready && !readyPrompted) {
+                    readyPrompted = true
+                    updateDialog.value = true
+                }
+            }
+        }
     }
 
-    /**
-     * A downloaded-but-not-installed update, or null. Kept out of [state] on purpose: the
-     * settings/theme combine already has five flows and this one has a different lifecycle —
-     * it appears mid-session when the download finishes, not only at start-up.
-     */
-    val pendingUpdate: StateFlow<PendingAppUpdate?> = container.appUpdateRepository
-        .observePendingInstall()
-        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+    /** "检查更新" tap: open the dialog immediately so "正在检查…" has somewhere to render. */
+    fun checkForUpdates() {
+        updateDialog.value = true
+        viewModelScope.launch { runCatching { container.appUpdateRepository.checkNow() } }
+    }
 
-    /** The learner tapped "下次再说": suppress this version until a newer release appears. */
-    fun dismissPendingUpdate() {
-        viewModelScope.launch { runCatching { container.appUpdateRepository.dismissPendingInstall() } }
+    /** Re-open the dialog for an already available/ready/downloading update. */
+    fun showUpdateDialog() {
+        updateDialog.value = true
+    }
+
+    /** "稍后": close the dialog but keep the verified APK and the profile row entry. */
+    fun closeUpdateDialog() {
+        updateDialog.value = false
+    }
+
+    fun downloadUpdate() {
+        viewModelScope.launch {
+            runCatching { container.appUpdateRepository.downloadAndInstall() }
+            // A verified file raises a one-shot install request; MainActivity launches it, so
+            // the dialog must not linger behind the system installer.
+            if (container.appUpdateRepository.state.value.installRequest != null) {
+                updateDialog.value = false
+            }
+        }
+    }
+
+    fun retryUpdate() {
+        viewModelScope.launch {
+            val update = container.appUpdateRepository.state.value
+            val canRetryDownload = update.phase == UpdatePhase.Available ||
+                (update.phase == UpdatePhase.Failed && update.versionCode > 0)
+            if (canRetryDownload) {
+                container.appUpdateRepository.downloadAndInstall()
+                if (container.appUpdateRepository.state.value.installRequest != null) {
+                    updateDialog.value = false
+                }
+            } else {
+                container.appUpdateRepository.checkNow()
+            }
+        }
+    }
+
+    /** "立即安装": raise a one-shot Intent request; MainActivity launches it. */
+    fun installUpdate() {
+        updateDialog.value = false
+        viewModelScope.launch { runCatching { container.appUpdateRepository.installReady() } }
+    }
+
+    /** "跳过此版本": suppress this versionCode and delete its downloaded APK. */
+    fun skipUpdateVersion() {
+        updateDialog.value = false
+        viewModelScope.launch { runCatching { container.appUpdateRepository.skipVersion() } }
+    }
+
+    fun consumeInstallRequest() {
+        container.appUpdateRepository.consumeInstallRequest()
     }
 
     /** The learner tapped the start-up screen: leave immediately instead of waiting out the timer. */

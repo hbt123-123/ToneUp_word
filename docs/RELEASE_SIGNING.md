@@ -60,24 +60,39 @@ $ANDROID_HOME/build-tools/36.0.0/apksigner verify --print-certs app/build/output
 
 不配任何签名信息时，同一命令仍会成功，但产物是 `app-release-unsigned.apk`——**这种包在 Android 上无法安装**，只适合做构建检查。
 
-## 4. 在 CI 里出正式包（推荐）
+## 4. 出正式包并发布（手工流程）
 
-仓库已内置 [`.github/workflows/release.yml`](../.github/workflows/release.yml)：打 tag（如 `v1.0.1`）时自动构建签名包并上传到 Release。
+仓库**没有** CI workflow（`.github/workflows/` 不存在），发布在本机完成。用发布脚本一步生成
+APK 与 `version.json`：
 
-需要在 GitHub 仓库设置 → Secrets and variables → Actions 里添加：
+```powershell
+# 先把 app/build.gradle.kts 的 versionName/versionCode 改好，并更新 release-notes.md
+powershell -ExecutionPolicy Bypass -File tool\release.ps1 -AppVersion 1.0.3 -Tag
+```
 
-| Secret | 怎么得到 |
+脚本会校验：
+
+* `-AppVersion` 与 `app/build.gradle.kts` 的 `versionName` 一致；
+* `versionCode == major*100 + minor*10 + patch`（如 `1.0.3 → 103`）；
+* release APK 已签名（未签名直接报错，不会生成发布物）。
+
+产物在 `dist/`（已 gitignore）：
+
+| 文件 | 说明 |
 | --- | --- |
-| `KEYSTORE_BASE64` | Linux/macOS：`base64 -w0 toneup-release.jks`；Windows PowerShell：`[Convert]::ToBase64String([IO.File]::ReadAllBytes("toneup-release.jks"))` |
-| `KEYSTORE_PASSWORD` | 密钥库口令 |
-| `KEY_ALIAS` | 别名（如 `toneup`） |
-| `KEY_PASSWORD` | 密钥口令 |
+| `ToneUpWord.apk` | 固定资产名，应用内更新下载的就是它 |
+| `version.json` | 固定资产名，字段契约见 [`UPDATE_PROTOCOL.md`](UPDATE_PROTOCOL.md) |
 
-工作流的行为：
+然后在 GitHub 新建 Release：
 
-* 密钥库在运行器上解码到 `$RUNNER_TEMP`（**不在工作区**，因此不会被 `actions/cache` 或 artifact 打包带走），任务结束前 `rm -rf` 清理；
-* 没有配置 `KEYSTORE_BASE64` 时，只跑测试并给出警告，**不会失败**（fork 的人不会因此看到红叉）；
-* 打包后会用 `apksigner verify --print-certs` 校验签名，避免“看起来成功其实没签上”。
+1. Tag 必须是 `v<versionName>`（例如 `v1.0.3`），且与 APK 的 `versionName` 一致；
+2. 上传 `dist\ToneUpWord.apk` 与 `dist\version.json`（**名字不能改**）；
+3. 选择 **Publish release**（草稿/Pre-release 对客户端不可见）；
+4. 用旧版本 App 的「我的 → 检查更新」做一次真机验收。
+
+`versionCode` 是更新判断的第一依据：只改 tag 不改 `versionCode`，已安装用户不会收到更新；
+只改 `versionCode` 不改 tag，会让 Release 页面和 App 内显示不一致。发布脚本会拦截前者，
+tag 的一致性靠这一步人工确认。
 
 ## 5. 检查你是否误提交了密钥
 

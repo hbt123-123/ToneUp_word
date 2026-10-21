@@ -12,7 +12,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import top.toneup.word.AppContainer
 import top.toneup.word.data.local.entity.WordPackEntity
-import top.toneup.word.data.update.PendingAppUpdate
+import top.toneup.word.data.update.AppUpdateUiState
 import top.toneup.word.ui.components.AppUpdateDialog
 import top.toneup.word.ui.components.LoadingState
 import top.toneup.word.ui.navigation.ToneUpWordNavHost
@@ -48,10 +48,17 @@ fun ToneUpWordApp(
     externalImportPacks: List<WordPackEntity> = emptyList(),
     externalImportActivePackId: String = "",
     externalImportCallbacks: ExternalImportCallbacks = ExternalImportCallbacks(),
-    // In-app update prompt (defaults = feature dormant until a download completes).
-    pendingUpdate: PendingAppUpdate? = null,
+    // In-app update: the profile row can open the dialog, while the launch check raises it
+    // automatically once a verified APK is ready.
+    updateState: AppUpdateUiState = AppUpdateUiState(),
+    updateDialogVisible: Boolean = false,
+    onCheckUpdate: () -> Unit = {},
+    onShowUpdate: () -> Unit = {},
+    onCloseUpdate: () -> Unit = {},
+    onDownloadUpdate: () -> Unit = {},
     onInstallUpdate: () -> Unit = {},
-    onDismissUpdate: () -> Unit = {},
+    onSkipUpdate: () -> Unit = {},
+    onRetryUpdate: () -> Unit = {},
 ) {
     val settings = state.settings
 
@@ -69,6 +76,9 @@ fun ToneUpWordApp(
                     ToneUpWordNavHost(
                         container = container,
                         onboardingCompleted = settings.onboardingCompleted,
+                        updateState = updateState,
+                        onCheckUpdate = onCheckUpdate,
+                        onShowUpdate = onShowUpdate,
                     )
                 } else {
                     // Cold start: the built-in CET-4/CET-6 packs are being written to the database.
@@ -102,13 +112,18 @@ fun ToneUpWordApp(
                     callbacks = externalImportCallbacks,
                 )
 
-                // In-app update: raised the moment the silent background download of a newer
-                // release completes (or an earlier download is still waiting to be installed).
-                if (pendingUpdate != null) {
+                // In-app update: a host-level overlay like the import sheet. It is raised by the
+                // launch check when a verified APK is ready, or by the profile "检查更新" row.
+                // While the cold-start line is on top, wait: two full-screen overlays at once
+                // would bury the encouragement and look like a second launch screen.
+                if (updateDialogVisible && !state.startupTipVisible) {
                     AppUpdateDialog(
-                        versionName = pendingUpdate.versionName,
+                        state = updateState,
                         onInstall = onInstallUpdate,
-                        onDismiss = onDismissUpdate,
+                        onDownload = onDownloadUpdate,
+                        onRetry = onRetryUpdate,
+                        onSkip = onSkipUpdate,
+                        onClose = onCloseUpdate,
                     )
                 }
             }

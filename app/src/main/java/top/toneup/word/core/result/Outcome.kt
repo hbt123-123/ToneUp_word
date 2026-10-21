@@ -56,6 +56,15 @@ data class AppError(
         /** Every source answered "no such word" — the cascade is exhausted (negative cache). */
         fun notFound(detail: String? = null) =
             AppError(ErrorCode.NOT_FOUND, "网关未查到该词的释义，可手动补充。", detail)
+
+        // --- in-app update (see data/update/) --------------------------------------------
+        /** `version.json` is malformed or violates the release contract. */
+        fun updateParse(detail: String? = null) =
+            AppError(ErrorCode.PARSE, "更新信息格式不正确，请稍后重试。", detail)
+
+        /** Downloaded bytes do not match the manifest's SHA-256; the file must not be installed. */
+        fun checksum(detail: String? = null) =
+            AppError(ErrorCode.IO, "安装包校验未通过，已丢弃，请稍后重试。", detail)
     }
 }
 

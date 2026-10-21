@@ -11,7 +11,7 @@ data/
 │   └── dao/     11 文件 = 9 @Dao + WordWithProgressView(视图) + QueryRows(行投影) ← 非全是 DAO
 ├── repository/  Word/Study/Mistake/Exam/Stats/Insight/Backup/MeaningSync/AppUpdate + ProgressRecorder(具体类)
 ├── gateway/     GatewayConfig/Defaults/Dtos/Api/ClientProvider + MeaningLookupService + LookupResult + EnResponseSerializer（联网点 1）
-├── update/      AppUpdateModels/Defaults/Store + GitHubReleaseSource + ApkDownloader(断点续传) + ApkInstaller（联网点 2，应用内版本更新）
+├── update/      UpdateManifestSource(固定 version.json + 镜像回退) + AppUpdateModels/Defaults/Store + ApkDownloader(断点续传 + SHA-256) + ApkInstaller（联网点 2，应用内版本更新）
 ├── seed/        BuiltInPackLoader(manifest), BuiltInWordPacks(CC0 回退), SeedWord
 ├── settings/    DataStore "toneup_settings"（IOException 才降级空偏好）+ PackIds(内置/保留包 id + level↔pack 映射)
 ├── speech/      SpeechService 接口, SystemTtsSpeechService(单实例), AudioUrlPlayer(在线发音失败回落 TTS), SpeechDiagnosticsStore(仅内存计数)
@@ -30,6 +30,7 @@ data/
 | 升数据库版本 | `local/Migrations.kt` + `ToneUpWordDatabase` version 字面量 | 两处同步（有测试断言）+ 导出 `app/schemas/` 快照 |
 | 释义补全编排 | `repository/MeaningSyncRepository.kt` | pending 计数 / unique work 入队 / 单词级即时查 / `applyLookupToWord`（3 处 manual 守卫） |
 | 级联查询 + 缓存 | `gateway/MeaningLookupService.kt` + `gateway/GatewayClientProvider.kt` | ECDICT→FreeDict→LLM；`meaning_cache` 24h 负缓存；https 校验 |
+| 应用内更新 | `update/` + `repository/AppUpdateRepository.kt` | 固定 `version.json` + 镜像回退 + SHA-256 + 断点续传；`StateFlow<AppUpdateUiState>`；契约 `docs/UPDATE_PROTOCOL.md` |
 | 考试防重复交卷 | `repository/ExamRepository` | createDraft 先弃旧草稿；saveAnswer 不判对错（防答案键泄露） |
 | 备份导出/恢复 | `repository/BackupRepository.kt`（741 行热点） | restore 按 pack 先删后插（幂等） |
 | 搜索常量 | `WordRepository.Companion` | SEARCH_LIMIT=200, APPROX_LIMIT=12, STRICT=8, CANDIDATE=4000 |
@@ -60,4 +61,4 @@ data/
 - SQLite 3.18 约束：升级迁移勿用新语法。
 
 ## 测试
-`data/` 下：DatabaseTest（全 DAO + version 断言）、ProgressRecorderTest(20)、Migration1To2Test(3，种子保真+索引语义)、Migration2To3Test(2，视图 DDL)、PackIdsTest(4)、AddWordsToPackTest(18)、WordEditRepositoryTest(11)、gateway/MeaningLookupServiceTest(12)、gateway/MeaningSyncRepositoryTest(10)、seed/BuiltInPackSeedTest(7)、seed/BuiltInPackAssetTest(8)、speech/AudioUrlPlayerTest(4)。其余 Repository（Study/Mistake/Exam/Stats/Insight/Backup）**无直接测试**。
+`data/` 下：DatabaseTest（全 DAO + version 断言）、ProgressRecorderTest(20)、Migration1To2Test(3，种子保真+索引语义)、Migration2To3Test(2，视图 DDL)、PackIdsTest(4)、AddWordsToPackTest(18)、WordEditRepositoryTest(11)、gateway/MeaningLookupServiceTest(12)、gateway/MeaningSyncRepositoryTest(10)、seed/BuiltInPackSeedTest(7)、seed/BuiltInPackAssetTest(8)、speech/AudioUrlPlayerTest(4)、update/ApkUpdateDownloaderTest(10)、update/UpdateManifestSourceTest(7)、AppUpdateRepositoryTest(14)、domain/update/AppVersionTest(20)。其余 Repository（Study/Mistake/Exam/Stats/Insight/Backup）**无直接测试**。

@@ -48,12 +48,18 @@
   学习时优先展示你写的释义、未填写时才走释义补全网关；错题本收进首页，腾出的位置作为写词库入口。
 * **v0.1**：内置四级 + 六级词库的首个公开测试包；对应提交 [`fbfeefe`](https://github.com/hbt123-123/ToneUp_word/commit/fbfeefe228218b69cee9b96d950a6ccab762189e)。
 
-> 两个包由**另一台机器**构建，包名均为 `top.toneup.word`，`minSdk 26` / `targetSdk 36`，
+> 两个历史包由**另一台机器**构建，包名均为 `top.toneup.word`，`minSdk 26` / `targetSdk 36`，
 > 采用 **APK Signature Scheme v2** 签名（证书 `OU=ToneUp`）。其 `versionName`（0.1 / 0.2）
 > 与本仓库 `app/build.gradle.kts` 中的取值（`1.0.3`）**不一致**——上表数值才是该 APK 的真实版本。
 >
-> 安装：把 APK 传到手机后点击安装（需允许「安装未知来源应用」），或 `adb install ToneUpWord-v0.2.apk`。
-> 想自己从源码出包请见 [发布签名](docs/RELEASE_SIGNING.md) 与 [如何运行](#如何运行)。
+> **从 v1.0.3 起**，Releases 的资产名固定为 `ToneUpWord.apk` 与 `version.json`，应用内自动更新只认
+> 这两个名字；tag 必须等于 `v<versionName>`，`versionCode == major*100+minor*10+patch`。发布脚本
+> `tool/release.ps1` 会校验版本号公式并生成两个资产，字段契约见
+> [应用内更新协议](docs/UPDATE_PROTOCOL.md)。
+>
+> 安装：把 APK 传到手机后点击安装（需允许「安装未知来源应用」），或 `adb install ToneUpWord.apk`。
+> 想自己从源码出包请见 [发布签名](docs/RELEASE_SIGNING.md) 与 [如何运行](#如何运行)；
+> 上传到 GitHub Release 的完整步骤见 [上传安装包到 GitHub Release](docs/RELEASE_UPLOAD.md)。
 
 ---
 

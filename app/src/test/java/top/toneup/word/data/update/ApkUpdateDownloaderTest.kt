@@ -2,6 +2,7 @@ package top.toneup.word.data.update
 
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.test.runTest
+import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
@@ -9,14 +10,14 @@ import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
-import top.toneup.word.core.result.AppError
-import top.toneup.word.core.result.ErrorCode
 import top.toneup.word.core.result.Outcome
+import top.toneup.word.domain.update.RemoteUpdate
 import java.io.File
+import java.security.MessageDigest
 
 /**
- * The resumable download semantics of [OkHttpApkDownloader]: fresh transfer, `Range` resume
- * from a partial file, fallback when the server ignores the range, and size verification.
+ * Resumable + verified download semantics: fresh transfer, `Range` resume, a host that ignores
+ * the range, SHA-256 rejection, and the guarantee that only `<versionCode>.apk` is installable.
  */
 class ApkUpdateDownloaderTest {
 
@@ -24,14 +25,14 @@ class ApkUpdateDownloaderTest {
     val tmp = TemporaryFolder()
 
     private lateinit var server: MockWebServer
-    private lateinit var target: File
-    private val downloader = OkHttpApkDownloader(okhttp3.OkHttpClient())
+    private lateinit var dir: File
+    private val downloader = OkHttpApkDownloader(OkHttpClient())
 
     @Before
     fun setUp() {
         server = MockWebServer()
         server.start()
-        target = File(tmp.root, "toneup-update.apk")
+        dir = File(tmp.root, "updates")
     }
 
     @After
@@ -39,97 +40,141 @@ class ApkUpdateDownloaderTest {
         server.shutdown()
     }
 
-    private fun url(): String = server.url("/release.apk").toString()
+    private fun url(): String = server.url("/ToneUpWord.apk").toString()
+
+    private fun sha256(bytes: ByteArray): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        digest.update(bytes)
+        return digest.digest().joinToString("") { "%02x".format(it.toInt() and 0xff) }
+    }
+
+    private fun update(
+        payload: ByteArray,
+        digest: String = sha256(payload),
+    ) = RemoteUpdate(
+        version = "1.0.3",
+        versionCode = 103,
+        apkUrl = url(),
+        sha256 = digest,
+        size = payload.size.toLong(),
+        notes = "",
+    )
+
+    private fun part() = File(dir, "103.apk.part")
+    private fun ready() = File(dir, "103.apk")
 
     @Test
-    fun `fresh download writes the whole file`() = runTest {
-        val payload = "ABCDEFGHIJ"
-        server.enqueue(MockResponse().setResponseCode(200).setBody(payload))
+    fun `fresh download verifies and renames to versionCode apk`() = runTest {
+        val payload = "ABCDEFGHIJ".toByteArray()
+        server.enqueue(MockResponse().setResponseCode(200).setBody("ABCDEFGHIJ"))
 
-        val outcome = downloader.download(url(), target, expectedSize = 10L)
+        val result = downloader.download(update(payload), listOf(""), dir) { _, _ -> }
 
-        assertThat(outcome.isSuccess).isTrue()
-        assertThat(target.readText()).isEqualTo(payload)
-        val request = server.takeRequest()
-        assertThat(request.getHeader("Range")).isNull()
+        assertThat(result.isSuccess).isTrue()
+        assertThat(ready().readText()).isEqualTo("ABCDEFGHIJ")
+        assertThat(part().exists()).isFalse()
+        assertThat(server.takeRequest().getHeader("Range")).isNull()
     }
 
     @Test
     fun `partial file resumes with a range request and appends the tail`() = runTest {
-        target.writeText("ABCD")
-        val tail = "EFGHIJ"
+        dir.mkdirs()
+        part().writeText("ABCD")
+        val payload = "ABCDEFGHIJ".toByteArray()
         server.enqueue(
             MockResponse()
                 .setResponseCode(206)
                 .setHeader("Content-Range", "bytes 4-9/10")
-                .setBody(tail),
+                .setBody("EFGHIJ"),
         )
 
-        val outcome = downloader.download(url(), target, expectedSize = 10L)
+        val result = downloader.download(update(payload), listOf(""), dir) { _, _ -> }
 
-        assertThat(outcome.isSuccess).isTrue()
-        assertThat(target.readText()).isEqualTo("ABCDEFGHIJ")
+        assertThat(result.isSuccess).isTrue()
+        assertThat(ready().readText()).isEqualTo("ABCDEFGHIJ")
         assertThat(server.takeRequest().getHeader("Range")).isEqualTo("bytes=4-")
     }
 
     @Test
-    fun `a server ignoring the range rewrites the file from scratch`() = runTest {
-        target.writeText("XXXX")
+    fun `a host ignoring the range rewrites the file from scratch`() = runTest {
+        dir.mkdirs()
+        part().writeText("XXXX")
+        val payload = "ABCDEFGHIJ".toByteArray()
         server.enqueue(MockResponse().setResponseCode(200).setBody("ABCDEFGHIJ"))
 
-        val outcome = downloader.download(url(), target, expectedSize = 10L)
+        val result = downloader.download(update(payload), listOf(""), dir) { _, _ -> }
 
-        assertThat(outcome.isSuccess).isTrue()
-        assertThat(target.readText()).isEqualTo("ABCDEFGHIJ")
+        assertThat(result.isSuccess).isTrue()
+        assertThat(ready().readText()).isEqualTo("ABCDEFGHIJ")
     }
 
     @Test
-    fun `an incomplete transfer fails and removes the broken file`() = runTest {
+    fun `an incomplete transfer fails and keeps the part file for resume`() = runTest {
+        val payload = "ABCDEFGHIJ".toByteArray()
         server.enqueue(MockResponse().setResponseCode(200).setBody("ABC"))
 
-        val outcome = downloader.download(url(), target, expectedSize = 10L)
+        val result = downloader.download(update(payload), listOf(""), dir) { _, _ -> }
 
-        assertThat(outcome.isSuccess).isFalse()
-        assertThat((outcome as Outcome.Failure).error.code).isEqualTo(ErrorCode.IO)
-        assertThat(target.exists()).isFalse()
+        assertThat(result.isSuccess).isFalse()
+        assertThat(part().readText()).isEqualTo("ABC")
+        assertThat(ready().exists()).isFalse()
+    }
+
+    @Test
+    fun `a digest mismatch deletes the part and never creates an installable file`() = runTest {
+        val payload = "ABCDEFGHIJ".toByteArray()
+        server.enqueue(MockResponse().setResponseCode(200).setBody("ABCDEFGHIJ"))
+
+        val result = downloader.download(
+            update(payload, digest = sha256("XXXXXXXXXX".toByteArray())),
+            listOf(""),
+            dir,
+        ) { _, _ -> }
+
+        assertThat(result.isSuccess).isFalse()
+        assertThat((result as Outcome.Failure).error.message).contains("校验")
+        assertThat(part().exists()).isFalse()
+        assertThat(ready().exists()).isFalse()
     }
 
     @Test
     fun `an already complete file needs no request at all`() = runTest {
-        target.writeText("ABCDEFGHIJ")
+        dir.mkdirs()
+        ready().writeText("ABCDEFGHIJ")
 
-        val outcome = downloader.download(url(), target, expectedSize = 10L)
+        val result = downloader.download(update("ABCDEFGHIJ".toByteArray()), listOf(""), dir) { _, _ -> }
 
-        assertThat(outcome.isSuccess).isTrue()
+        assertThat(result.isSuccess).isTrue()
         assertThat(server.requestCount).isEqualTo(0)
     }
 
     @Test
     fun `oversized leftovers are discarded before the resume`() = runTest {
-        target.writeText("ABCDEFGHIJKL")
+        dir.mkdirs()
+        part().writeText("ABCDEFGHIJKL")
         server.enqueue(MockResponse().setResponseCode(200).setBody("ABCDEFGHIJ"))
 
-        val outcome = downloader.download(url(), target, expectedSize = 10L)
+        val result = downloader.download(update("ABCDEFGHIJ".toByteArray()), listOf(""), dir) { _, _ -> }
 
-        assertThat(outcome.isSuccess).isTrue()
-        assertThat(target.readText()).isEqualTo("ABCDEFGHIJ")
+        assertThat(result.isSuccess).isTrue()
+        assertThat(ready().readText()).isEqualTo("ABCDEFGHIJ")
     }
 
     @Test
     fun `an http 500 is a retryable network error`() = runTest {
         server.enqueue(MockResponse().setResponseCode(500))
 
-        val outcome = downloader.download(url(), target, expectedSize = 10L)
+        val result = downloader.download(update("ABCDEFGHIJ".toByteArray()), listOf(""), dir) { _, _ -> }
 
-        assertThat(outcome.isSuccess).isFalse()
-        val error = (outcome as Outcome.Failure).error
-        assertThat(error.code).isEqualTo(ErrorCode.NETWORK)
+        assertThat(result.isSuccess).isFalse()
+        val error = (result as Outcome.Failure).error
         assertThat(error.retryable).isTrue()
     }
 
     @Test
     fun `a content range mismatch aborts instead of appending junk`() = runTest {
-        target.writeText("ABCD")
+        dir.mkdirs()
+        part().writeText("ABCD")
         server.enqueue(
             MockResponse()
                 .setResponseCode(206)
@@ -137,8 +182,17 @@ class ApkUpdateDownloaderTest {
                 .setBody("EFGHIJ"),
         )
 
-        val outcome = downloader.download(url(), target, expectedSize = 10L)
+        val result = downloader.download(update("ABCDEFGHIJ".toByteArray()), listOf(""), dir) { _, _ -> }
 
-        assertThat(outcome.isSuccess).isFalse()
+        assertThat(result.isSuccess).isFalse()
+        assertThat(ready().exists()).isFalse()
+    }
+
+    @Test
+    fun `no hosts fails without touching the network`() = runTest {
+        val result = downloader.download(update("ABCDEFGHIJ".toByteArray()), emptyList(), dir) { _, _ -> }
+
+        assertThat(result.isSuccess).isFalse()
+        assertThat(server.requestCount).isEqualTo(0)
     }
 }

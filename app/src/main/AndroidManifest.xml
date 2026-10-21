@@ -6,8 +6,8 @@
       * INTERNET — for exactly two features, nothing else:
         1. the self-hosted definition-completion gateway (ECDICT / FreeDict / LLM forwarding)
            that fills in meanings, phonetics and parts of speech for user-imported words;
-        2. the in-app update pipeline (GitHub Releases check + resumable APK download, see
-           data/update/ and work/AppUpdateWorker.kt).
+        2. the in-app update pipeline (fixed version.json + mirrored APK download + SHA-256
+           verification, see data/update/ and data/repository/AppUpdateRepository.kt).
         Everything else — learning, review, the mistake book, closed-book exams, statistics,
         import/export and TTS read-aloud (device's own speech service) — still works with no
         network at all. No account system, analytics, ads or cloud sync is bundled; clipboard/

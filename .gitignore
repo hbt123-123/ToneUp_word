@@ -13,6 +13,8 @@ local.properties
 
 # 本地打包出来的安装包不入库：正式发布走 GitHub Releases
 *.apk
+# 发布脚本产物（ToneUpWord.apk + version.json），由 tool/release.ps1 生成
+/dist/
 
 # Python helper scripts (tools/wordpack, tools/pronunciation)
 __pycache__/
@@ -35,3 +37,5 @@ keystore.properties
 .codegraph/
 .omo/
 .trae/
+.val/
+release-notes.md
