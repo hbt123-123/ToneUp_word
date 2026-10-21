@@ -1,7 +1,7 @@
 # data/ — Room + Repository + 数据适配层
 
 ## OVERVIEW
-单库 `toneup_word.db` v3（11 表 1 视图 9 DAO）；Repository 是唯一事务边界与失败收敛点。学习范围自 v2 起按 **`packId`**（不再按 `level`）隔离。`data/gateway/` 是**全 app 唯一联网点**。
+单库 `toneup_word.db` v3（11 表 1 视图 9 DAO）；Repository 是唯一事务边界与失败收敛点。学习范围自 v2 起按 **`packId`**（不再按 `level`）隔离。`data/gateway/` 与 `data/update/` 是**全 app 仅有的两个联网点**（网关释义补全 / 应用内版本更新）。
 
 ## STRUCTURE
 ```
@@ -9,8 +9,9 @@ data/
 ├── local/       ToneUpWordDatabase(version=3), Migrations(MIGRATION_1_2, MIGRATION_2_3), Converters(仅结构 JSON)
 │   ├── entity/  WordEntities(word_pack, word, meaning_cache) / ProgressEntities(progress,event,wrong) / SessionEntities(5 表)
 │   └── dao/     11 文件 = 9 @Dao + WordWithProgressView(视图) + QueryRows(行投影) ← 非全是 DAO
-├── repository/  Word/Study/Mistake/Exam/Stats/Insight/Backup/MeaningSync + ProgressRecorder(具体类)
-├── gateway/     GatewayConfig/Defaults/Dtos/Api/ClientProvider + MeaningLookupService + LookupResult + EnResponseSerializer（唯一联网）
+├── repository/  Word/Study/Mistake/Exam/Stats/Insight/Backup/MeaningSync/AppUpdate + ProgressRecorder(具体类)
+├── gateway/     GatewayConfig/Defaults/Dtos/Api/ClientProvider + MeaningLookupService + LookupResult + EnResponseSerializer（联网点 1）
+├── update/      AppUpdateModels/Defaults/Store + GitHubReleaseSource + ApkDownloader(断点续传) + ApkInstaller（联网点 2，应用内版本更新）
 ├── seed/        BuiltInPackLoader(manifest), BuiltInWordPacks(CC0 回退), SeedWord
 ├── settings/    DataStore "toneup_settings"（IOException 才降级空偏好）+ PackIds(内置/保留包 id + level↔pack 映射)
 ├── speech/      SpeechService 接口, SystemTtsSpeechService(单实例), AudioUrlPlayer(在线发音失败回落 TTS), SpeechDiagnosticsStore(仅内存计数)

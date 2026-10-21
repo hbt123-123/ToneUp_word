@@ -12,6 +12,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import top.toneup.word.AppContainer
 import top.toneup.word.data.local.entity.WordPackEntity
+import top.toneup.word.data.update.PendingAppUpdate
+import top.toneup.word.ui.components.AppUpdateDialog
 import top.toneup.word.ui.components.LoadingState
 import top.toneup.word.ui.navigation.ToneUpWordNavHost
 import top.toneup.word.ui.screens.StartupTipScreen
@@ -46,6 +48,10 @@ fun ToneUpWordApp(
     externalImportPacks: List<WordPackEntity> = emptyList(),
     externalImportActivePackId: String = "",
     externalImportCallbacks: ExternalImportCallbacks = ExternalImportCallbacks(),
+    // In-app update prompt (defaults = feature dormant until a download completes).
+    pendingUpdate: PendingAppUpdate? = null,
+    onInstallUpdate: () -> Unit = {},
+    onDismissUpdate: () -> Unit = {},
 ) {
     val settings = state.settings
 
@@ -95,6 +101,16 @@ fun ToneUpWordApp(
                     activePackId = externalImportActivePackId,
                     callbacks = externalImportCallbacks,
                 )
+
+                // In-app update: raised the moment the silent background download of a newer
+                // release completes (or an earlier download is still waiting to be installed).
+                if (pendingUpdate != null) {
+                    AppUpdateDialog(
+                        versionName = pendingUpdate.versionName,
+                        onInstall = onInstallUpdate,
+                        onDismiss = onDismissUpdate,
+                    )
+                }
             }
         }
     }

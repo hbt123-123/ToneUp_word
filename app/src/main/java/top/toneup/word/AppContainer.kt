@@ -20,6 +20,8 @@ import top.toneup.word.data.speech.SpeechDiagnostic
 import top.toneup.word.data.speech.SpeechDiagnosticsStore
 import top.toneup.word.data.speech.SpeechService
 import top.toneup.word.data.speech.SystemTtsSpeechService
+import top.toneup.word.data.repository.AppUpdateFactory
+import top.toneup.word.data.repository.AppUpdateRepository
 import top.toneup.word.data.repository.BackupRepository
 import top.toneup.word.data.repository.DefaultBackupRepository
 import top.toneup.word.data.repository.DefaultExamRepository
@@ -106,6 +108,12 @@ class AppContainer(
     val appVersionName: String = runCatching {
         context.packageManager.getPackageInfo(context.packageName, 0).versionName.orEmpty()
     }.getOrDefault("")
+
+    /**
+     * In-app update pipeline (GitHub Releases check → silent resumable download → install
+     * prompt). The only other consumer of the INTERNET permission besides the gateway.
+     */
+    val appUpdateRepository: AppUpdateRepository = AppUpdateFactory.create(context, appVersionName)
 
     /**
      * The start-up encouragement lines (开屏提示语).

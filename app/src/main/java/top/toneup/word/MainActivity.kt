@@ -18,6 +18,7 @@ import top.toneup.word.ui.ExternalImportViewModel
 import top.toneup.word.ui.MainViewModel
 import top.toneup.word.ui.ToneUpWordApp
 import top.toneup.word.ui.ViewModelFactories
+import top.toneup.word.data.update.AppInstallRequest
 
 /**
  * The only Activity of the app.
@@ -56,6 +57,7 @@ class MainActivity : ComponentActivity() {
             val importState = externalImport.state.collectAsStateWithLifecycle()
             val importPacks = externalImport.packs.collectAsStateWithLifecycle()
             val importActivePackId = externalImport.activePackId.collectAsStateWithLifecycle()
+            val pendingUpdate = mainViewModel.pendingUpdate.collectAsStateWithLifecycle()
 
             ToneUpWordApp(
                 container = container,
@@ -71,6 +73,9 @@ class MainActivity : ComponentActivity() {
                     onCreatePackAndImport = externalImport::createPackAndImport,
                     onDismiss = externalImport::dismiss,
                 ),
+                pendingUpdate = pendingUpdate.value,
+                onInstallUpdate = { launchPendingUpdateInstall() },
+                onDismissUpdate = mainViewModel::dismissPendingUpdate,
             )
         }
 
@@ -139,5 +144,25 @@ class MainActivity : ComponentActivity() {
             ?.toString()
     } catch (throwable: Throwable) {
         null
+    }
+
+    /**
+     * "立即安装" tap: hand the downloaded APK to the system installer, or first route through
+     * the "install unknown apps" grant when it is missing. The APK stays on disk, so after the
+     * user grants and returns, a second tap installs without re-downloading.
+     */
+    private fun launchPendingUpdateInstall() {
+        lifecycleScope.launch {
+            when (val request = runCatching { container.appUpdateRepository.installRequest() }
+                .getOrNull() ?: return@launch) {
+                is AppInstallRequest.Ready ->
+                    runCatching { startActivity(request.intent) }
+
+                is AppInstallRequest.NeedPermission ->
+                    runCatching { startActivity(request.intent) }
+
+                AppInstallRequest.Unavailable -> Unit
+            }
+        }
     }
 }

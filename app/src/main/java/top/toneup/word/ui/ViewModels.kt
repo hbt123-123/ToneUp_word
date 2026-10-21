@@ -19,6 +19,7 @@ import top.toneup.word.data.repository.RestoreResult
 import top.toneup.word.data.repository.SeedProgress
 import top.toneup.word.data.repository.SessionStatus
 import top.toneup.word.data.repository.WordRepository
+import top.toneup.word.data.update.PendingAppUpdate
 import top.toneup.word.data.speech.SpeechRateMode
 import top.toneup.word.domain.insight.Insight
 import top.toneup.word.domain.insight.InsightEngine
@@ -205,6 +206,23 @@ class MainViewModel(private val container: AppContainer) : ViewModel() {
             ready.value = true
         }
         viewModelScope.launch { showStartupTip() }
+        // In-app update: silent GitHub-Releases check + resumable background download; the
+        // install prompt surfaces through [pendingUpdate] once an intact APK is on disk.
+        viewModelScope.launch { runCatching { container.appUpdateRepository.enqueueCheckOnLaunch() } }
+    }
+
+    /**
+     * A downloaded-but-not-installed update, or null. Kept out of [state] on purpose: the
+     * settings/theme combine already has five flows and this one has a different lifecycle —
+     * it appears mid-session when the download finishes, not only at start-up.
+     */
+    val pendingUpdate: StateFlow<PendingAppUpdate?> = container.appUpdateRepository
+        .observePendingInstall()
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    /** The learner tapped "下次再说": suppress this version until a newer release appears. */
+    fun dismissPendingUpdate() {
+        viewModelScope.launch { runCatching { container.appUpdateRepository.dismissPendingInstall() } }
     }
 
     /** The learner tapped the start-up screen: leave immediately instead of waiting out the timer. */

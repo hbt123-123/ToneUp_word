@@ -3,24 +3,31 @@
 
     <!--
       Permissions, and why each one exists:
-      * INTERNET — **only** for the self-hosted definition-completion gateway (ECDICT /
-        FreeDict / LLM forwarding) that fills in meanings, phonetics and parts of speech for
-        user-imported words. Everything else — learning, review, the mistake book, closed-book
-        exams, statistics, import/export and TTS read-aloud (device's own speech service) —
-        still works with no network at all. No account system, analytics, ads, cloud sync or
-        third-party audio download is bundled; clipboard/share text never leaves the device
-        (only the individual word token being queried is uploaded).
-        Hard constraint source: docs/dev/PLAN_CUSTOM_PACKS_GATEWAY.md §1; AGENTS.md ANTI-PATTERNS.
+      * INTERNET — for exactly two features, nothing else:
+        1. the self-hosted definition-completion gateway (ECDICT / FreeDict / LLM forwarding)
+           that fills in meanings, phonetics and parts of speech for user-imported words;
+        2. the in-app update pipeline (GitHub Releases check + resumable APK download, see
+           data/update/ and work/AppUpdateWorker.kt).
+        Everything else — learning, review, the mistake book, closed-book exams, statistics,
+        import/export and TTS read-aloud (device's own speech service) — still works with no
+        network at all. No account system, analytics, ads or cloud sync is bundled; clipboard/
+        share text never leaves the device (only the individual word token being queried is
+        uploaded). Hard constraint source: docs/dev/PLAN_CUSTOM_PACKS_GATEWAY.md §1; AGENTS.md
+        ANTI-PATTERNS.
       * POST_NOTIFICATIONS — study reminders on Android 13+ only; Android 8-12 need nothing.
+      * REQUEST_INSTALL_PACKAGES — only to hand the downloaded update APK to the system
+        installer; the app never installs anything silently, the user confirms every install
+        in the system UI (plus the per-app "install unknown apps" grant on API 26+).
 
       ACCESS_NETWORK_STATE is not declared here either. It appears in the merged manifest only
-      because androidx.work (study reminders, and later the meaning-sync worker) declares it
+      because androidx.work (study reminders, meaning-sync worker, update worker) declares it
       for its network constraints; a WorkManager NetworkType constraint (CONNECTED /
       UNMETERED "Wi-Fi only") needs no permission from us, and the app itself never reads
       connectivity state.
     -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <application
         android:name=".ToneUpWordApplication"
@@ -72,6 +79,23 @@
                 <data android:mimeType="text/plain" />
             </intent-filter>
         </activity>
+
+        <!--
+          Serves the downloaded update APK to the system installer (in-app update pipeline).
+          `exported=false` + `grantUriPermissions`: the URI is handed out per-intent with
+          FLAG_GRANT_READ_URI_PERMISSION only, and only for the cache/updates/ path
+          (res/xml/file_paths.xml). The authority uses ${applicationId} so the debug suffix
+          (.debug) gets its own provider automatically.
+        -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
 
     </application>
 

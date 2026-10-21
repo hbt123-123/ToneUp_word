@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  FileProvider paths for the in-app update pipeline only: the downloaded release APK lives in
+  cacheDir/updates/ (data/update/AppUpdateDefaults.UPDATE_DIR). Nothing else is shareable.
+-->
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <cache-path
+        name="app_update"
+        path="updates/" />
+</paths>
