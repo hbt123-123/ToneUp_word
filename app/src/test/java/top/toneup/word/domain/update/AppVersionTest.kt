@@ -6,19 +6,10 @@ import org.junit.Test
 /** Version parsing/comparison and the whole update decision ([AppUpdatePolicy]). */
 class AppVersionTest {
 
-    private fun remote(version: String = "1.0.4", code: Int = 104) = RemoteUpdate(
-        version = version,
-        versionCode = code,
-        apkUrl = "https://github.com/hbt123-123/ToneUp_word/releases/latest/download/ToneUpWord.apk",
-        sha256 = "a".repeat(64),
-        size = 10L,
-        notes = "",
-    )
-
     // --- parse ------------------------------------------------------------------------------
 
     @Test
-    fun `parses a v-prefixed tag into three numeric segments`() {
+    fun `parses a v-prefixed tag into numeric segments`() {
         assertThat(AppVersion.parse("v1.0.4")).containsExactly(1, 0, 4).inOrder()
     }
 
@@ -28,22 +19,20 @@ class AppVersionTest {
     }
 
     @Test
-    fun `ignores pre-release suffixes`() {
+    fun `ignores non numeric suffixes`() {
         assertThat(AppVersion.parse("1.0.4-beta")).containsExactly(1, 0, 4).inOrder()
-        assertThat(AppVersion.parse("1.0.4+build.7")).containsExactly(1, 0, 4).inOrder()
     }
 
     @Test
-    fun `pads a shorter version with zeros`() {
-        assertThat(AppVersion.parse("v2.10")).containsExactly(2, 10, 0).inOrder()
+    fun `handles multi digit segments`() {
+        assertThat(AppVersion.parse("v2.10")).containsExactly(2, 10).inOrder()
     }
 
     @Test
-    fun `returns null for strings without digits or with four segments`() {
+    fun `returns null for strings without digits`() {
         assertThat(AppVersion.parse("release")).isNull()
         assertThat(AppVersion.parse("")).isNull()
         assertThat(AppVersion.parse(null)).isNull()
-        assertThat(AppVersion.parse("1.2.3.4")).isNull()
     }
 
     // --- format -----------------------------------------------------------------------------
@@ -67,6 +56,12 @@ class AppVersionTest {
     }
 
     @Test
+    fun `shorter prefix loses to an extra non zero segment`() {
+        assertThat(AppVersion.isNewer(listOf(1, 0, 1), listOf(1, 0))).isTrue()
+        assertThat(AppVersion.isNewer(listOf(1, 0), listOf(1, 0, 1))).isFalse()
+    }
+
+    @Test
     fun `major segment dominates`() {
         assertThat(AppVersion.isNewer(listOf(2), listOf(1, 9, 9))).isTrue()
         assertThat(AppVersion.isNewer(listOf(1, 9, 9), listOf(2))).isFalse()
@@ -74,87 +69,99 @@ class AppVersionTest {
 
     // --- decide -----------------------------------------------------------------------------
 
+    private val installed = "1.0.3"
+
     @Test
-    fun `a newer versionCode downloads`() {
+    fun `a newer release downloads`() {
         assertThat(
-            AppUpdatePolicy.decide(
-                remote = remote(),
-                installedVersion = "1.0.3",
-                installedVersionCode = 103,
-                downloadedVersionCode = 0,
-                dismissedVersionCode = 0,
-            ),
+            AppUpdatePolicy.decide("v1.0.4", installed, downloadedTag = null, dismissedTag = null),
         ).isEqualTo(UpdateDecision.Download)
     }
 
     @Test
-    fun `same versionCode is up to date`() {
+    fun `same version as installed is up to date`() {
         assertThat(
-            AppUpdatePolicy.decide(remote("1.0.3", 103), "1.0.3", 103, 0, 0),
+            AppUpdatePolicy.decide("v1.0.3", installed, downloadedTag = null, dismissedTag = null),
         ).isEqualTo(UpdateDecision.UpToDate)
     }
 
     @Test
     fun `older release is up to date`() {
         assertThat(
-            AppUpdatePolicy.decide(remote("0.2", 2), "1.0.3", 103, 0, 0),
+            AppUpdatePolicy.decide("v0.9.0", installed, downloadedTag = null, dismissedTag = null),
         ).isEqualTo(UpdateDecision.UpToDate)
     }
 
     @Test
-    fun `semantic version is used when a versionCode is missing`() {
+    fun `unparseable remote tag is unknown`() {
         assertThat(
-            AppUpdatePolicy.decide(remote("1.0.4", 0), "1.0.3", 0, 0, 0),
-        ).isEqualTo(UpdateDecision.Download)
-        assertThat(
-            AppUpdatePolicy.decide(remote("release", 0), "1.0.3", 0, 0, 0),
+            AppUpdatePolicy.decide("hotfix", installed, downloadedTag = null, dismissedTag = null),
         ).isEqualTo(UpdateDecision.Unknown)
     }
 
     @Test
-    fun `a dismissed versionCode is suppressed`() {
+    fun `a dismissed release is suppressed`() {
         assertThat(
-            AppUpdatePolicy.decide(remote("1.0.4", 104), "1.0.3", 103, 0, 104),
+            AppUpdatePolicy.decide("v1.0.4", installed, downloadedTag = null, dismissedTag = "v1.0.4"),
         ).isEqualTo(UpdateDecision.Dismissed)
     }
 
     @Test
     fun `a release newer than the dismissed one downloads again`() {
         assertThat(
-            AppUpdatePolicy.decide(remote("1.0.5", 105), "1.0.3", 103, 0, 104),
+            AppUpdatePolicy.decide("v1.0.5", installed, downloadedTag = null, dismissedTag = "v1.0.4"),
         ).isEqualTo(UpdateDecision.Download)
     }
 
     @Test
-    fun `an already downloaded versionCode is ready`() {
+    fun `an already downloaded tag is ready`() {
         assertThat(
-            AppUpdatePolicy.decide(remote("1.0.4", 104), "1.0.3", 103, 104, 0),
+            AppUpdatePolicy.decide("v1.0.4", installed, downloadedTag = "v1.0.4", dismissedTag = null),
         ).isEqualTo(UpdateDecision.Ready)
     }
 
     @Test
     fun `installed check wins over dismissal and download state`() {
+        // v1.0.3 was dismissed *and* downloaded once — but it is not newer than installed,
+        // so it must stay quiet.
         assertThat(
-            AppUpdatePolicy.decide(remote("1.0.3", 103), "1.0.3", 103, 103, 103),
+            AppUpdatePolicy.decide("v1.0.3", installed, downloadedTag = "v1.0.3", dismissedTag = "v1.0.3"),
         ).isEqualTo(UpdateDecision.UpToDate)
     }
 
     // --- shouldCheckNow ---------------------------------------------------------------------
 
-    private val interval = 24L * 60 * 60 * 1000
+    private val interval = AppUpdateDefaultsForTest.INTERVAL
 
     @Test
     fun `first ever check runs immediately`() {
-        assertThat(AppUpdatePolicy.shouldCheckNow(null, 100L, interval)).isTrue()
+        assertThat(AppUpdatePolicy.shouldCheckNow(lastCheckedMillis = null, nowMillis = 100L, minIntervalMillis = interval))
+            .isTrue()
     }
 
     @Test
     fun `a check inside the interval window is throttled`() {
-        assertThat(AppUpdatePolicy.shouldCheckNow(100L, 100L + interval - 1, interval)).isFalse()
+        assertThat(
+            AppUpdatePolicy.shouldCheckNow(
+                lastCheckedMillis = 100L,
+                nowMillis = 100L + interval - 1,
+                minIntervalMillis = interval,
+            ),
+        ).isFalse()
     }
 
     @Test
-    fun `a check at the interval boundary runs`() {
-        assertThat(AppUpdatePolicy.shouldCheckNow(100L, 100L + interval, interval)).isTrue()
+    fun `a check at or past the interval window runs`() {
+        assertThat(
+            AppUpdatePolicy.shouldCheckNow(
+                lastCheckedMillis = 100L,
+                nowMillis = 100L + interval,
+                minIntervalMillis = interval,
+            ),
+        ).isTrue()
+    }
+
+    private object AppUpdateDefaultsForTest {
+        const val INTERVAL = 12L * 60 * 60 * 1000
     }
 }

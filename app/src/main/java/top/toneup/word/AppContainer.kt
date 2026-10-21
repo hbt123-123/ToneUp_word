@@ -109,19 +109,11 @@ class AppContainer(
         context.packageManager.getPackageInfo(context.packageName, 0).versionName.orEmpty()
     }.getOrDefault("")
 
-    /** Installed versionCode — the primary key of the in-app update comparison. */
-    val appVersionCode: Int = AppUpdateFactory.readInstalledVersion(context).second
-
     /**
-     * In-app update pipeline (fixed `version.json` → silent resumable download → SHA-256
-     * verification → install prompt). The only other consumer of the INTERNET permission
-     * besides the gateway.
+     * In-app update pipeline (GitHub Releases check → silent resumable download → install
+     * prompt). The only other consumer of the INTERNET permission besides the gateway.
      */
-    val appUpdateRepository: AppUpdateRepository = AppUpdateFactory.create(
-        context = context,
-        installedVersion = appVersionName,
-        installedVersionCode = appVersionCode,
-    )
+    val appUpdateRepository: AppUpdateRepository = AppUpdateFactory.create(context, appVersionName)
 
     /**
      * The start-up encouragement lines (开屏提示语).
