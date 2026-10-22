@@ -18,6 +18,7 @@ import top.toneup.word.data.speech.isStreamableAudioUrl
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -73,12 +74,26 @@ class SpeechController(
     private var job: Job? = null
     private var lastRequest: SpeechRequest? = null
 
+    /**
+     * Counts requests.
+     *
+     * The engine reports progress through callbacks that can arrive after the learner has moved
+     * on (a slow engine, a rebind, a cancelled request). The epoch tells a late callback that it
+     * belongs to a request that is no longer current, so it cannot flip the button of a newer one.
+     */
+    private var epoch = 0
+
+    /** The watchdog that turns "the engine never answers" into a visible failure. */
+    private var watchdog: Job? = null
+
     fun speak(request: SpeechRequest) {
         if (request.text.isBlank()) return
         job?.cancel()
+        cancelWatchdog()
         service.stop()
         audio.stop() // streaming audio and TTS are mutually exclusive, at every entry point
         lastRequest = request
+        val requestEpoch = ++epoch
         _state.value = SpeechUiState(phase = SpeechPhase.LOADING, content = request.content)
 
         job = scope.launch {
@@ -89,24 +104,61 @@ class SpeechController(
             // Nothing playable (or the stream failed): silently carry on with system TTS. The
             // LOADING refresh also covers "the recording started, then died mid-stream".
             _state.value = SpeechUiState(phase = SpeechPhase.LOADING, content = request.content)
-            when (val status = awaitUsable()) {
+            // Every non-timeout state is handed back to the service, because the service is the
+            // single retry authority: it rebinds a dead engine at most once per request
+            // (`SystemTtsSpeechService.speak`) and re-runs the language candidate chain. That is
+            // what makes the next tap succeed after the learner installs voice data or enables an
+            // engine in the system settings — refusing here would repeat a latched error until the
+            // process is killed. If the retry fails, the service reports the same status through
+            // onError, so the message and recovery action are unchanged.
+            when (awaitUsable()) {
                 null -> fail(MESSAGE_TIMEOUT, SpeechRecovery.OPEN_SYSTEM_SETTINGS)
-                is SpeechStatus.Ready -> {
+                else -> {
+                    // The request has been handed over, and nothing bounds the wait for the engine
+                    // to start speaking: the watchdog turns "the button spins forever" into a
+                    // failure the learner can act on. It is cancelled as soon as the engine proves
+                    // it is alive (onStart), so a long example sentence is never cut off.
+                    startWatchdog(requestEpoch)
                     service.speak(
                         request = request,
                         onStart = {
-                            _state.value = SpeechUiState(phase = SpeechPhase.PLAYING, content = request.content)
+                            if (requestEpoch == epoch) {
+                                cancelWatchdog()
+                                _state.value = SpeechUiState(phase = SpeechPhase.PLAYING, content = request.content)
+                            }
                         },
                         onDone = {
-                            _state.value = SpeechUiState(phase = SpeechPhase.IDLE, content = request.content)
+                            if (requestEpoch == epoch) {
+                                cancelWatchdog()
+                                _state.value = SpeechUiState(phase = SpeechPhase.IDLE, content = request.content)
+                            }
                         },
-                        onError = { failure -> failFor(failure) },
+                        onError = { failure ->
+                            if (requestEpoch == epoch) {
+                                cancelWatchdog()
+                                failFor(failure)
+                            }
+                        },
                     )
                 }
-
-                else -> failFor(status)
             }
         }
+    }
+
+    /** Fails the request when the engine has not started speaking within the grace period. */
+    private fun startWatchdog(requestEpoch: Int) {
+        cancelWatchdog()
+        watchdog = scope.launch {
+            delay(SPEECH_START_TIMEOUT_MILLIS)
+            if (requestEpoch == epoch && _state.value.phase == SpeechPhase.LOADING) {
+                fail(MESSAGE_TIMEOUT, SpeechRecovery.RETRY)
+            }
+        }
+    }
+
+    private fun cancelWatchdog() {
+        watchdog?.cancel()
+        watchdog = null
     }
 
     /**
@@ -140,12 +192,14 @@ class SpeechController(
 
     fun stop() {
         job?.cancel()
+        cancelWatchdog()
         service.stop()
         audio.stop()
         _state.value = SpeechUiState(phase = SpeechPhase.IDLE, content = _state.value.content)
     }
 
     fun dismissError() {
+        cancelWatchdog()
         _state.value = SpeechUiState(phase = SpeechPhase.IDLE, content = _state.value.content)
     }
 
@@ -188,6 +242,15 @@ class SpeechController(
     companion object {
         /** How long to wait for the engine before telling the learner something is wrong. */
         const val INIT_TIMEOUT_MILLIS = 3_000L
+
+        /**
+         * How long the engine may take to start speaking before the request is failed.
+         *
+         * The engine has already accepted the request by then, so this is not a "is it alive"
+         * check but a "it accepted the work and then went quiet" check — the case that used to
+         * leave the button spinning forever.
+         */
+        const val SPEECH_START_TIMEOUT_MILLIS = 5_000L
 
         internal const val MESSAGE_TIMEOUT = "系统语音服务没有响应，请检查系统的文字转语音设置。"
     }

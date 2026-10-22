@@ -29,6 +29,23 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
+    <!--
+      Android 11+ package visibility: engine discovery for the read-aloud feature.
+
+      Since targetSdk 30 an app only sees installed services it declares an interest in. The
+      platform's TextToSpeech class finds engines with
+      PackageManager.queryIntentServices(Intent(TextToSpeech.Engine.INTENT_ACTION_TTS_SERVICE)),
+      so without this node getEngines() / getVoices() come back empty on many devices — the engine
+      then looks "missing" or initialisation fails outright. This is a visibility declaration, not
+      a permission: it grants no new capability and sends nothing anywhere, it only restores what
+      queryIntentServices already reported before Android 11.
+    -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
+    </queries>
+
     <application
         android:name=".ToneUpWordApplication"
         android:allowBackup="true"

@@ -144,6 +144,15 @@ private fun statusDetail(status: SpeechStatus): String? = when (status) {
                 "；未读到系统音调，使用引擎默认音调"
             },
         )
+        // What the last read-aloud really used. The engine's own default is not always what was
+        // spoken: the fallback chain may have had to pick a regional variant, and a learner asking
+        // "why does it sound like that" needs to see the answer.
+        val negotiated = listOfNotNull(status.negotiatedLanguage, status.negotiatedVoice)
+            .joinToString(" · ")
+        if (negotiated.isNotEmpty()) {
+            append("\n")
+            append("实际使用：$negotiated")
+        }
     }
 
     SpeechStatus.LanguageMissing -> "系统没有安装英语语音数据，安装后即可朗读。"

@@ -66,6 +66,17 @@ sealed interface SpeechStatus {
         val voice: String?,
         val rateFromSystem: Boolean,
         val pitchFromSystem: Boolean,
+        /**
+         * The locale the last successful read-aloud actually used ("en-US"), when one was
+         * negotiated.
+         *
+         * It differs from [language] — the engine's own default — whenever the fallback chain had
+         * to pick a regional variant, which is exactly the case a learner needs to see when they
+         * ask "why does it sound like that".
+         */
+        val negotiatedLanguage: String? = null,
+        /** The voice pinned for [negotiatedLanguage], when one was pinned. */
+        val negotiatedVoice: String? = null,
     ) : SpeechStatus
 
     /** The engine has no data for the requested language (the voice pack was never installed). */

@@ -37,6 +37,10 @@ class SpeechControllerTest {
             private set
         /** When true, `speak` reports success through the callbacks. */
         var succeedOnSpeak = true
+        /** When set, `speak` reports this status instead — the real service re-reports its state. */
+        var failureOnSpeak: SpeechStatus? = null
+        /** When true, `speak` accepts the request and never reports back. */
+        var neverAnswers = false
 
         fun become(status: SpeechStatus) {
             _status.value = status
@@ -49,7 +53,11 @@ class SpeechControllerTest {
             onError: (SpeechStatus) -> Unit,
         ) {
             speakCount++
-            if (succeedOnSpeak) {
+            if (neverAnswers) return
+            val failure = failureOnSpeak
+            if (failure != null) {
+                onError(failure)
+            } else if (succeedOnSpeak) {
                 onStart()
                 onDone()
             } else {
@@ -98,6 +106,7 @@ class SpeechControllerTest {
     @Test
     fun `a missing engine offers the system settings and never crashes`() = runTest {
         val service = FakeSpeechService(SpeechStatus.EngineUnavailable("no engine"))
+        service.failureOnSpeak = SpeechStatus.EngineUnavailable("no engine")
         val controller = SpeechController(service, this)
 
         controller.speak(request())
@@ -107,12 +116,16 @@ class SpeechControllerTest {
         assertThat(state.phase).isEqualTo(SpeechPhase.FAILED)
         assertThat(state.message).contains("系统语音服务不可用")
         assertThat(state.recovery).isEqualTo(SpeechRecovery.OPEN_SYSTEM_SETTINGS)
-        assertThat(service.speakCount).isEqualTo(0)
+        // The request *is* handed to the service: that is what lets it rebind a dead engine, so
+        // enabling an engine in the system settings can fix the next tap without restarting the app.
+        // The failure still arrives through onError, with the same recovery action.
+        assertThat(service.speakCount).isEqualTo(1)
     }
 
     @Test
     fun `missing voice data offers to install it`() = runTest {
         val service = FakeSpeechService(SpeechStatus.LanguageMissing)
+        service.failureOnSpeak = SpeechStatus.LanguageMissing
         val controller = SpeechController(service, this)
 
         controller.speak(request())
@@ -122,11 +135,14 @@ class SpeechControllerTest {
         assertThat(state.phase).isEqualTo(SpeechPhase.FAILED)
         assertThat(state.message).contains("语音包")
         assertThat(state.recovery).isEqualTo(SpeechRecovery.INSTALL_VOICE_DATA)
+        // Re-attempted through the service, so installing the voice data makes the next tap work.
+        assertThat(service.speakCount).isEqualTo(1)
     }
 
     @Test
     fun `an unsupported language points at the system settings`() = runTest {
         val service = FakeSpeechService(SpeechStatus.LanguageUnsupported)
+        service.failureOnSpeak = SpeechStatus.LanguageUnsupported
         val controller = SpeechController(service, this)
 
         controller.speak(request())
@@ -136,6 +152,8 @@ class SpeechControllerTest {
         assertThat(state.phase).isEqualTo(SpeechPhase.FAILED)
         assertThat(state.message).contains("不支持")
         assertThat(state.recovery).isEqualTo(SpeechRecovery.OPEN_SYSTEM_SETTINGS)
+        // Re-attempted through the service, so switching to an English-capable engine takes effect.
+        assertThat(service.speakCount).isEqualTo(1)
     }
 
     @Test
@@ -189,6 +207,21 @@ class SpeechControllerTest {
     }
 
     @Test
+    fun `an engine that accepts the request and then goes quiet fails with a timeout`() = runTest {
+        val service = FakeSpeechService(ready).apply { neverAnswers = true }
+        val controller = SpeechController(service, this)
+
+        controller.speak(request())
+        advanceUntilIdle()
+
+        // The engine took the request and never reported back: the button must not spin forever.
+        val state = controller.state.value
+        assertThat(state.phase).isEqualTo(SpeechPhase.FAILED)
+        assertThat(state.message).isEqualTo(SpeechController.MESSAGE_TIMEOUT)
+        assertThat(state.recovery).isEqualTo(SpeechRecovery.RETRY)
+    }
+
+    @Test
     fun `a second tap cancels the first request and stops playback`() = runTest {
         val service = FakeSpeechService(SpeechStatus.Initialising)
         val controller = SpeechController(service, this)
@@ -219,6 +252,7 @@ class SpeechControllerTest {
     @Test
     fun `dismissing an error returns the button to idle`() = runTest {
         val service = FakeSpeechService(SpeechStatus.EngineUnavailable(null))
+        service.failureOnSpeak = SpeechStatus.EngineUnavailable(null)
         val controller = SpeechController(service, this)
 
         controller.speak(request())
