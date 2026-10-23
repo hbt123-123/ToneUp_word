@@ -34,7 +34,7 @@ import top.toneup.word.core.result.Outcome
 import top.toneup.word.data.local.entity.WordPackEntity
 import top.toneup.word.data.repository.MeaningSyncRepository
 import top.toneup.word.data.repository.PackAddResult
-import top.toneup.word.data.settings.PackIds
+import top.toneup.word.data.settings.PlanIds
 import top.toneup.word.domain.importer.PlainTextImportPreview
 import top.toneup.word.domain.importer.PlainTextWordParser
 import top.toneup.word.ui.components.AccentPanel
@@ -47,6 +47,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -150,6 +152,7 @@ object ClipboardHash {
  * write path is exactly the paste-import one — `PlainTextWordParser` → `addWordsToPack`
  * (PENDING rows) → `meaningSync.enqueueAll()` — so an import never depends on the network.
  */
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class ExternalImportViewModel(
     private val container: AppContainer,
     /**
@@ -164,30 +167,37 @@ class ExternalImportViewModel(
     val state: StateFlow<ExternalImportUiState> = _state.asStateFlow()
 
     /**
-     * Selectable packs: built-in first, `legacy-other` filtered out (D9 — a bucket, not a pack).
+     * Selectable packs of the active plan (schema v4: a plan groups its packs, D1).
      *
-     * `WhileSubscribed` for the same reason as [activePackId]: the sheet is the only observer,
+     * `WhileSubscribed` for the same reason as [activePlanId]: the sheet is the only observer,
      * and an eager, never-cancelled collector keeps a Room subscription alive after the screen
      * is gone.
      */
-    val packs: StateFlow<List<WordPackEntity>> = container.wordRepository.observePacks()
-        .map { list ->
-            list.filter { it.id != PackIds.LEGACY_OTHER }
-                .sortedByDescending { it.isBuiltIn }
-        }
+    val packs: StateFlow<List<WordPackEntity>> = container.settingsRepository.settings
+        .flatMapLatest { settings -> container.wordRepository.observePacks(settings.effectivePlanId) }
+        .map { list -> list.sortedByDescending { it.isBuiltIn } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     /**
-     * Default destination for a new import: the pack the learner is studying right now.
+     * Study scope of the sheet: the active plan.
      *
      * `WhileSubscribed` rather than `Eagerly`: the sheet is the only observer, and an eager,
      * never-cancelled collector keeps a DataStore subscription alive after the screen is gone.
      * When its continuation is queued on a paused (Robolectric) main looper, the DataStore write
      * actor parks on that emission and the next write in the same JVM never completes.
      */
-    val activePackId: StateFlow<String> = container.settingsRepository.settings
-        .map { it.effectivePackId }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "")
+    val activePlanId: StateFlow<String> = container.settingsRepository.settings
+        .map { it.effectivePlanId }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), PlanIds.DEFAULT_PLAN)
+
+    /**
+     * Default destination for a new import: the plan's「手写词」pack when it exists, else the
+     * first pack of the plan — never a pack outside the active plan (D1).
+     */
+    val defaultPackId: StateFlow<String> = combine(packs, activePlanId) { packs, planId ->
+        val writePack = PlanIds.writePackIdFor(planId)
+        if (packs.any { it.id == writePack }) writePack else packs.firstOrNull()?.id.orEmpty()
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "")
 
     /**
      * Share / process-text entry (plan §8.2): parse the whole payload at once — one shared
@@ -250,8 +260,8 @@ class ExternalImportViewModel(
     }
 
     /**
-     * "新建词库…" path: create the pack, make it the active study scope (so home/import all
-     * point at the words just added), then import exactly like [confirmImport].
+     * "新建词库…" path: create the pack inside the active plan, then import exactly like
+     * [confirmImport] — the new pack belongs to the plan the learner is studying (D1).
      */
     fun createPackAndImport(name: String) {
         val current = _state.value
@@ -259,15 +269,20 @@ class ExternalImportViewModel(
         val preview = current.preview ?: return
         _state.update { it.copy(phase = ExternalImportPhase.IMPORTING, error = null) }
         viewModelScope.launch {
+            val planId = container.settingsRepository.current().effectivePlanId
             when (
-                val created = container.wordRepository.createPack(name, container.timeProvider.nowMillis())
+                val created = container.wordRepository.createPack(
+                    name,
+                    planId,
+                    container.timeProvider.nowMillis(),
+                )
             ) {
                 is Outcome.Failure -> _state.update {
                     it.copy(phase = ExternalImportPhase.DETECTED, error = created.error.message)
                 }
 
                 is Outcome.Success -> {
-                    container.settingsRepository.setActivePackId(created.value)
+                    container.settingsRepository.setActivePlanId(planId)
                     runImport(created.value, preview)
                 }
             }
@@ -345,22 +360,22 @@ private const val MAX_PACK_NAME_FIELD_LENGTH = 40
 fun ExternalImportSheet(
     state: ExternalImportUiState,
     packs: List<WordPackEntity>,
-    activePackId: String,
+    defaultPackId: String,
     callbacks: ExternalImportCallbacks,
 ) {
     if (!state.sheetVisible) return
 
     // Re-initialised every time the sheet opens (the early return drops the slot), so the
-    // default is always today's active pack rather than the one from a previous detection.
-    var selectedPackId by remember { mutableStateOf(activePackId) }
+    // default is always today's plan destination rather than the one from a previous detection.
+    var selectedPackId by remember { mutableStateOf(defaultPackId) }
     var showCreateDialog by remember { mutableStateOf(false) }
     var newName by remember { mutableStateOf("") }
 
-    // Keep the selection valid while the pack list / active pack are still loading.
-    LaunchedEffect(packs, activePackId) {
+    // Keep the selection valid while the pack list / plan scope are still loading.
+    LaunchedEffect(packs, defaultPackId) {
         if (packs.isEmpty()) return@LaunchedEffect
         if (selectedPackId.isEmpty() || packs.none { it.id == selectedPackId }) {
-            selectedPackId = activePackId.takeIf { id -> packs.any { it.id == id } }
+            selectedPackId = defaultPackId.takeIf { id -> packs.any { it.id == id } }
                 ?: packs.first().id
         }
     }

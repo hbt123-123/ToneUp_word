@@ -1,26 +1,29 @@
 # app/src/test/ — JVM 单元测试（唯一测试层）
 
 ## OVERVIEW
-43 类 / 596 用例；镜像 main 包结构；无 androidTest——Compose/Room/网关测试全在 JVM（Robolectric）跑。
+50 类 / 640 用例；镜像 main 包结构；无 androidTest——Compose/Room/网关测试全在 JVM（Robolectric）跑。**已知本机环境失败 2 例**：`AndroidSpeechDefaultsReaderTest`（Robolectric sdk=36 需 Java 21，本机 JDK 17）、`SystemSpeechDefaultsTest#junk is unreadable`（`Float.toFloatOrNull()` 接受 `1.0f` 后缀）——均与计划层级重构无关。
 
 ## STRUCTURE
 ```
 app/src/test/java/top/toneup/word/
 ├── core/time/StudyDayTest.kt              04:00 学习日边界（21）
 ├── data/                                  DatabaseTest(22，全 DAO+version 断言), ProgressRecorderTest(20),
-│                                          Migration1To2Test(3), Migration2To3Test(2), PackIdsTest(4),
-│                                          AddWordsToPackTest(18), WordEditRepositoryTest(11),
+│                                          Migration1To2Test(3), Migration2To3Test(2), Migration3To4Test(2),
+│                                          PackIdsTest(4), PlanIdsTest(3), PlanRepositoryTest(8),
+│                                          AddWordsToPackTest(21), WordEditRepositoryTest(11),
 │                                          gateway/(MeaningLookupServiceTest 12, MeaningSyncRepositoryTest 10),
-│                                          seed/(BuiltInPackSeedTest 7, BuiltInPackAssetTest 8),
-│                                          speech/AudioUrlPlayerTest(4),
+│                                          seed/(BuiltInPackSeedTest 7, BuiltInPackAssetTest 6),
+│                                          speech/(AudioUrlPlayerTest 4, SystemSpeechDefaultsTest 7,
+│                                          SystemTtsSpeechServiceTest 10, SpeechLocaleFallbackTest 6,
+│                                          AndroidSpeechDefaultsReaderTest 1),
 │                                          update/(ApkUpdateDownloaderTest 13, UpdateManifestSourceTest 11),
 │                                          AppUpdateRepositoryTest(18)
-├── domain/                                15 文件 319 用例（见下覆盖表）
+├── domain/                                15 文件 322 用例（见下覆盖表）
 ├── ui/                                    ComposeFlowTest(15), ExternalImportViewModelTest(16), GatewaySettingsTest(5),
-│                                          UiStateStabilityTest(5), WordBrowserScreenTest(8),
+│                                          UiStateStabilityTest(5), WordBrowserScreenTest(8), WriteWordViewModelTest(7),
 │                                          components/(WordCardExampleTest 3, StatDefinitionTest 5),
 │                                          screens/StartupTipScreenTest(4),
-│                                          speech/(SpeechControllerTest 10, SpeechAudioRoutingTest 12),
+│                                          speech/(SpeechControllerTest 11, SpeechAudioRoutingTest 12),
 │                                          theme/SystemBarsTest(5)
 └── resources/robolectric.properties       默认 sdk=36
 ```
@@ -30,8 +33,8 @@ app/src/test/java/top/toneup/word/
 |------|------|
 | 运行 | `.\gradlew.bat :app:testDebugUnitTest`；单类 `--tests "*.SpacedRepetitionTest*"`（见根 COMMANDS） |
 | 答题写入语义 | `data/ProgressRecorderTest.kt` |
-| DB 版本/迁移 | `data/DatabaseTest.kt`（断言 version 字面量 == `Migrations.CURRENT_VERSION`）+ `Migration1To2Test`（种子保真/新索引）+ `Migration2To3Test`（视图 DDL） |
-| 词库 packId 隔离 | `data/PackIdsTest.kt`、`DatabaseTest` |
+| DB 版本/迁移 | `data/DatabaseTest.kt`（断言 version 字面量 == `Migrations.CURRENT_VERSION`）+ `Migration1To2Test`（链路种子保真）+ `Migration2To3Test`（v3 视图 DDL）+ `Migration3To4Test`（默认计划回填 / 日汇总按计划合并 / v4 视图去重） |
+| 计划层级（planId 隔离） | `data/PlanIdsTest.kt`、`data/PlanRepositoryTest.kt`、`DatabaseTest` |
 | 纯文本/分享解析 | `domain/importer/PlainTextWordParserTest.kt` |
 | 网关级联/缓存/manual 保护 | `data/gateway/MeaningLookupServiceTest.kt`、`MeaningSyncRepositoryTest.kt` |
 | 分享/剪贴板导入去重 | `ui/ExternalImportViewModelTest.kt` |
@@ -47,7 +50,7 @@ app/src/test/java/top/toneup/word/
 - 方法名反引号英文自然语言：``fun `unknown lowers mastery and resets the repetition streak`()``；类内 `// ---` 分组。
 - **防 flaky**：固定 epoch 常量，不读系统时钟；Compose 查询用真实语义节点/testTag（产品要求）。
 - minSdk 路径验证：DatabaseTest / ProgressRecorderTest / ComposeFlowTest 加 `@Config(sdk = [26])`（JVM 上跑 API 26 android-all 镜像）。
-- Room schema 目录 `app/schemas` 挂为 test assets（MigrationTestHelper 需要）——升 DB 版本先导出快照；迁移 SQL（含 v3 视图）须与导出 JSON 逐字节一致。
+- Room schema 目录 `app/schemas` 挂为 test assets（MigrationTestHelper 需要）——升 DB 版本先导出快照；迁移 SQL（含 v3/v4 视图）须与导出 JSON 逐字节一致。
 - 测试堆限 512m + SerialGC + UTF-8（build.gradle.kts testOptions）——内存问题响亮失败。
 - 运行前把 `TEMP`/`TMP` 指到纯 ASCII 路径（见根 NOTES），否则 Robolectric 原生库在某些机器上 JNI_OnLoad 崩溃。
 
@@ -62,13 +65,13 @@ app/src/test/java/top/toneup/word/
 | domain·motivation | MotivationEngineTest(21) + StartupTipTest(6) | 27 |
 | domain·srs | SpacedRepetitionTest | 26 |
 | domain·search | ApproximateWordMatcherTest | 9 |
-| domain·update | AppVersionTest | 20 |
-| data·core | DatabaseTest(22) + ProgressRecorderTest(20) + AddWordsToPackTest(18) | 60 |
+| domain·update | AppVersionTest | 23 |
+| data·core | DatabaseTest(22) + ProgressRecorderTest(20) + AddWordsToPackTest(21) | 63 |
 | data·gateway | MeaningLookupServiceTest(12) + MeaningSyncRepositoryTest(10) | 22 |
-| data·迁移/pack | Migration1To2Test(3) + Migration2To3Test(2) + PackIdsTest(4) + WordEditRepositoryTest(11) | 20 |
-| data·seed/speech | BuiltInPackAssetTest(8) + BuiltInPackSeedTest(7) + AudioUrlPlayerTest(4) | 19 |
+| data·迁移/plan | Migration1To2Test(3) + Migration2To3Test(2) + Migration3To4Test(2) + PackIdsTest(4) + PlanIdsTest(3) + PlanRepositoryTest(8) + WordEditRepositoryTest(11) | 33 |
+| data·seed/speech | BuiltInPackAssetTest(6) + BuiltInPackSeedTest(7) + AudioUrlPlayerTest(4) + SystemSpeechDefaultsTest(7) + SystemTtsSpeechServiceTest(10) + SpeechLocaleFallbackTest(6) + AndroidSpeechDefaultsReaderTest(1) | 41 |
 | data·update | AppUpdateRepositoryTest(18) + ApkUpdateDownloaderTest(13) + UpdateManifestSourceTest(11) | 42 |
-| ui | ComposeFlowTest(15) + ExternalImportViewModelTest(16) + SpeechAudioRoutingTest(12) + SpeechControllerTest(10) + WordBrowserScreenTest(8) + GatewaySettingsTest(5) + UiStateStabilityTest(5) + SystemBarsTest(5) + StatDefinitionTest(5) + StartupTipScreenTest(4) + WordCardExampleTest(3) | 88 |
+| ui | ComposeFlowTest(15) + ExternalImportViewModelTest(16) + SpeechAudioRoutingTest(12) + SpeechControllerTest(11) + WordBrowserScreenTest(8) + WriteWordViewModelTest(7) + GatewaySettingsTest(5) + UiStateStabilityTest(5) + SystemBarsTest(5) + StatDefinitionTest(5) + StartupTipScreenTest(4) + WordCardExampleTest(3) | 96 |
 | core·time | StudyDayTest | 21 |
 | domain·mistake/model | —（无专测，间接覆盖） | 0 |
 

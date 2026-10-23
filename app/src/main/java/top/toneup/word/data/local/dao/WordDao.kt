@@ -15,9 +15,14 @@ import kotlinx.coroutines.flow.Flow
  * Every statement uses bound parameters; no SQL is ever assembled from user input, which is
  * what keeps file imports safe. `LIKE` searches escape the user's wildcards explicitly.
  *
- * Since schema v2 every scope is a **pack id** (D1/D2): a word belongs to exactly one pack,
- * identity is `(pack_id, normalized_word)`, and progress follows the row across re-imports.
- * The `level` column remains as pack metadata only — it never scopes a query again.
+ * Two scopes coexist since schema v4:
+ *  * **plan** — the study scope (home, review, exams, statistics). Plan-scoped queries read
+ *    `word_with_progress`, whose canonical-row de-dup collapses a word shared by several packs
+ *    inside one plan into a single row (D2).
+ *  * **pack** — the content/management unit (import, re-import identity, delete). A word still
+ *    belongs to exactly one pack physically, identity is `(pack_id, normalized_word)`.
+ *
+ * The `level` column remains pack metadata only — it never scopes a query.
  */
 @Dao
 interface WordDao {
@@ -27,9 +32,13 @@ interface WordDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertPack(pack: WordPackEntity)
 
-    /** User-imported packs first (that is the content the learner added), built-in packs last. */
+    /** Packs of one plan; user content first (that is what the learner added), built-ins last. */
+    @Query("SELECT * FROM word_pack WHERE plan_id = :planId ORDER BY is_built_in ASC, name ASC")
+    fun observePacks(planId: String): Flow<List<WordPackEntity>>
+
+    /** Every pack, plan-agnostic (backup, clear-all, migration maintenance). */
     @Query("SELECT * FROM word_pack ORDER BY is_built_in ASC, name ASC")
-    fun observePacks(): Flow<List<WordPackEntity>>
+    fun observeAllPacks(): Flow<List<WordPackEntity>>
 
     @Query("SELECT * FROM word_pack WHERE id = :id")
     suspend fun packById(id: String): WordPackEntity?
@@ -39,6 +48,14 @@ interface WordDao {
 
     @Query("SELECT COUNT(*) FROM word_pack WHERE is_built_in = 0")
     suspend fun importedPackCount(): Int
+
+    /** Moves one pack into another plan (D9); the words follow in the same transaction. */
+    @Query("UPDATE word_pack SET plan_id = :planId, updated_at = :now WHERE id = :packId")
+    suspend fun updatePackPlan(packId: String, planId: String, now: Long)
+
+    /** Moves every word row of a pack, so the de-dup subquery sees the new scope at once. */
+    @Query("UPDATE word SET plan_id = :planId, updated_at = :now WHERE pack_id = :packId")
+    suspend fun updateWordsPlan(packId: String, planId: String, now: Long)
 
     // --- Words ---------------------------------------------------------------------------
 
@@ -71,17 +88,17 @@ interface WordDao {
     @Query("SELECT id, normalized_word FROM word WHERE pack_id = :packId")
     suspend fun idByNormalized(packId: String): List<WordIdKey>
 
-    /** Search a pack's vocabulary by word or meaning (used by the word browser). */
+    /** Search a plan's vocabulary by word or meaning (used by the word browser). */
     @Query(
         """
         SELECT * FROM word_with_progress
-        WHERE pack_id = :packId
+        WHERE plan_id = :planId
           AND (:search = '' OR word LIKE :like ESCAPE '!' OR meanings LIKE :like ESCAPE '!')
         ORDER BY CASE WHEN word LIKE :prefix ESCAPE '!' THEN 0 ELSE 1 END, word ASC
         LIMIT :limit
         """,
     )
-    suspend fun search(packId: String, search: String, like: String, prefix: String, limit: Int): List<WordWithProgressView>
+    suspend fun search(planId: String, search: String, like: String, prefix: String, limit: Int): List<WordWithProgressView>
 
     /**
      * Candidate rows for the approximate ("你是不是想找…") search.
@@ -94,13 +111,13 @@ interface WordDao {
     @Query(
         """
         SELECT * FROM word_with_progress
-        WHERE pack_id = :packId AND length(word) BETWEEN :minLength AND :maxLength
+        WHERE plan_id = :planId AND length(word) BETWEEN :minLength AND :maxLength
         ORDER BY word ASC
         LIMIT :limit
         """,
     )
     suspend fun byWordLengthBand(
-        packId: String,
+        planId: String,
         minLength: Int,
         maxLength: Int,
         limit: Int,
@@ -127,11 +144,26 @@ interface WordDao {
     @Query("SELECT * FROM word WHERE pack_id = :packId AND normalized_word IN (:normalizedWords)")
     suspend fun byNormalizedWords(packId: String, normalizedWords: List<String>): List<WordEntity>
 
-    @Query("SELECT COUNT(*) FROM word WHERE pack_id = :packId")
-    fun observeCount(packId: String): Flow<Int>
+    /**
+     * The row the learner actually sees for this word inside the plan (D2/D8): the one that
+     * already owns a progress row, else the smallest id — the same rule the view applies.
+     */
+    @Query(
+        """
+        SELECT * FROM word
+        WHERE plan_id = :planId AND normalized_word = :normalized
+        ORDER BY (EXISTS(SELECT 1 FROM user_word_progress p WHERE p.word_id = word.id)) DESC, id ASC
+        LIMIT 1
+        """,
+    )
+    suspend fun canonicalInPlan(planId: String, normalized: String): WordEntity?
 
-    @Query("SELECT COUNT(*) FROM word WHERE pack_id = :packId")
-    suspend fun count(packId: String): Int
+    /** Distinct words a plan studies — read from the canonical view, so duplicates collapse. */
+    @Query("SELECT COUNT(*) FROM word_with_progress WHERE plan_id = :planId")
+    fun observePlanWordCount(planId: String): Flow<Int>
+
+    @Query("SELECT COUNT(*) FROM word_with_progress WHERE plan_id = :planId")
+    suspend fun planWordCount(planId: String): Int
 
     @Query("SELECT COUNT(*) FROM word WHERE pack_id = :packId")
     suspend fun countInPack(packId: String): Int
@@ -142,31 +174,67 @@ interface WordDao {
     @Query("SELECT * FROM word WHERE pack_id = :packId ORDER BY id ASC")
     suspend fun allForPack(packId: String): List<WordEntity>
 
-    /** Every pack id currently present in `word` (NULL/'' filtered: they cannot be a scope). */
-    @Query("SELECT DISTINCT pack_id FROM word WHERE pack_id IS NOT NULL AND pack_id != '' ORDER BY pack_id ASC")
-    fun observePackIds(): Flow<List<String>>
+    /** Canonical word ids of a plan, oldest row first (stable order, reproducible tests). */
+    @Query("SELECT word_id FROM word_with_progress WHERE plan_id = :planId ORDER BY word_id ASC")
+    suspend fun idsForPlan(planId: String): List<Long>
+
+    /** Canonical rows of a plan (view rows, progress joined) — used by exports. */
+    @Query("SELECT * FROM word_with_progress WHERE plan_id = :planId ORDER BY word_id ASC")
+    suspend fun allForPlan(planId: String): List<WordWithProgressView>
+
+    /**
+     * Pack scopes present in `word` (NULL/'' filtered: they cannot be a scope), plan included.
+     *
+     * The full backup uses this as the union partner of [observeAllPacks]: historical rows can
+     * carry a pack id without a `word_pack` row (`legacy-other`, `restored-*`).
+     */
+    @Query(
+        """
+        SELECT DISTINCT pack_id, plan_id FROM word
+        WHERE pack_id IS NOT NULL AND pack_id != ''
+        ORDER BY pack_id ASC, plan_id ASC
+        """,
+    )
+    suspend fun packScopes(): List<WordPackScopeRow>
 
     /**
      * Cheap "is there anything to work with" probe used to distinguish an empty state
      * (no words imported yet) from a genuinely finished day.
      */
-    @Query("SELECT EXISTS(SELECT 1 FROM word WHERE pack_id = :packId LIMIT 1)")
-    suspend fun hasWords(packId: String): Boolean
+    @Query("SELECT EXISTS(SELECT 1 FROM word_with_progress WHERE plan_id = :planId LIMIT 1)")
+    suspend fun hasWordsInPlan(planId: String): Boolean
 
-    /** Word rows for the exam generator, newest packs included. */
+    /** Word rows for the exam generator, de-duplicated inside the plan (schema v4). */
     @Query(
         """
-        SELECT id, word, phonetic, part_of_speech, meanings, example_sentence, level
-        FROM word WHERE pack_id = :packId ORDER BY id ASC
+        SELECT word_id AS id, word, phonetic, part_of_speech, meanings, example_sentence, level
+        FROM word_with_progress WHERE plan_id = :planId ORDER BY word_id ASC
         """,
     )
-    suspend fun liteForPack(packId: String): List<WordLiteRow>
+    suspend fun liteForPlan(planId: String): List<WordLiteRow>
 
     @Query("DELETE FROM word WHERE pack_id = :packId")
     suspend fun deleteForPack(packId: String)
 
     @Query("DELETE FROM word")
     suspend fun deleteAll()
+
+    /**
+     * Words of this pack that still have a same-named sibling inside the pack's plan, with the
+     * sibling they should hand their progress to (D10). Used by `deletePack` so deleting a pack
+     * never turns a studied word back into an unstudied one.
+     */
+    @Query(
+        """
+        SELECT w.id AS source_id, c.id AS target_id
+        FROM word w
+        INNER JOIN word c
+          ON c.plan_id = w.plan_id AND c.normalized_word = w.normalized_word AND c.pack_id != w.pack_id
+        WHERE w.pack_id = :packId AND w.id != c.id
+        ORDER BY w.id ASC, c.id ASC
+        """,
+    )
+    suspend fun duplicateSiblingIds(packId: String): List<WordIdPair>
 
     // === M4 gateway additions (MeaningSyncWorker / MeaningSyncRepository) =================
     // Appended in one block at the tail of the file to keep parallel lanes from clashing.

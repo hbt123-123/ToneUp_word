@@ -11,6 +11,7 @@ import top.toneup.word.data.local.entity.WordEntity
 import top.toneup.word.data.local.entity.WordPackEntity
 import top.toneup.word.data.local.entity.WrongAnswerEntity
 import top.toneup.word.data.settings.PackIds
+import top.toneup.word.data.settings.PlanIds
 import top.toneup.word.domain.model.CetLevel
 import top.toneup.word.domain.model.Word
 import com.google.common.truth.Truth.assertThat
@@ -47,6 +48,10 @@ class DatabaseTest {
     // for these DAO-level tests.
     private val pack = "builtin-cet4"
     private val pack6 = PackIds.BUILTIN_CET6
+    // Study scope since v4: `word_with_progress` is filtered by plan id, so the DAO-level
+    // queries below pass a plan even when the rows live in different packs.
+    private val plan = PlanIds.DEFAULT_PLAN
+    private val plan6 = "plan-six"
 
     @Before
     fun setUp() {
@@ -75,9 +80,11 @@ class DatabaseTest {
         // The pack is passed explicitly rather than derived from the level: CET-4 and CET-6 no
         // longer map to distinct packs, and these DAO tests need two clearly separate scopes.
         packId: String = pack,
+        planId: String = plan,
         meanings: String = """["释义"]""",
     ) = WordEntity(
         packId = packId,
+        planId = planId,
         externalId = "ext-$word",
         word = word,
         normalizedWord = Word.normalizeWordKey(word),
@@ -119,7 +126,12 @@ class DatabaseTest {
         updatedAt = now,
     )
 
-    private fun reviewEvent(wordId: Long, grade: String = "UNKNOWN", packId: String = pack) = ReviewEventEntity(
+    private fun reviewEvent(
+        wordId: Long,
+        grade: String = "UNKNOWN",
+        packId: String = pack,
+        planId: String = plan,
+    ) = ReviewEventEntity(
         wordId = wordId,
         sessionId = null,
         grade = grade,
@@ -128,11 +140,12 @@ class DatabaseTest {
         dayKey = dayKey,
         level = CetLevel.CET4.id,
         packId = packId,
+        planId = planId,
         previousIntervalDays = 0,
         newIntervalDays = 0,
     )
 
-    private fun wrongAnswer(wordId: Long, packId: String = pack) = WrongAnswerEntity(
+    private fun wrongAnswer(wordId: Long, packId: String = pack, planId: String = plan) = WrongAnswerEntity(
         wordId = wordId,
         wrongCount = 1,
         fuzzyCount = 0,
@@ -144,6 +157,7 @@ class DatabaseTest {
         isFavorite = false,
         level = CetLevel.CET4.id,
         packId = packId,
+        planId = planId,
         updatedAt = now,
     )
 
@@ -165,10 +179,10 @@ class DatabaseTest {
         assertThat(database.wordDao().byNormalized(pack, " Apple ")).isNull()
         assertThat(database.wordDao().allForPack(pack).map { it.word })
             .containsExactly("Apple")
-        assertThat(database.wordDao().count(pack)).isEqualTo(1)
-        assertThat(database.wordDao().hasWords(pack)).isTrue()
-        assertThat(database.wordDao().hasWords(pack6)).isFalse()
-        assertThat(database.wordDao().count(pack6)).isEqualTo(0)
+        assertThat(database.wordDao().countInPack(pack)).isEqualTo(1)
+        assertThat(database.wordDao().hasWordsInPlan(plan)).isTrue()
+        assertThat(database.wordDao().hasWordsInPlan(plan6)).isFalse()
+        assertThat(database.wordDao().planWordCount(plan6)).isEqualTo(0)
     }
 
     @Test
@@ -183,25 +197,42 @@ class DatabaseTest {
 
     @Test
     fun `the same word may exist once per pack`() = runTest {
-        val cet4 = database.wordDao().insert(wordEntity("apple", CetLevel.CET4, packId = pack))
-        val cet6 = database.wordDao().insert(wordEntity("apple", CetLevel.CET6, packId = pack6))
+        val cet4 = database.wordDao().insert(wordEntity("apple", CetLevel.CET4, packId = pack, planId = plan))
+        val cet6 = database.wordDao().insert(
+            wordEntity("apple", CetLevel.CET6, packId = pack6, planId = plan6),
+        )
 
         assertThat(cet4).isGreaterThan(0L)
         assertThat(cet6).isGreaterThan(0L)
-        assertThat(database.wordDao().count(pack)).isEqualTo(1)
-        assertThat(database.wordDao().count(pack6)).isEqualTo(1)
+        assertThat(database.wordDao().countInPack(pack)).isEqualTo(1)
+        assertThat(database.wordDao().countInPack(pack6)).isEqualTo(1)
+        // Each plan sees exactly one canonical row for its copy of the word.
+        assertThat(database.wordDao().planWordCount(plan)).isEqualTo(1)
+        assertThat(database.wordDao().planWordCount(plan6)).isEqualTo(1)
     }
 
     @Test
     fun `packs are stored and listed with built in packs last`() = runTest {
         database.wordDao().upsertPack(
-            WordPackEntity(id = "user-pack", name = "用户词库", level = CetLevel.CET4.id, isBuiltIn = false),
+            WordPackEntity(
+                id = "user-pack",
+                name = "用户词库",
+                planId = plan,
+                level = CetLevel.CET4.id,
+                isBuiltIn = false,
+            ),
         )
         database.wordDao().upsertPack(
-            WordPackEntity(id = "built-in", name = "演示词库", level = CetLevel.CET4.id, isBuiltIn = true),
+            WordPackEntity(
+                id = "built-in",
+                name = "演示词库",
+                planId = plan,
+                level = CetLevel.CET4.id,
+                isBuiltIn = true,
+            ),
         )
 
-        val packs = database.wordDao().observePacks().first()
+        val packs = database.wordDao().observePacks(plan).first()
 
         assertThat(packs.map { it.id }).containsExactly("user-pack", "built-in").inOrder()
         assertThat(database.wordDao().packById("user-pack")?.name).isEqualTo("用户词库")
@@ -215,7 +246,7 @@ class DatabaseTest {
     fun `the exam source projection reads the stored meanings`() = runTest {
         val id = database.wordDao().insert(wordEntity("apple", meanings = """["苹果","苹果树"]"""))
 
-        val lite = database.wordDao().liteForPack(pack).single()
+        val lite = database.wordDao().liteForPlan(plan).single()
 
         assertThat(lite.id).isEqualTo(id)
         assertThat(lite.word).isEqualTo("apple")
@@ -252,7 +283,7 @@ class DatabaseTest {
         // first emission could ever arrive.
         val emitted = withContext(Dispatchers.Default) {
             withTimeout(5_000L) {
-                database.progressDao().observeDueWords(pack, now, limit = 10).first()
+                database.progressDao().observeDueWords(plan, now, limit = 10).first()
             }
         }
         assertThat(emitted.map { it.wordId }).containsExactly(wordId)
@@ -266,7 +297,7 @@ class DatabaseTest {
 
         val emittedAgain = withContext(Dispatchers.Default) {
             withTimeout(5_000L) {
-                database.progressDao().observeDueWords(pack, now, limit = 10).first()
+                database.progressDao().observeDueWords(plan, now, limit = 10).first()
             }
         }
         assertThat(emittedAgain.single().status).isEqualTo("MASTERED")
@@ -317,11 +348,11 @@ class DatabaseTest {
         database.wordDao().insert(wordEntity("banana"))
         database.progressDao().upsert(progressEntity(studied))
 
-        val newWords = database.progressDao().newWords(pack, limit = 10)
+        val newWords = database.progressDao().newWords(plan, limit = 10)
 
         assertThat(newWords.map { it.word }).containsExactly("banana")
-        assertThat(database.progressDao().newCount(pack)).isEqualTo(1)
-        assertThat(database.progressDao().dueCount(pack, now)).isEqualTo(1)
+        assertThat(database.progressDao().newCount(plan)).isEqualTo(1)
+        assertThat(database.progressDao().dueCount(plan, now)).isEqualTo(1)
     }
 
     @Test
@@ -332,7 +363,7 @@ class DatabaseTest {
         database.progressDao().setFavorite(wordId, true, now)
 
         assertThat(database.progressDao().byWordId(wordId)!!.isFavorite).isTrue()
-        assertThat(database.progressDao().favorites(pack).map { it.wordId })
+        assertThat(database.progressDao().favorites(plan).map { it.wordId })
             .containsExactly(wordId)
     }
 
@@ -345,7 +376,7 @@ class DatabaseTest {
         database.mistakeBookDao().upsert(wrongAnswer(wordId))
         assertThat(database.mistakeBookDao().byWordId(wordId)!!.wrongCount).isEqualTo(1)
         assertThat(database.mistakeBookDao().byWordId(wordId)!!.resolvedAt).isNull()
-        assertThat(database.mistakeBookDao().activeCount(pack)).isEqualTo(1)
+        assertThat(database.mistakeBookDao().activeCount(plan)).isEqualTo(1)
 
         database.mistakeBookDao().upsert(wrongAnswer(wordId).copy(wrongCount = 4, lastWrongAt = now + 1_000))
         assertThat(database.mistakeBookDao().byWordId(wordId)!!.wrongCount).isEqualTo(4)
@@ -354,14 +385,14 @@ class DatabaseTest {
         val resolved = database.mistakeBookDao().byWordId(wordId)!!
         assertThat(resolved.resolvedAt).isEqualTo(now + 2_000)
         assertThat(resolved.updatedAt).isEqualTo(now + 2_000)
-        assertThat(database.mistakeBookDao().activeCount(pack)).isEqualTo(0)
+        assertThat(database.mistakeBookDao().activeCount(plan)).isEqualTo(0)
 
         database.mistakeBookDao().markUnresolved(wordId, now + 3_000)
         assertThat(database.mistakeBookDao().byWordId(wordId)!!.resolvedAt).isNull()
 
         database.mistakeBookDao().delete(wordId)
         assertThat(database.mistakeBookDao().byWordId(wordId)).isNull()
-        assertThat(database.mistakeBookDao().activeCount(pack)).isEqualTo(0)
+        assertThat(database.mistakeBookDao().activeCount(plan)).isEqualTo(0)
     }
 
     @Test
@@ -371,7 +402,7 @@ class DatabaseTest {
 
         val active = database.mistakeBookDao()
             .observeMistakes(
-                packId = pack,
+                planId = plan,
                 includeResolved = 0,
                 favoriteOnly = 0,
                 minWrongCount = 0,
@@ -388,10 +419,10 @@ class DatabaseTest {
         database.mistakeBookDao().markResolved(wordId, now + 1_000)
 
         val withoutResolved = database.mistakeBookDao()
-            .observeMistakes(pack, 0, 0, 0, 0, null, "%%")
+            .observeMistakes(plan, 0, 0, 0, 0, null, "%%")
             .first()
         val withResolved = database.mistakeBookDao()
-            .observeMistakes(pack, 1, 0, 0, 0, null, "%%")
+            .observeMistakes(plan, 1, 0, 0, 0, null, "%%")
             .first()
 
         assertThat(withoutResolved).isEmpty()
@@ -416,7 +447,7 @@ class DatabaseTest {
         assertThat(database.wordDao().byId(wordId)).isNull()
         assertThat(database.progressDao().byWordId(wordId)).isNull()
         assertThat(database.reviewEventDao().countForWordOnDay(wordId, dayKey)).isEqualTo(0)
-        assertThat(database.reviewEventDao().totalCount(pack)).isEqualTo(0)
+        assertThat(database.reviewEventDao().totalCount(plan)).isEqualTo(0)
         assertThat(database.mistakeBookDao().byWordId(wordId)).isNull()
         assertThat(database.progressDao().wordWithProgress(wordId)).isNull()
     }
@@ -438,17 +469,17 @@ class DatabaseTest {
 
         assertThat(thrown).isNotNull()
         assertThat(thrown!!.javaClass.name).contains("SQLiteConstraintException")
-        assertThat(database.reviewEventDao().totalCount(pack)).isEqualTo(0)
+        assertThat(database.reviewEventDao().totalCount(plan)).isEqualTo(0)
     }
 
     // --- Daily summaries -------------------------------------------------------------------
 
     @Test
-    fun `the daily summary composite key keeps the packs apart`() = runTest {
+    fun `the daily summary composite key keeps the plans apart`() = runTest {
         database.dailySummaryDao().upsert(
             DailyStudySummaryEntity(
                 dayKey = dayKey,
-                packId = pack,
+                planId = plan,
                 level = CetLevel.CET4.id,
                 studiedWords = 3,
                 reviewEvents = 4,
@@ -457,38 +488,38 @@ class DatabaseTest {
         database.dailySummaryDao().upsert(
             DailyStudySummaryEntity(
                 dayKey = dayKey,
-                packId = pack6,
+                planId = plan6,
                 level = CetLevel.CET6.id,
                 studiedWords = 1,
                 reviewEvents = 2,
             ),
         )
 
-        assertThat(database.dailySummaryDao().get(dayKey, pack)!!.studiedWords).isEqualTo(3)
-        assertThat(database.dailySummaryDao().get(dayKey, pack6)!!.studiedWords).isEqualTo(1)
-        assertThat(database.dailySummaryDao().allForPack(pack)).hasSize(1)
-        assertThat(database.dailySummaryDao().since(pack, "2026-01-01")).hasSize(1)
+        assertThat(database.dailySummaryDao().get(dayKey, plan)!!.studiedWords).isEqualTo(3)
+        assertThat(database.dailySummaryDao().get(dayKey, plan6)!!.studiedWords).isEqualTo(1)
+        assertThat(database.dailySummaryDao().allForPlan(plan)).hasSize(1)
+        assertThat(database.dailySummaryDao().since(plan, "2026-01-01")).hasSize(1)
 
-        // The same (day, pack) pair is replaced, not duplicated.
+        // The same (day, plan) pair is replaced, not duplicated.
         database.dailySummaryDao().upsert(
             DailyStudySummaryEntity(
                 dayKey = dayKey,
-                packId = pack,
+                planId = plan,
                 level = CetLevel.CET4.id,
                 studiedWords = 9,
                 reviewEvents = 9,
             ),
         )
-        assertThat(database.dailySummaryDao().allForPack(pack)).hasSize(1)
-        assertThat(database.dailySummaryDao().get(dayKey, pack)!!.studiedWords).isEqualTo(9)
+        assertThat(database.dailySummaryDao().allForPlan(plan)).hasSize(1)
+        assertThat(database.dailySummaryDao().get(dayKey, plan)!!.studiedWords).isEqualTo(9)
     }
 
     @Test
-    fun `the daily summary totals aggregate the rows of a pack`() = runTest {
+    fun `the daily summary totals aggregate the rows of a plan`() = runTest {
         database.dailySummaryDao().upsert(
             DailyStudySummaryEntity(
                 dayKey = "2026-01-14",
-                packId = pack,
+                planId = plan,
                 level = CetLevel.CET4.id,
                 studiedWords = 3,
                 reviewEvents = 4,
@@ -499,7 +530,7 @@ class DatabaseTest {
         database.dailySummaryDao().upsert(
             DailyStudySummaryEntity(
                 dayKey = dayKey,
-                packId = pack,
+                planId = plan,
                 level = CetLevel.CET4.id,
                 studiedWords = 5,
                 reviewEvents = 6,
@@ -510,13 +541,13 @@ class DatabaseTest {
         database.dailySummaryDao().upsert(
             DailyStudySummaryEntity(
                 dayKey = dayKey,
-                packId = pack6,
+                planId = plan6,
                 level = CetLevel.CET6.id,
                 studiedWords = 100,
             ),
         )
 
-        val totals = database.dailySummaryDao().totals(pack, "2026-01-01")
+        val totals = database.dailySummaryDao().totals(plan, "2026-01-01")
 
         assertThat(totals.studiedWords).isEqualTo(8)
         assertThat(totals.reviewEvents).isEqualTo(10)
@@ -530,7 +561,7 @@ class DatabaseTest {
         database.dailySummaryDao().upsert(
             DailyStudySummaryEntity(
                 dayKey = "2026-01-13",
-                packId = pack,
+                planId = plan,
                 level = CetLevel.CET4.id,
                 studiedWords = 0,
                 reviewEvents = 0,
@@ -539,7 +570,7 @@ class DatabaseTest {
         database.dailySummaryDao().upsert(
             DailyStudySummaryEntity(
                 dayKey = "2026-01-14",
-                packId = pack,
+                planId = plan,
                 level = CetLevel.CET4.id,
                 studiedWords = 2,
             ),
@@ -547,20 +578,20 @@ class DatabaseTest {
         database.dailySummaryDao().upsert(
             DailyStudySummaryEntity(
                 dayKey = dayKey,
-                packId = pack,
+                planId = plan,
                 level = CetLevel.CET4.id,
                 examsCompleted = 1,
             ),
         )
 
-        assertThat(database.dailySummaryDao().activeDayKeys(pack))
+        assertThat(database.dailySummaryDao().activeDayKeys(plan))
             .containsExactly(dayKey, "2026-01-14").inOrder()
     }
 
     // --- Review events ---------------------------------------------------------------------
 
     @Test
-    fun `review events are counted per word per day and per pack`() = runTest {
+    fun `review events are counted per word per day and per plan`() = runTest {
         val wordId = database.wordDao().insert(wordEntity("apple"))
 
         database.reviewEventDao().insert(reviewEvent(wordId, grade = "UNKNOWN"))
@@ -569,11 +600,11 @@ class DatabaseTest {
 
         assertThat(database.reviewEventDao().countForWordOnDay(wordId, dayKey)).isEqualTo(3)
         assertThat(database.reviewEventDao().countForWordOnDay(wordId, "2026-01-14")).isEqualTo(0)
-        assertThat(database.reviewEventDao().totalCount(pack)).isEqualTo(3)
-        assertThat(database.reviewEventDao().countSince(pack, now - 1)).isEqualTo(3)
-        assertThat(database.reviewEventDao().countSince(pack, now + 1)).isEqualTo(0)
+        assertThat(database.reviewEventDao().totalCount(plan)).isEqualTo(3)
+        assertThat(database.reviewEventDao().countSince(plan, now - 1)).isEqualTo(3)
+        assertThat(database.reviewEventDao().countSince(plan, now + 1)).isEqualTo(0)
 
-        val trends = database.reviewEventDao().trendsSince(pack, "2026-01-01")
+        val trends = database.reviewEventDao().trendsSince(plan, "2026-01-01")
         assertThat(trends).hasSize(1)
         assertThat(trends.single().dayKey).isEqualTo(dayKey)
         assertThat(trends.single().total).isEqualTo(3)
@@ -587,7 +618,7 @@ class DatabaseTest {
         val wordId = database.wordDao().insert(wordEntity("apple", meanings = """["苹果"]"""))
         database.reviewEventDao().insert(reviewEvent(wordId, grade = "MASTERED"))
 
-        val recent = database.reviewEventDao().recent(pack, limit = 10)
+        val recent = database.reviewEventDao().recent(plan, limit = 10)
 
         assertThat(recent).hasSize(1)
         assertThat(recent.single().word).isEqualTo("apple")
@@ -600,6 +631,6 @@ class DatabaseTest {
     @Test
     fun `the database reports its current version and starts empty`() = runTest {
         assertThat(database.openHelper.readableDatabase.version).isEqualTo(Migrations.CURRENT_VERSION)
-        assertThat(database.wordDao().hasWords(pack)).isFalse()
+        assertThat(database.wordDao().hasWordsInPlan(plan)).isFalse()
     }
 }

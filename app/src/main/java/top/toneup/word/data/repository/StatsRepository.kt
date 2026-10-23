@@ -4,7 +4,7 @@ import top.toneup.word.core.time.StudyDay
 import top.toneup.word.core.time.TimeProvider
 import top.toneup.word.data.local.ToneUpWordDatabase
 import top.toneup.word.data.mapper.toInput
-import top.toneup.word.data.settings.PackIds
+import top.toneup.word.data.settings.PlanIds
 import top.toneup.word.data.settings.UserSettings
 import top.toneup.word.domain.model.CetLevel
 import top.toneup.word.domain.srs.MasteryStatus
@@ -29,10 +29,10 @@ import java.time.LocalDate
  */
 interface StatsRepository {
 
-    fun observeStats(packId: String, settings: UserSettings): Flow<StatsSnapshot>
+    fun observeStats(planId: String, settings: UserSettings): Flow<StatsSnapshot>
 
     /** One shot variant used by export and by tests. */
-    suspend fun stats(packId: String, settings: UserSettings): StatsSnapshot
+    suspend fun stats(planId: String, settings: UserSettings): StatsSnapshot
 }
 
 class DefaultStatsRepository(
@@ -40,18 +40,18 @@ class DefaultStatsRepository(
     private val time: TimeProvider,
 ) : StatsRepository {
 
-    override fun observeStats(packId: String, settings: UserSettings): Flow<StatsSnapshot> {
+    override fun observeStats(planId: String, settings: UserSettings): Flow<StatsSnapshot> {
         val zone = time.zone()
         val now = time.nowMillis()
         val today = StudyDay.localDate(now, zone)
         val yearAgoKey = today.minusDays(CALENDAR_DAYS - 1).toString()
 
         val core = combine(
-            db.dailySummaryDao().observeSince(packId, yearAgoKey),
-            db.reviewEventDao().observeTrendsSince(packId, yearAgoKey),
-            db.progressDao().observeStatusCounts(packId),
-            db.wordDao().observeCount(packId),
-            db.progressDao().observeDueCount(packId, now),
+            db.dailySummaryDao().observeSince(planId, yearAgoKey),
+            db.reviewEventDao().observeTrendsSince(planId, yearAgoKey),
+            db.progressDao().observeStatusCounts(planId),
+            db.wordDao().observePlanWordCount(planId),
+            db.progressDao().observeDueCount(planId, now),
         ) { summaries, trends, statuses, wordCount, dueCount ->
             CoreStats(
                 summaries = summaries.map { it.toInput() },
@@ -66,10 +66,10 @@ class DefaultStatsRepository(
 
         return combine(
             core,
-            db.mistakeBookDao().observeActiveCount(packId),
-            db.mistakeBookDao().observeHighWrongCount(packId, DefaultMistakeRepository.HIGH_WRONG_THRESHOLD),
-            db.progressDao().observeFavoriteCount(packId),
-            db.examDao().observeSubmittedCount(),
+            db.mistakeBookDao().observeActiveCount(planId),
+            db.mistakeBookDao().observeHighWrongCount(planId, DefaultMistakeRepository.HIGH_WRONG_THRESHOLD),
+            db.progressDao().observeFavoriteCount(planId),
+            db.examDao().observeSubmittedCount(planId),
         ) { coreStats, activeMistakes, highMistakes, favorites, examCount ->
             Partial(
                 core = coreStats,
@@ -79,48 +79,48 @@ class DefaultStatsRepository(
                 examCount = examCount,
                 examAverage = null,
             )
-        }.combine(db.examDao().observeAverageAccuracy(packId)) { partial, average ->
+        }.combine(db.examDao().observeAverageAccuracy(planId)) { partial, average ->
             partial.copy(examAverage = StatsCalculator.examAveragePercent(average))
         }.map { partial ->
-            build(partial, packId, settings, today)
+            build(partial, planId, settings, today)
         }
     }
 
-    override suspend fun stats(packId: String, settings: UserSettings): StatsSnapshot {
+    override suspend fun stats(planId: String, settings: UserSettings): StatsSnapshot {
         val zone = time.zone()
         val now = time.nowMillis()
         val today = StudyDay.localDate(now, zone)
         val yearAgoKey = today.minusDays(CALENDAR_DAYS - 1).toString()
 
         val core = CoreStats(
-            summaries = db.dailySummaryDao().since(packId, yearAgoKey).map { it.toInput() },
-            trends = db.reviewEventDao().trendsSince(packId, yearAgoKey)
+            summaries = db.dailySummaryDao().since(planId, yearAgoKey).map { it.toInput() },
+            trends = db.reviewEventDao().trendsSince(planId, yearAgoKey)
                 .map { DailyTrendInput(it.dayKey, it.total, it.correct, it.fuzzy, it.wrong) },
-            statusCounts = db.progressDao().observeStatusCounts(packId).first().associate {
+            statusCounts = db.progressDao().observeStatusCounts(planId).first().associate {
                 top.toneup.word.data.mapper.masteryStatusFromId(it.status) to it.count
             },
-            wordCount = db.wordDao().count(packId),
-            dueCount = db.progressDao().dueCount(packId, now),
+            wordCount = db.wordDao().planWordCount(planId),
+            dueCount = db.progressDao().dueCount(planId, now),
         )
         val partial = Partial(
             core = core,
-            activeMistakes = db.mistakeBookDao().activeCount(packId),
+            activeMistakes = db.mistakeBookDao().activeCount(planId),
             highMistakes = 0,
-            favorites = db.progressDao().observeFavoriteCount(packId).first(),
-            examCount = db.examDao().observeSubmittedCount().first(),
-            examAverage = StatsCalculator.examAveragePercent(db.examDao().averageAccuracy(packId)),
+            favorites = db.progressDao().observeFavoriteCount(planId).first(),
+            examCount = db.examDao().observeSubmittedCount(planId).first(),
+            examAverage = StatsCalculator.examAveragePercent(db.examDao().averageAccuracy(planId)),
         )
-        return build(partial, packId, settings, today)
+        return build(partial, planId, settings, today)
     }
 
     private fun build(
         partial: Partial,
-        packId: String,
+        planId: String,
         settings: UserSettings,
         today: LocalDate,
     ): StatsSnapshot {
-        // Display level follows the pack (D1): builtin packs show their CET label, imports "自定义".
-        val level = PackIds.levelForPackId(packId)
+        // Display level follows the plan (D5): the default plan shows its CET label, the rest "自定义".
+        val level = PlanIds.levelForPlanId(planId)
         val core = partial.core
         val calendarFrom = today.minusDays(CALENDAR_DAYS - 1)
         val calendar = StatsCalculator.buildSeries(core.summaries, core.trends, calendarFrom, today)

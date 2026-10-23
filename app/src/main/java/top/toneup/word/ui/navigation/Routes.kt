@@ -40,13 +40,15 @@ object Routes {
     const val WORD_BROWSER = "word-browser"
     const val ABOUT = "about"
     const val LICENSES = "licenses"
-    const val PACKS = "packs"
+    const val PLANS = "plans"
+    const val PLAN_DETAIL = "plans/{planId}"
     const val IMPORT_WORDS = "import-words/{packId}"
 
     const val ARG_DRILL_IDS = "drillIds"
     const val ARG_WORD_ID = "wordId"
     const val ARG_EXAM_ID = "examId"
     const val ARG_PACK_ID = "packId"
+    const val ARG_PLAN_ID = "planId"
 
     /** Study session route; [drillIds] empty means "today's normal queue". */
     fun studySession(drillIds: List<Long> = emptyList()): String =
@@ -59,6 +61,8 @@ object Routes {
     fun examResult(examId: Long): String = "exam/result/$examId"
 
     fun importWords(packId: String): String = "import-words/$packId"
+
+    fun planDetail(planId: String): String = "plans/$planId"
 }
 
 /** The five tabs of the bottom bar. */

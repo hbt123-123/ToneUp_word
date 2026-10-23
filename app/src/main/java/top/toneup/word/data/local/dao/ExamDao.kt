@@ -51,23 +51,23 @@ interface ExamDao {
     @Query(
         """
         SELECT * FROM exam_session
-        WHERE status = 'SUBMITTED'
+        WHERE status = 'SUBMITTED' AND plan_id = :planId
         ORDER BY submitted_at DESC LIMIT :limit
         """,
     )
-    fun observeHistory(limit: Int): Flow<List<ExamSessionEntity>>
+    fun observeHistory(planId: String, limit: Int): Flow<List<ExamSessionEntity>>
 
     @Query(
         """
         SELECT * FROM exam_session
-        WHERE status = 'SUBMITTED'
+        WHERE status = 'SUBMITTED' AND plan_id = :planId
         ORDER BY submitted_at DESC LIMIT :limit
         """,
     )
-    suspend fun history(limit: Int): List<ExamSessionEntity>
+    suspend fun history(planId: String, limit: Int): List<ExamSessionEntity>
 
-    @Query("SELECT COUNT(*) FROM exam_session WHERE status = 'SUBMITTED'")
-    fun observeSubmittedCount(): Flow<Int>
+    @Query("SELECT COUNT(*) FROM exam_session WHERE status = 'SUBMITTED' AND plan_id = :planId")
+    fun observeSubmittedCount(planId: String): Flow<Int>
 
     /**
      * Per-question-type accuracy over the recent exams, used to find a weak question type.
@@ -82,18 +82,18 @@ interface ExamDao {
                SUM(CASE WHEN q.is_correct = 1 THEN 1 ELSE 0 END) AS correct
         FROM exam_question q
         INNER JOIN exam_session s ON s.id = q.exam_id
-        WHERE s.pack_id = :packId AND s.status = 'SUBMITTED'
+        WHERE s.plan_id = :planId AND s.status = 'SUBMITTED'
           AND q.is_correct IS NOT NULL AND q.answered_at >= :since
         GROUP BY q.type
         """,
     )
-    suspend fun typeAccuracySince(packId: String, since: Long): List<ExamTypeAccuracyRow>
+    suspend fun typeAccuracySince(planId: String, since: Long): List<ExamTypeAccuracyRow>
 
-    @Query("SELECT AVG(accuracy_percent) FROM exam_session WHERE status = 'SUBMITTED' AND pack_id = :packId")
-    fun observeAverageAccuracy(packId: String): Flow<Double?>
+    @Query("SELECT AVG(accuracy_percent) FROM exam_session WHERE status = 'SUBMITTED' AND plan_id = :planId")
+    fun observeAverageAccuracy(planId: String): Flow<Double?>
 
-    @Query("SELECT AVG(accuracy_percent) FROM exam_session WHERE status = 'SUBMITTED' AND pack_id = :packId")
-    suspend fun averageAccuracy(packId: String): Double?
+    @Query("SELECT AVG(accuracy_percent) FROM exam_session WHERE status = 'SUBMITTED' AND plan_id = :planId")
+    suspend fun averageAccuracy(planId: String): Double?
 
     @Query("UPDATE exam_session SET status = 'ABANDONED', submitted_at = :now WHERE id = :id")
     suspend fun abandon(id: Long, now: Long)

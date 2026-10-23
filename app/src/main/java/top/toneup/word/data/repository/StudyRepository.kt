@@ -9,7 +9,7 @@ import top.toneup.word.data.mapper.toWordWithProgress
 import top.toneup.word.data.mapper.toWord
 import top.toneup.word.data.mapper.toProgress
 import top.toneup.word.data.mapper.toReviewEventDisplay
-import top.toneup.word.data.settings.PackIds
+import top.toneup.word.data.settings.PlanIds
 import top.toneup.word.data.settings.UserSettings
 import top.toneup.word.domain.model.CetLevel
 import top.toneup.word.domain.srs.MasteryStatus
@@ -52,8 +52,8 @@ interface StudyRepository {
     /** Queue for a targeted drill (mistake book / review centre "重新练习"). */
     fun buildDrillQueue(wordIds: List<Long>, shuffle: Boolean = false): List<StudyQueueItem>
 
-    /** The unfinished session, if any, rebuilt from the database. */
-    suspend fun resumeActiveSession(): StudySessionState?
+    /** The unfinished session of a plan, if any, rebuilt from the database. */
+    suspend fun resumeActiveSession(planId: String): StudySessionState?
 
     suspend fun createSession(state: StudySessionState): StudySessionState
 
@@ -74,9 +74,9 @@ interface StudyRepository {
         responseTimeMs: Long?,
     )
 
-    suspend fun recentEvents(packId: String, limit: Int = 8): List<RecentEvent>
+    suspend fun recentEvents(planId: String, limit: Int = 8): List<RecentEvent>
 
-    fun observeRecentEvents(packId: String, limit: Int): Flow<List<RecentEvent>>
+    fun observeRecentEvents(planId: String, limit: Int): Flow<List<RecentEvent>>
 
     /** Summary shown when a session finishes. */
     suspend fun summarize(
@@ -95,17 +95,17 @@ class DefaultStudyRepository(
 ) : StudyRepository {
 
     override fun observeTodayPlan(settings: UserSettings): Flow<TodayPlan> {
-        // D1: the study scope is the active pack; the displayed level follows it.
-        val packId = settings.effectivePackId
+        // D1: the study scope is the active plan; the displayed level follows it.
+        val planId = settings.effectivePlanId
         val level = settings.effectiveLevel
         val now = time.nowMillis()
         val dayKey = StudyDay.dayKey(now, time.zone())
         return combine(
-            db.progressDao().observeDueCount(packId, now),
-            db.progressDao().observeFragileCount(packId),
-            db.progressDao().observeNewCount(packId),
-            db.mistakeBookDao().observeActiveCount(packId),
-            db.dailySummaryDao().observe(dayKey, packId),
+            db.progressDao().observeDueCount(planId, now),
+            db.progressDao().observeFragileCount(planId),
+            db.progressDao().observeNewCount(planId),
+            db.mistakeBookDao().observeActiveCount(planId),
+            db.dailySummaryDao().observe(dayKey, planId),
         ) { due, fragile, newAvailable, mistakes, summary ->
             TodayPlan(
                 level = level,
@@ -123,11 +123,11 @@ class DefaultStudyRepository(
     }
 
     override suspend fun buildQueue(settings: UserSettings): List<StudyQueueItem> {
-        val packId = settings.effectivePackId
+        val planId = settings.effectivePlanId
         val now = time.nowMillis()
-        val due = db.progressDao().dueWords(packId, now, settings.dailyReviewLimit).map { it.wordId }
-        val fragile = db.progressDao().fragileWords(packId, now, settings.dailyReviewLimit).map { it.wordId }
-        val newWords = db.progressDao().newWords(packId, settings.dailyNewWordGoal).map { it.wordId }
+        val due = db.progressDao().dueWords(planId, now, settings.dailyReviewLimit).map { it.wordId }
+        val fragile = db.progressDao().fragileWords(planId, now, settings.dailyReviewLimit).map { it.wordId }
+        val newWords = db.progressDao().newWords(planId, settings.dailyNewWordGoal).map { it.wordId }
         return StudyQueueBuilder.build(
             dueWordIds = due,
             fragileWordIds = fragile,
@@ -142,8 +142,8 @@ class DefaultStudyRepository(
     override fun buildDrillQueue(wordIds: List<Long>, shuffle: Boolean): List<StudyQueueItem> =
         StudyQueueBuilder.drillQueue(wordIds, shuffle = shuffle)
 
-    override suspend fun resumeActiveSession(): StudySessionState? {
-        val entity = db.studySessionDao().active() ?: return null
+    override suspend fun resumeActiveSession(planId: String): StudySessionState? {
+        val entity = db.studySessionDao().activeForPlan(planId) ?: return null
         val wordIds = JsonCodec.decodeLongs(entity.queue)
         if (wordIds.isEmpty()) {
             closeSessionEntity(entity.id, SessionStatus.ABANDONED)
@@ -161,8 +161,8 @@ class DefaultStudyRepository(
         val newIds = cards.filterValues { it.isNew }.keys
         return StudySessionState(
             sessionId = entity.id,
-            // Carries the pack id (schema v2); see `Mappers.StudySessionEntity.toState`.
-            levelId = entity.packId,
+            // Carries the plan id (schema v4); see `Mappers.StudySessionEntity.toState`.
+            levelId = entity.planId,
             queue = wordIds,
             reasons = reasons,
             newWordIds = newIds,
@@ -199,7 +199,7 @@ class DefaultStudyRepository(
             recorder.addStudyDuration(
                 startedAtMillis = state.startedAt,
                 durationMillis = (now - state.startedAt).coerceAtLeast(0L),
-                packId = state.levelId,
+                planId = state.levelId,
             )
         }
     }
@@ -236,11 +236,11 @@ class DefaultStudyRepository(
         )
     }
 
-    override suspend fun recentEvents(packId: String, limit: Int): List<RecentEvent> =
-        db.reviewEventDao().recent(packId, limit).map { it.toReviewEventDisplay() }
+    override suspend fun recentEvents(planId: String, limit: Int): List<RecentEvent> =
+        db.reviewEventDao().recent(planId, limit).map { it.toReviewEventDisplay() }
 
-    override fun observeRecentEvents(packId: String, limit: Int): Flow<List<RecentEvent>> =
-        db.reviewEventDao().observeRecent(packId, limit)
+    override fun observeRecentEvents(planId: String, limit: Int): Flow<List<RecentEvent>> =
+        db.reviewEventDao().observeRecent(planId, limit)
             .map { rows -> rows.map { it.toReviewEventDisplay() } }
 
     override suspend fun summarize(state: StudySessionState, finishedAtMillis: Long): SessionSummary {
@@ -251,8 +251,8 @@ class DefaultStudyRepository(
             .map { it.wordId }
         return SessionSummary(
             sessionId = state.sessionId,
-            // `state.levelId` holds the pack id; translate back for the display model.
-            level = PackIds.levelForPackId(state.levelId),
+            // `state.levelId` holds the plan id; translate back for the display model.
+            level = PlanIds.levelForPlanId(state.levelId),
             answeredCards = state.answered,
             newCards = state.newSeen,
             reviewCards = state.reviewSeen,
@@ -280,8 +280,11 @@ class DefaultStudyRepository(
         endedAt: Long? = null,
     ): StudySessionEntity = StudySessionEntity(
         id = existingId,
-        level = PackIds.levelForPackId(levelId).id,
-        packId = levelId,
+        level = PlanIds.levelForPlanId(levelId).id,
+        // `levelId` carries the plan id; a session spans several packs (D9), so `pack_id`
+        // is kept as empty provenance rather than pretended to be a single pack.
+        packId = "",
+        planId = levelId,
         status = status,
         startedAt = startedAt,
         updatedAt = now,

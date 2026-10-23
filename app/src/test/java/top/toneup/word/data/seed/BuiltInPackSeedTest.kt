@@ -12,6 +12,7 @@ import top.toneup.word.data.repository.DefaultWordRepository
 import top.toneup.word.data.repository.ProgressRecorder
 import top.toneup.word.data.repository.SeedProgress
 import top.toneup.word.data.settings.PackIds
+import top.toneup.word.data.settings.PlanIds
 import top.toneup.word.domain.importer.ImportIssue
 import top.toneup.word.domain.importer.ImportPreview
 import top.toneup.word.domain.importer.PackFormat
@@ -143,7 +144,7 @@ class BuiltInPackSeedTest {
 
         repository.ensureBuiltInPacks()
 
-        assertThat(database.wordDao().count(PackIds.BUILTIN_CET6)).isEqualTo(2)
+        assertThat(database.wordDao().countInPack(PackIds.BUILTIN_CET6)).isEqualTo(2)
         val pack = database.wordDao().packById("builtin-cet6")
         assertThat(pack).isNotNull()
         assertThat(pack!!.version).isEqualTo("2")
@@ -164,7 +165,7 @@ class BuiltInPackSeedTest {
         // The second run sees the stored version and skips parsing entirely: the 3 MB assets must
         // not be re-parsed on every cold start.
         assertThat(source.loadCount).isEqualTo(loadsAfterFirst)
-        assertThat(database.wordDao().count(PackIds.BUILTIN_CET6)).isEqualTo(2)
+        assertThat(database.wordDao().countInPack(PackIds.BUILTIN_CET6)).isEqualTo(2)
     }
 
     @Test
@@ -197,10 +198,10 @@ class BuiltInPackSeedTest {
         assertThat(progress!!.isFavorite).isTrue()
         assertThat(progress.consecutiveCorrectCount).isEqualTo(1)
 
-        val events = database.reviewEventDao().countSince(PackIds.BUILTIN_CET6, 0L)
+        val events = database.reviewEventDao().countSince(PlanIds.DEFAULT_PLAN, 0L)
         assertThat(events).isEqualTo(1)
 
-        assertThat(database.wordDao().count(PackIds.BUILTIN_CET6)).isEqualTo(3)
+        assertThat(database.wordDao().countInPack(PackIds.BUILTIN_CET6)).isEqualTo(3)
         assertThat(database.wordDao().packById("builtin-cet6")!!.version).isEqualTo("2")
     }
 
@@ -240,7 +241,7 @@ class BuiltInPackSeedTest {
         repository.ensureBuiltInPacks()
 
         // The app must still start with a usable list rather than an empty one.
-        assertThat(database.wordDao().count(PackIds.BUILTIN_CET6)).isGreaterThan(0)
+        assertThat(database.wordDao().countInPack(PackIds.BUILTIN_CET6)).isGreaterThan(0)
         assertThat(database.wordDao().packById("builtin-cet6")).isNotNull()
     }
 
@@ -273,16 +274,17 @@ class BuiltInPackSeedTest {
         val repository = DefaultWordRepository(database, FixedTime(), source)
         repository.ensureBuiltInPacks()
 
-        val byPrefix = repository.search(PackIds.BUILTIN_CET6, "ab", 10).map { it.word.word }
+        // Search is plan-scoped since schema v4: the seeded pack lives in the default plan.
+        val byPrefix = repository.search(PlanIds.DEFAULT_PLAN, "ab", 10).map { it.word.word }
         assertThat(byPrefix).containsAtLeast("abandon", "ability", "absorb").inOrder()
 
-        val byMeaning = repository.search(PackIds.BUILTIN_CET6, "放弃", 10).map { it.word.word }
+        val byMeaning = repository.search(PlanIds.DEFAULT_PLAN, "放弃", 10).map { it.word.word }
         assertThat(byMeaning).containsExactly("abandon")
 
-        val all = repository.search(PackIds.BUILTIN_CET6, "", 10)
+        val all = repository.search(PlanIds.DEFAULT_PLAN, "", 10)
         assertThat(all).hasSize(3)
 
         // A wildcard typed by the user must be treated literally, not as "match everything".
-        assertThat(repository.search(PackIds.BUILTIN_CET6, "%", 10)).isEmpty()
+        assertThat(repository.search(PlanIds.DEFAULT_PLAN, "%", 10)).isEmpty()
     }
 }

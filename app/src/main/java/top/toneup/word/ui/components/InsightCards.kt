@@ -140,7 +140,7 @@ enum class StatDefinition(val title: String, val body: String) {
     ),
     NOT_STARTED(
         title = "未学习",
-        body = "当前词库里从未作答过的单词。",
+        body = "当前计划里从未作答过的单词。",
     ),
     STREAK(
         title = "连续学习天数",

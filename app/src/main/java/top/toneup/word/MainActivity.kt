@@ -58,7 +58,7 @@ class MainActivity : ComponentActivity() {
             val state = mainViewModel.state.collectAsStateWithLifecycle()
             val importState = externalImport.state.collectAsStateWithLifecycle()
             val importPacks = externalImport.packs.collectAsStateWithLifecycle()
-            val importActivePackId = externalImport.activePackId.collectAsStateWithLifecycle()
+            val importDefaultPackId = externalImport.defaultPackId.collectAsStateWithLifecycle()
             val updateState = mainViewModel.updateState.collectAsStateWithLifecycle()
             val updateDialogVisible = mainViewModel.updateDialogVisible.collectAsStateWithLifecycle()
             val updateAutoPrompt = mainViewModel.updateAutoPrompt.collectAsStateWithLifecycle()
@@ -82,7 +82,7 @@ class MainActivity : ComponentActivity() {
                 onDismissStartupTip = mainViewModel::dismissStartupTip,
                 externalImportState = importState.value,
                 externalImportPacks = importPacks.value,
-                externalImportActivePackId = importActivePackId.value,
+                externalImportDefaultPackId = importDefaultPackId.value,
                 externalImportCallbacks = ExternalImportCallbacks(
                     onConfirmImport = externalImport::confirmImport,
                     onCreatePackAndImport = externalImport::createPackAndImport,

@@ -18,8 +18,10 @@ data class WrongAnswerRow(
     @ColumnInfo(name = "meanings") val meanings: String,
     @ColumnInfo(name = "example_sentence") val exampleSentence: String,
     @ColumnInfo(name = "level") val level: String,
-    /** `wrong_answer.pack_id` — the pack scope this mistake belongs to (schema v2). */
+    /** `wrong_answer.pack_id` — the source pack this mistake was made in (schema v2). */
     @ColumnInfo(name = "pack_id") val packId: String,
+    /** `wrong_answer.plan_id` — the plan this mistake counts towards (schema v4, D4). */
+    @ColumnInfo(name = "plan_id") val planId: String,
     @ColumnInfo(name = "wrong_count") val wrongCount: Int,
     @ColumnInfo(name = "fuzzy_count") val fuzzyCount: Int,
     @ColumnInfo(name = "first_wrong_at") val firstWrongAt: Long,
@@ -93,6 +95,26 @@ data class StatusCountRow(
 data class WordIdKey(
     @ColumnInfo(name = "id") val id: Long,
     @ColumnInfo(name = "normalized_word") val normalizedWord: String,
+)
+
+/**
+ * A word row and the same-named sibling inside its plan — the transfer pair used when a pack
+ * is deleted so the surviving row inherits the progress (D10).
+ */
+data class WordIdPair(
+    @ColumnInfo(name = "source_id") val sourceId: Long,
+    @ColumnInfo(name = "target_id") val targetId: Long,
+)
+
+/**
+ * A pack scope present in the `word` table: the pack id plus the plan its rows belong to.
+ *
+ * Used by the full backup, which must reach historical rows whose `word_pack` row no longer
+ * exists (`legacy-other` and pre-v2 `restored-*` ids) — walking `word_pack` alone would drop them.
+ */
+data class WordPackScopeRow(
+    @ColumnInfo(name = "pack_id") val packId: String,
+    @ColumnInfo(name = "plan_id") val planId: String,
 )
 
 /** Per-question-type exam accuracy over a time window, used by the weak-type advice. */

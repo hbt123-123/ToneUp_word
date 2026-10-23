@@ -10,7 +10,7 @@ import top.toneup.word.data.mapper.toDomain
 import top.toneup.word.data.mapper.toEntity
 import top.toneup.word.data.mapper.toJson
 import top.toneup.word.data.mapper.toScore
-import top.toneup.word.data.settings.PackIds
+import top.toneup.word.data.settings.PlanIds
 import top.toneup.word.domain.exam.ExamBlueprint
 import top.toneup.word.domain.exam.ExamGenerator
 import top.toneup.word.domain.exam.ExamQuestion
@@ -67,9 +67,9 @@ interface ExamRepository {
 
     suspend fun questions(examId: Long): List<ExamQuestion>
 
-    fun observeHistory(limit: Int = 20): Flow<List<ExamSessionEntity>>
+    fun observeHistory(planId: String, limit: Int = 20): Flow<List<ExamSessionEntity>>
 
-    suspend fun history(limit: Int = 20): List<ExamSessionEntity>
+    suspend fun history(planId: String, limit: Int = 20): List<ExamSessionEntity>
 
     /** Abandons stale drafts (used during "清空学习进度"). */
     suspend fun abandonAllDrafts()
@@ -90,7 +90,7 @@ class DefaultExamRepository(
             return Outcome.Failure(
                 AppError(
                     code = top.toneup.word.core.result.ErrorCode.EMPTY,
-                    message = "当前词库中的可用单词太少，无法生成闭卷考试。请先导入词库。",
+                    message = "当前计划中的可用单词太少，无法生成闭卷考试。请先导入词库。",
                 ),
             )
         }
@@ -101,9 +101,10 @@ class DefaultExamRepository(
                 db.examDao().abandonAllDrafts(now)
                 val sessionId = db.examDao().insertSession(
                     ExamSessionEntity(
-                        // `blueprint.levelId` carries the pack id since v2 (exam scope = pack).
-                        level = PackIds.levelForPackId(blueprint.levelId).id,
-                        packId = blueprint.levelId,
+                        // `blueprint.levelId` carries the plan id since v4 (exam scope = plan).
+                        level = PlanIds.levelForPlanId(blueprint.levelId).id,
+                        packId = "",
+                        planId = blueprint.levelId,
                         status = ExamStatus.DRAFT,
                         createdAt = now,
                         startedAt = now,
@@ -220,7 +221,7 @@ class DefaultExamRepository(
 
                 recorder.addExamResult(
                     submittedAtMillis = now,
-                    packId = session.packId,
+                    planId = session.planId,
                     correct = score.correctCount,
                     total = score.totalQuestions,
                     durationMillis = score.durationMillis,
@@ -260,10 +261,11 @@ class DefaultExamRepository(
     override suspend fun questions(examId: Long): List<ExamQuestion> =
         db.examDao().questions(examId).map { it.toDomain() }
 
-    override fun observeHistory(limit: Int): Flow<List<ExamSessionEntity>> =
-        db.examDao().observeHistory(limit)
+    override fun observeHistory(planId: String, limit: Int): Flow<List<ExamSessionEntity>> =
+        db.examDao().observeHistory(planId, limit)
 
-    override suspend fun history(limit: Int): List<ExamSessionEntity> = db.examDao().history(limit)
+    override suspend fun history(planId: String, limit: Int): List<ExamSessionEntity> =
+        db.examDao().history(planId, limit)
 
     override suspend fun abandonAllDrafts() {
         db.examDao().abandonAllDrafts(time.nowMillis())

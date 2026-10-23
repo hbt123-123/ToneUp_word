@@ -91,7 +91,7 @@ fun ProfileScreen(
     onOpenSettings: () -> Unit,
     onOpenDataTransfer: () -> Unit,
     onOpenWordBrowser: () -> Unit,
-    onOpenPacks: () -> Unit,
+    onOpenPlans: () -> Unit,
     onOpenAbout: () -> Unit,
     onOpenLicenses: () -> Unit,
 ) {
@@ -148,16 +148,16 @@ fun ProfileScreen(
             item {
                 SettingsEntry(
                     title = "浏览 / 搜索词库",
-                    subtitle = "按单词或中文释义查找当前词库中的任意单词",
+                    subtitle = "按单词或中文释义查找当前计划中的任意单词",
                     onClick = onOpenWordBrowser,
                     testTag = "profile_word_browser",
                 )
             }
             item {
                 SettingsEntry(
-                    title = "词库管理",
-                    subtitle = "新建、重命名、删除词库，切换当前学习的词库",
-                    onClick = onOpenPacks,
+                    title = "计划管理",
+                    subtitle = "新建计划、管理其中的词库，切换当前学习的计划",
+                    onClick = onOpenPlans,
                     testTag = "profile_packs",
                 )
             }

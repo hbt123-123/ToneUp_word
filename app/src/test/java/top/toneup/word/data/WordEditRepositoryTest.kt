@@ -26,6 +26,7 @@ import top.toneup.word.data.repository.DefaultMeaningSyncRepository
 import top.toneup.word.data.repository.DefaultWordRepository
 import top.toneup.word.data.repository.MeaningSyncRepository
 import top.toneup.word.data.settings.DataStoreSettingsRepository
+import top.toneup.word.data.settings.PlanIds
 import top.toneup.word.data.seed.BuiltInPackDefinition
 import top.toneup.word.data.seed.PackSource
 import top.toneup.word.domain.importer.ImportPreview
@@ -85,7 +86,7 @@ class WordEditRepositoryTest {
 
     private suspend fun wordId(token: String = "apple"): Long {
         val packId = requireNotNull(
-            repository.createPack("测试词库", now).getOrNull(),
+            repository.createPack("测试词库", PlanIds.DEFAULT_PLAN, now).getOrNull(),
         )
         val added = repository.addWordsToPack(packId, listOf(token), now)
         assertThat(added.isSuccess).isTrue()

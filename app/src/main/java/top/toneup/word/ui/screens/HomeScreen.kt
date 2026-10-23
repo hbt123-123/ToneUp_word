@@ -106,8 +106,8 @@ fun HomeScreen(
     onOpenInsightAction: (top.toneup.word.domain.insight.Insight) -> Unit = {},
     /** Opens the vocabulary search; the entry lives in the app bar so the dashboard stays as it is. */
     onOpenWordBrowser: () -> Unit = {},
-    /** Opens 词库管理 from the app-bar pack chip (M2 acceptance entry). */
-    onOpenPacks: () -> Unit = {},
+    /** Opens 计划管理 from the app-bar plan chip (schema v4 entry). */
+    onOpenPlans: () -> Unit = {},
 ) {
     val viewModel: HomeViewModel = viewModel(factory = ViewModelFactories.home(container))
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -134,19 +134,19 @@ fun HomeScreen(
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
-                            // Current-pack chip (M2 acceptance): the pack id ("builtin-cet4") is
-                            // resolved to its display name by the ViewModel, and one tap opens
-                            // 词库管理. It hides itself while the name is unknown, so the app bar
-                            // never shows a raw id or a broken label.
-                            state.activePackName?.let { packName ->
+                            // Current-plan chip: the plan id ("plan-default") is resolved to its
+                            // display name by the ViewModel, and one tap opens 计划管理. It hides
+                            // itself while the name is unknown, so the app bar never shows a raw
+                            // id or a broken label.
+                            state.activePlanName?.let { planName ->
                                 Surface(
-                                    onClick = onOpenPacks,
+                                    onClick = onOpenPlans,
                                     shape = RoundedCornerShape(percent = 50),
                                     color = MaterialTheme.colorScheme.surfaceContainerHigh,
                                     modifier = Modifier
                                         .testTag("home_pack_chip")
                                         .semantics {
-                                            contentDescription = "当前词库：$packName，点击管理词库"
+                                            contentDescription = "当前计划：$planName，点击管理计划"
                                         },
                                 ) {
                                     Row(
@@ -158,7 +158,7 @@ fun HomeScreen(
                                         horizontalArrangement = Arrangement.spacedBy(2.dp),
                                     ) {
                                         Text(
-                                            text = packName,
+                                            text = planName,
                                             style = MaterialTheme.typography.labelSmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                                             maxLines = 1,
@@ -217,7 +217,7 @@ fun HomeScreen(
             plan.newAvailableCount == 0 && plan.dueCount == 0 && plan.fragileCount == 0 &&
                 plan.activeMistakeCount == 0 && plan.answeredToday == 0 -> EmptyState(
                 title = "还没有可学习的单词",
-                description = "当前词库为空。可以到「我的 - 词库管理」新建词库并粘贴导入单词。",
+                description = "当前计划为空。可以到「我的 - 计划管理」新建词库并粘贴导入单词。",
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(padding),

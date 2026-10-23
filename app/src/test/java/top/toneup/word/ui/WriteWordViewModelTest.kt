@@ -10,11 +10,9 @@ import top.toneup.word.core.result.AppError
 import top.toneup.word.core.result.Outcome
 import top.toneup.word.data.gateway.LookupResult
 import top.toneup.word.data.local.ToneUpWordDatabase
-import top.toneup.word.data.local.entity.WordPackEntity
 import top.toneup.word.data.repository.BatchReport
 import top.toneup.word.data.repository.MeaningSyncRepository
-import top.toneup.word.data.settings.PackIds
-import top.toneup.word.domain.model.CetLevel
+import top.toneup.word.data.settings.PlanIds
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
@@ -81,21 +79,6 @@ class WriteWordViewModelTest {
             ToneUpWordDatabase::class.java,
         ).allowMainThreadQueries().build()
         database.openHelper.writableDatabase.execSQL("PRAGMA foreign_keys=ON")
-        // `effectivePackId` falls back to the built-in CET-6 pack with the default settings, so
-        // that row has to exist for the write to land anywhere.
-        runBlocking(Dispatchers.IO) {
-            database.wordDao().upsertPack(
-                WordPackEntity(
-                    id = PackIds.BUILTIN_CET6,
-                    name = "六级演示词库",
-                    level = CetLevel.CET6.id,
-                    isBuiltIn = true,
-                    wordCount = 0,
-                    createdAt = now,
-                    updatedAt = now,
-                ),
-            )
-        }
         container = AppContainer(context, database)
         // DataStore is shared between tests in the same process; start from a known state.
         runBlocking(Dispatchers.IO) { container.settingsRepository.resetToDefaults() }
@@ -150,12 +133,15 @@ class WriteWordViewModelTest {
         }
     }
 
+    /** The plan's「手写词」pack: what the ViewModel creates on the first write (D6). */
+    private val writePackId = PlanIds.writePackIdFor(PlanIds.DEFAULT_PLAN)
+
     private fun rowFor(word: String) = runBlocking(Dispatchers.IO) {
-        database.wordDao().byNormalized(PackIds.BUILTIN_CET6, word)
+        database.wordDao().byNormalized(writePackId, word)
     }
 
     private fun countInPack() = runBlocking(Dispatchers.IO) {
-        database.wordDao().count(PackIds.BUILTIN_CET6)
+        database.wordDao().countInPack(writePackId)
     }
 
     // --- writing a word --------------------------------------------------------------------
@@ -168,11 +154,13 @@ class WriteWordViewModelTest {
         assertThat(state.written).hasSize(1)
         assertThat(state.written.single().word).isEqualTo("apple")
         assertThat(state.written.single().note).isEqualTo("苹果公司")
+        assertThat(state.planId).isEqualTo(PlanIds.DEFAULT_PLAN)
         assertThat(state.wordInput).isEmpty()
         assertThat(state.noteInput).isEmpty()
         assertThat(state.saving).isFalse()
 
         val row = rowFor("apple")!!
+        assertThat(row.planId).isEqualTo(PlanIds.DEFAULT_PLAN)
         assertThat(row.lookupState).isEqualTo("PENDING")
         assertThat(row.meanings).isEqualTo("[]")
         assertThat(row.userNote).isEqualTo("苹果公司")

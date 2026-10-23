@@ -56,8 +56,8 @@ class StudyReminderWorker(
             if (settings.reminderEnabled) {
                 val now = System.currentTimeMillis()
                 val dayKey = StudyDay.dayKey(now, ZoneId.systemDefault())
-                val summary = database.dailySummaryDao().get(dayKey, settings.effectivePackId)
-                val due = database.progressDao().dueCount(settings.effectivePackId, now)
+                val summary = database.dailySummaryDao().get(dayKey, settings.effectivePlanId)
+                val due = database.progressDao().dueCount(settings.effectivePlanId, now)
                 postNotification(
                     ReminderContent(
                         studiedToday = summary?.studiedWords ?: 0,

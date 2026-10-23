@@ -4,12 +4,20 @@ import androidx.room.ColumnInfo
 import androidx.room.DatabaseView
 
 /**
- * `word` LEFT JOIN `user_word_progress`.
+ * `word` LEFT JOIN `user_word_progress`, collapsed to one **canonical row per word per plan**.
  *
  * Exposing the join as a database *view* keeps every queue/list query short and consistent
  * (one definition of "a word with its progress"), and SQLite views work on API 26.
  * Progress columns are nullable because a freshly imported word has no progress row yet —
  * that state *is* the "new word" state.
+ *
+ * Schema v4 (D2): the same word may still be imported into several packs, so `word` keeps one
+ * physical row per pack (import counts, pack management and deletion semantics are unchanged).
+ * Studying is scoped by **plan**, so the view projects only the canonical row of each
+ * `(plan_id, normalized_word)` pair: the row that already owns a progress row wins, ties break
+ * on the smallest id. That is what makes a word shared between two packs inside one plan
+ * appear once and share a single progress record. Read-only de-dup: no row is merged or
+ * deleted by the view or by migration 3→4.
  */
 @DatabaseView(
     viewName = "word_with_progress",
@@ -28,6 +36,7 @@ import androidx.room.DatabaseView
             w.license           AS license,
             w.audio_uri         AS audio_uri,
             w.pack_id           AS pack_id,
+            w.plan_id           AS plan_id,
             w.user_note         AS user_note,
             w.en_definition     AS en_definition,
             w.lookup_state      AS lookup_state,
@@ -49,6 +58,13 @@ import androidx.room.DatabaseView
             p.introduced_at     AS introduced_at
         FROM word w
         LEFT JOIN user_word_progress p ON p.word_id = w.id
+        WHERE w.id = (
+            SELECT c.id FROM word c
+            LEFT JOIN user_word_progress cp ON cp.word_id = c.id
+            WHERE c.plan_id = w.plan_id AND c.normalized_word = w.normalized_word
+            ORDER BY (cp.word_id IS NOT NULL) DESC, c.id ASC
+            LIMIT 1
+        )
     """,
 )
 data class WordWithProgressView(
@@ -65,6 +81,8 @@ data class WordWithProgressView(
     @ColumnInfo(name = "license") val license: String,
     @ColumnInfo(name = "audio_uri") val audioUri: String?,
     @ColumnInfo(name = "pack_id") val packId: String?,
+    /** Plan this canonical row is studied in (schema v4) — the only scope since v4. */
+    @ColumnInfo(name = "plan_id") val planId: String,
     // --- schema v3: learner edits + gateway state (plan §9) ------------------------------
     /** The learner's own note; empty when they never wrote one. */
     @ColumnInfo(name = "user_note") val userNote: String,

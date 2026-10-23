@@ -113,7 +113,11 @@ class AppContainer(
      * In-app update pipeline (GitHub Releases check → silent resumable download → install
      * prompt). The only other consumer of the INTERNET permission besides the gateway.
      */
-    val appUpdateRepository: AppUpdateRepository = AppUpdateFactory.create(context, appVersionName)
+    val appUpdateRepository: AppUpdateRepository = AppUpdateFactory.create(
+        context,
+        appVersionName,
+        AppUpdateFactory.readInstalledVersion(context).second,
+    )
 
     /**
      * The start-up encouragement lines (开屏提示语).

@@ -58,10 +58,13 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import top.toneup.word.AppContainer
+import top.toneup.word.data.local.entity.PlanEntity
 import top.toneup.word.data.local.entity.WordPackEntity
 import top.toneup.word.domain.model.CetLevel
 import top.toneup.word.ui.ImportWordsViewModel
-import top.toneup.word.ui.PackListViewModel
+import top.toneup.word.ui.PlanDetailViewModel
+import top.toneup.word.ui.PlanListViewModel
+import top.toneup.word.ui.PlanRowUi
 import top.toneup.word.ui.ViewModelFactories
 import top.toneup.word.ui.WriteWordViewModel
 import top.toneup.word.ui.WrittenWordEntry
@@ -77,27 +80,28 @@ import top.toneup.word.ui.theme.AppTheme
 import top.toneup.word.ui.theme.Spacing
 
 // ---------------------------------------------------------------------------------------------
-// Pack list (M2)
+// Plans and their packs (schema v4)
 // ---------------------------------------------------------------------------------------------
 
 /**
- * Pack management: list, create, rename, delete, switch (plan §5).
+ * Plan management: list, create, rename, delete, switch (schema v4, D5).
  *
- * Built-in packs are listed first and refuse rename/delete — the repository guards that too,
- * but the menu hides the actions so the learner never taps into a dead end.
+ * A plan is the study scope; its packs are only content sources. The built-in default plan may be
+ * renamed but not deleted — the repository guards that too, but the menu hides the action so the
+ * learner never taps into a dead end.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PackListScreen(
+fun PlanListScreen(
     container: AppContainer,
     onBack: () -> Unit,
-    onOpenImport: (String) -> Unit,
+    onOpenPlan: (String) -> Unit,
 ) {
-    val viewModel: PackListViewModel = viewModel(factory = ViewModelFactories.packList(container))
+    val viewModel: PlanListViewModel = viewModel(factory = ViewModelFactories.planList(container))
     val state by viewModel.state.collectAsStateWithLifecycle()
 
-    var nameDialog by remember { mutableStateOf<PackNameDialogState?>(null) }
-    var pendingDelete by remember { mutableStateOf<WordPackEntity?>(null) }
+    var nameDialog by remember { mutableStateOf<PlanNameDialogState?>(null) }
+    var pendingDelete by remember { mutableStateOf<PlanEntity?>(null) }
 
     val snackbarHostState = remember { SnackbarHostState() }
     // One-shot messages (rename ok, delete refused …) surface as snackbars; null clears.
@@ -112,7 +116,7 @@ fun PackListScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("词库管理") },
+                title = { Text("计划管理") },
                 navigationIcon = {
                     IconButton(
                         onClick = onBack,
@@ -139,21 +143,325 @@ fun PackListScreen(
             ),
             verticalArrangement = Arrangement.spacedBy(Spacing.md),
         ) {
-            // Self-built packs are the point of this screen now: the create entry is a full-width
-            // highlighted panel with its own explanation, so it reads as "make your own pack"
-            // rather than a secondary button next to the built-in list (plan §B).
-            item(key = "packs_create_panel") {
+            item(key = "plans_create_panel") {
                 AccentPanel {
                     Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                        Text("自建词库", style = MaterialTheme.typography.titleSmall)
+                        Text("自建计划", style = MaterialTheme.typography.titleSmall)
                         Text(
-                            text = "把你阅读中积累的单词整理成自己的词库：到「写词库」页逐个写入，可附上自己的中文释义。",
+                            text = "把一个用途的词库放进同一个计划，例如「外国文献单词计划」下放《时代周刊》《经济学人》词库。学习、复习、考试与统计都按当前计划合并汇总。",
                             style = MaterialTheme.typography.bodySmall,
                             color = AppTheme.colors.mutedText,
                         )
                         PrimaryButton(
-                            text = "新建自建词库",
-                            onClick = { nameDialog = PackNameDialogState(mode = PackNameMode.Create, packId = null, initial = "") },
+                            text = "新建计划",
+                            onClick = {
+                                nameDialog = PlanNameDialogState(
+                                    mode = PlanNameMode.Create,
+                                    planId = null,
+                                    initial = "",
+                                )
+                            },
+                            leadingIcon = Icons.Filled.Add,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("plans_create"),
+                        )
+                    }
+                }
+            }
+
+            if (state.plans.isEmpty()) {
+                item {
+                    EmptyState(
+                        title = "还没有计划",
+                        description = "内置的「默认计划」会在首次启动时自动创建；也可以新建自己的计划。",
+                        actionLabel = "新建计划",
+                        onAction = {
+                            nameDialog = PlanNameDialogState(
+                                mode = PlanNameMode.Create,
+                                planId = null,
+                                initial = "",
+                            )
+                        },
+                    )
+                }
+            }
+
+            items(state.plans, key = { it.plan.id }) { row ->
+                PlanRow(
+                    row = row,
+                    isActive = row.plan.id == state.activePlanId,
+                    onOpen = { onOpenPlan(row.plan.id) },
+                    onSetCurrent = { viewModel.activate(row.plan.id) },
+                    onRename = {
+                        nameDialog = PlanNameDialogState(
+                            mode = PlanNameMode.Rename,
+                            planId = row.plan.id,
+                            initial = row.plan.name,
+                        )
+                    },
+                    onDelete = { pendingDelete = row.plan },
+                )
+            }
+        }
+    }
+
+    nameDialog?.let { dialog ->
+        NameDialog(
+            title = if (dialog.mode == PlanNameMode.Create) "新建计划" else "重命名计划",
+            label = "计划名称",
+            fieldTag = "plan_name_field",
+            initialName = dialog.initial,
+            onConfirm = { name ->
+                when (dialog.mode) {
+                    PlanNameMode.Create -> viewModel.createPlan(name, onCreated = onOpenPlan)
+                    PlanNameMode.Rename -> dialog.planId?.let { viewModel.renamePlan(it, name) }
+                }
+                nameDialog = null
+            },
+            onDismiss = { nameDialog = null },
+        )
+    }
+
+    pendingDelete?.let { plan ->
+        ConfirmDialog(
+            title = "删除计划「${plan.name}」？",
+            message = "计划本身不含单词；如果计划下还有词库，需要先删除或移出这些词库。删除计划不影响其他计划里的单词与进度。",
+            confirmLabel = "删除",
+            destructive = true,
+            onConfirm = {
+                viewModel.deletePlan(plan.id)
+                pendingDelete = null
+            },
+            onDismiss = { pendingDelete = null },
+        )
+    }
+}
+
+/** Dialog mode: a fresh plan or renaming an existing one. */
+private enum class PlanNameMode { Create, Rename }
+
+private data class PlanNameDialogState(
+    val mode: PlanNameMode,
+    val planId: String?,
+    val initial: String,
+)
+
+@Composable
+private fun PlanRow(
+    row: PlanRowUi,
+    isActive: Boolean,
+    onOpen: () -> Unit,
+    onSetCurrent: () -> Unit,
+    onRename: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    var menuOpen by remember { mutableStateOf(false) }
+    val plan = row.plan
+
+    AppCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("plan_row_${plan.id}"),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(Spacing.xs),
+            ) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = plan.name,
+                        style = MaterialTheme.typography.titleSmall,
+                    )
+                    if (isActive) {
+                        ReviewBadge(text = "当前计划")
+                    }
+                }
+                Text(
+                    text = buildString {
+                        append(if (plan.isBuiltIn) "内置 · " else "自建 · ")
+                        append("${row.packCount} 个词库")
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = AppTheme.colors.mutedText,
+                )
+            }
+
+            TextButton(onClick = onOpen) {
+                Text("词库", style = MaterialTheme.typography.labelLarge)
+            }
+
+            IconButton(onClick = { menuOpen = true }) {
+                Icon(
+                    imageVector = Icons.Filled.MoreVert,
+                    contentDescription = "更多操作：${plan.name}",
+                )
+            }
+            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                DropdownMenuItem(
+                    text = { Text("查看词库") },
+                    onClick = {
+                        menuOpen = false
+                        onOpen()
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text("设为当前计划") },
+                    onClick = {
+                        menuOpen = false
+                        onSetCurrent()
+                    },
+                    enabled = !isActive,
+                )
+                DropdownMenuItem(
+                    text = { Text("重命名") },
+                    leadingIcon = { Icon(Icons.Filled.Edit, contentDescription = null) },
+                    onClick = {
+                        menuOpen = false
+                        onRename()
+                    },
+                )
+                if (!plan.isBuiltIn) {
+                    DropdownMenuItem(
+                        text = { Text("删除", color = MaterialTheme.colorScheme.error) },
+                        leadingIcon = {
+                            Icon(
+                                Icons.Filled.Delete,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.error,
+                            )
+                        },
+                        onClick = {
+                            menuOpen = false
+                            onDelete()
+                        },
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * One plan's packs: create, rename, delete, move between plans, import into a pack.
+ *
+ * The「当前计划」badge lives on the header, so a pack row carries no "active" state — switching
+ * is a plan-level action (schema v4, D1).
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun PlanDetailScreen(
+    container: AppContainer,
+    planId: String,
+    onBack: () -> Unit,
+    onOpenImport: (String) -> Unit,
+) {
+    val viewModel: PlanDetailViewModel =
+        viewModel(factory = ViewModelFactories.planDetail(container, planId))
+    val state by viewModel.state.collectAsStateWithLifecycle()
+
+    var nameDialog by remember { mutableStateOf<PackNameDialogState?>(null) }
+    var pendingDelete by remember { mutableStateOf<WordPackEntity?>(null) }
+    var pendingMove by remember { mutableStateOf<WordPackEntity?>(null) }
+
+    val snackbarHostState = remember { SnackbarHostState() }
+    val message = state.message
+    LaunchedEffect(message) {
+        if (message != null) {
+            snackbarHostState.showSnackbar(message)
+            viewModel.dismissMessage()
+        }
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text(if (state.planName.isBlank()) "计划" else state.planName) },
+                navigationIcon = {
+                    IconButton(
+                        onClick = onBack,
+                        modifier = Modifier.semantics { contentDescription = "返回" },
+                    ) { Icon(Icons.Filled.ArrowBack, contentDescription = null) }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background,
+                ),
+            )
+        },
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+        containerColor = MaterialTheme.colorScheme.background,
+    ) { padding ->
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding),
+            contentPadding = PaddingValues(
+                start = Spacing.lg,
+                end = Spacing.lg,
+                top = Spacing.md,
+                bottom = Spacing.xl,
+            ),
+            verticalArrangement = Arrangement.spacedBy(Spacing.md),
+        ) {
+            item(key = "plan_header") {
+                AccentPanel {
+                    Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = if (state.planName.isBlank()) "计划" else state.planName,
+                                style = MaterialTheme.typography.titleSmall,
+                            )
+                            if (state.planId == state.activePlanId) {
+                                ReviewBadge(text = "当前计划")
+                            }
+                        }
+                        Text(
+                            text = "本计划共 ${state.packs.size} 个词库。学习、复习、考试与统计按整个计划汇总，计划内重复的单词只算一次、共用一份进度。",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = AppTheme.colors.mutedText,
+                        )
+                        if (state.planId != state.activePlanId) {
+                            SecondaryButton(
+                                text = "设为当前计划",
+                                onClick = viewModel::activate,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("plan_set_current"),
+                            )
+                        }
+                    }
+                }
+            }
+
+            item(key = "pack_create_panel") {
+                AccentPanel {
+                    Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                        Text("新建词库", style = MaterialTheme.typography.titleSmall)
+                        Text(
+                            text = "在这个计划下新建一个词库，再粘贴或导入单词；词库只是内容来源，学习范围始终是整个计划。",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = AppTheme.colors.mutedText,
+                        )
+                        PrimaryButton(
+                            text = "新建词库",
+                            onClick = {
+                                nameDialog = PackNameDialogState(
+                                    mode = PackNameMode.Create,
+                                    packId = null,
+                                    initial = "",
+                                )
+                            },
                             leadingIcon = Icons.Filled.Add,
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -166,10 +474,16 @@ fun PackListScreen(
             if (state.packs.isEmpty()) {
                 item {
                     EmptyState(
-                        title = "还没有词库",
-                        description = "内置演示词库会在首次启动时自动创建；也可以新建自己的词库。",
+                        title = "这个计划里还没有词库",
+                        description = "新建词库并导入单词后，这个计划就有内容可以学习了。",
                         actionLabel = "新建词库",
-                        onAction = { nameDialog = PackNameDialogState(mode = PackNameMode.Create, packId = null, initial = "") },
+                        onAction = {
+                            nameDialog = PackNameDialogState(
+                                mode = PackNameMode.Create,
+                                packId = null,
+                                initial = "",
+                            )
+                        },
                     )
                 }
             }
@@ -177,9 +491,8 @@ fun PackListScreen(
             items(state.packs, key = { it.id }) { pack ->
                 PackRow(
                     pack = pack,
-                    isActive = pack.id == state.activePackId,
                     onImport = { onOpenImport(pack.id) },
-                    onSetCurrent = { viewModel.activate(pack.id) },
+                    onMove = { pendingMove = pack },
                     onRename = {
                         nameDialog = PackNameDialogState(
                             mode = PackNameMode.Rename,
@@ -194,8 +507,10 @@ fun PackListScreen(
     }
 
     nameDialog?.let { dialog ->
-        PackNameDialog(
-            mode = dialog.mode,
+        NameDialog(
+            title = if (dialog.mode == PackNameMode.Create) "新建词库" else "重命名词库",
+            label = "词库名称",
+            fieldTag = "pack_name_field",
             initialName = dialog.initial,
             onConfirm = { name ->
                 when (dialog.mode) {
@@ -221,6 +536,18 @@ fun PackListScreen(
             onDismiss = { pendingDelete = null },
         )
     }
+
+    pendingMove?.let { pack ->
+        MovePackDialog(
+            packName = pack.name,
+            targets = state.otherPlans,
+            onMove = { targetPlanId ->
+                viewModel.movePackTo(pack.id, targetPlanId)
+                pendingMove = null
+            },
+            onDismiss = { pendingMove = null },
+        )
+    }
 }
 
 /** Dialog mode: a fresh pack or renaming an existing one. */
@@ -235,9 +562,8 @@ private data class PackNameDialogState(
 @Composable
 private fun PackRow(
     pack: WordPackEntity,
-    isActive: Boolean,
     onImport: () -> Unit,
-    onSetCurrent: () -> Unit,
+    onMove: () -> Unit,
     onRename: () -> Unit,
     onDelete: () -> Unit,
 ) {
@@ -257,18 +583,10 @@ private fun PackRow(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(Spacing.xs),
             ) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = pack.name,
-                        style = MaterialTheme.typography.titleSmall,
-                    )
-                    if (isActive) {
-                        ReviewBadge(text = "当前词库")
-                    }
-                }
+                Text(
+                    text = pack.name,
+                    style = MaterialTheme.typography.titleSmall,
+                )
                 Text(
                     text = buildString {
                         append(if (pack.isBuiltIn) "内置 · " else "自定义 · ")
@@ -298,15 +616,14 @@ private fun PackRow(
                         onImport()
                     },
                 )
+                DropdownMenuItem(
+                    text = { Text("移动到其他计划") },
+                    onClick = {
+                        menuOpen = false
+                        onMove()
+                    },
+                )
                 if (!pack.isBuiltIn) {
-                    DropdownMenuItem(
-                        text = { Text("设为当前词库") },
-                        onClick = {
-                            menuOpen = false
-                            onSetCurrent()
-                        },
-                        enabled = !isActive,
-                    )
                     DropdownMenuItem(
                         text = { Text("重命名") },
                         leadingIcon = { Icon(Icons.Filled.Edit, contentDescription = null) },
@@ -335,10 +652,51 @@ private fun PackRow(
     }
 }
 
-/** Create / rename dialog with inline blank-name validation. */
+/** Target picker of「移动到其他计划」; the destination list never includes the current plan. */
 @Composable
-private fun PackNameDialog(
-    mode: PackNameMode,
+private fun MovePackDialog(
+    packName: String,
+    targets: List<PlanEntity>,
+    onMove: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("移动词库「$packName」") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                if (targets.isEmpty()) {
+                    Text(
+                        text = "没有其他计划可以移动。先新建一个计划，再回来移动词库。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = AppTheme.colors.mutedText,
+                    )
+                } else {
+                    Text(
+                        text = "选择目标计划：单词与学习进度会一起移动。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = AppTheme.colors.mutedText,
+                    )
+                    targets.forEach { target ->
+                        TextButton(onClick = { onMove(target.id) }) {
+                            Text(target.name)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("取消") }
+        },
+    )
+}
+
+/** Create / rename dialog with inline blank-name validation, shared by plans and packs. */
+@Composable
+private fun NameDialog(
+    title: String,
+    label: String,
+    fieldTag: String,
     initialName: String,
     onConfirm: (String) -> Unit,
     onDismiss: () -> Unit,
@@ -349,12 +707,12 @@ private fun PackNameDialog(
 
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (mode == PackNameMode.Create) "新建词库" else "重命名词库") },
+        title = { Text(title) },
         text = {
             OutlinedTextField(
                 value = name,
                 onValueChange = { name = it },
-                label = { Text("词库名称") },
+                label = { Text(label) },
                 singleLine = true,
                 isError = trimmed.isEmpty() || tooLong,
                 supportingText = {
@@ -370,7 +728,7 @@ private fun PackNameDialog(
                 }),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .testTag("pack_name_field"),
+                    .testTag(fieldTag),
             )
         },
         confirmButton = {
@@ -617,8 +975,8 @@ fun WriteWordScreen(
             item(key = "write_pack_hint") {
                 AccentPanel {
                     Text(
-                        text = "写入到当前词库：${
-                            state.packName.ifBlank { state.packId }.ifBlank { "（未选择）" }
+                        text = "写入到当前计划：${
+                            state.planName.ifBlank { state.planId }.ifBlank { "（未选择）" }
                         }",
                         style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier.testTag("write_pack_hint"),

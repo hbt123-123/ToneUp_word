@@ -197,7 +197,7 @@ fun DataTransferScreen(
                             val scope = ExportScope.entries.firstOrNull { it.name == exportScopeName[0] }
                                 ?: ExportScope.WORD_LIST
                             exportCreator.launch(
-                                container.backupRepository.suggestedFileName(scope, state.packId),
+                                container.backupRepository.suggestedFileName(scope, state.planId),
                             )
                         },
                         loading = state.exporting,

@@ -40,7 +40,8 @@ import top.toneup.word.ui.screens.HomeScreen
 import top.toneup.word.ui.screens.ImportWordsScreen
 import top.toneup.word.ui.screens.LicensesScreen
 import top.toneup.word.ui.screens.OnboardingScreen
-import top.toneup.word.ui.screens.PackListScreen
+import top.toneup.word.ui.screens.PlanDetailScreen
+import top.toneup.word.ui.screens.PlanListScreen
 import top.toneup.word.ui.screens.ProfileScreen
 import top.toneup.word.ui.screens.ReviewCenterScreen
 import top.toneup.word.ui.screens.SettingsScreen
@@ -164,7 +165,7 @@ fun ToneUpWordNavHost(
                     onOpenReviewCenter = { navController.navigate(Routes.REVIEW) },
                     onOpenStats = { navController.navigate(Routes.STATS) },
                     onOpenWordBrowser = { navController.navigate(Routes.WORD_BROWSER) },
-                    onOpenPacks = { navController.navigate(Routes.PACKS) },
+                    onOpenPlans = { navController.navigate(Routes.PLANS) },
                 )
             }
 
@@ -274,15 +275,28 @@ fun ToneUpWordNavHost(
                     onOpenSettings = { navController.navigate(Routes.SETTINGS) },
                     onOpenDataTransfer = { navController.navigate(Routes.DATA_TRANSFER) },
                     onOpenWordBrowser = { navController.navigate(Routes.WORD_BROWSER) },
-                    onOpenPacks = { navController.navigate(Routes.PACKS) },
+                    onOpenPlans = { navController.navigate(Routes.PLANS) },
                     onOpenAbout = { navController.navigate(Routes.ABOUT) },
                     onOpenLicenses = { navController.navigate(Routes.LICENSES) },
                 )
             }
 
-            composable(Routes.PACKS) {
-                PackListScreen(
+            composable(Routes.PLANS) {
+                PlanListScreen(
                     container = container,
+                    onBack = { navController.popBackStack() },
+                    onOpenPlan = { planId -> navController.navigate(Routes.planDetail(planId)) },
+                )
+            }
+
+            composable(
+                route = Routes.PLAN_DETAIL,
+                arguments = listOf(navArgument(Routes.ARG_PLAN_ID) { type = NavType.StringType }),
+            ) { entry ->
+                val planId = entry.arguments?.getString(Routes.ARG_PLAN_ID).orEmpty()
+                PlanDetailScreen(
+                    container = container,
+                    planId = planId,
                     onBack = { navController.popBackStack() },
                     onOpenImport = { packId -> navController.navigate(Routes.importWords(packId)) },
                 )

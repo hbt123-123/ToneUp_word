@@ -34,7 +34,9 @@ import top.toneup.word.domain.motivation.StartupTipPicker
 import top.toneup.word.domain.stats.StatsSnapshot
 import top.toneup.word.domain.study.NextStep
 import top.toneup.word.domain.study.NextStepPlanner
-import top.toneup.word.data.settings.PackIds
+import top.toneup.word.data.local.entity.PlanEntity
+import top.toneup.word.data.local.entity.WordPackEntity
+import top.toneup.word.data.settings.PlanIds
 import top.toneup.word.data.settings.ThemeMode
 import top.toneup.word.data.settings.UserSettings
 import top.toneup.word.domain.exam.ExamBlueprint
@@ -137,8 +139,12 @@ object ViewModelFactories {
         initializer { WordBrowserViewModel(container) }
     }
 
-    fun packList(container: AppContainer): ViewModelProvider.Factory = viewModelFactory {
-        initializer { PackListViewModel(container) }
+    fun planList(container: AppContainer): ViewModelProvider.Factory = viewModelFactory {
+        initializer { PlanListViewModel(container) }
+    }
+
+    fun planDetail(container: AppContainer, planId: String): ViewModelProvider.Factory = viewModelFactory {
+        initializer { PlanDetailViewModel(container, planId) }
     }
 
     fun importWords(container: AppContainer, packId: String): ViewModelProvider.Factory = viewModelFactory {
@@ -469,10 +475,10 @@ data class HomeUiState(
     val greeting: String = "",
     val dateLabel: String = "",
     /**
-     * Display name of the pack the learner is studying (`word_pack.name`), or null while the
-     * pack row is not readable yet. Drives the app-bar chip that opens 词库管理 (M2 acceptance).
+     * Display name of the plan the learner is studying (`plan.name`), or null while the plan
+     * row is not readable yet. Drives the app-bar chip that opens 计划管理 (schema v4).
      */
-    val activePackName: String? = null,
+    val activePlanName: String? = null,
     /** The concrete next action; null only while the first emission is still loading. */
     val nextStep: NextStep? = null,
     /** At most [InsightEngine.MAX_HOME_INSIGHTS] suggestions, most severe first. */
@@ -536,17 +542,17 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
         container.settingsRepository.settings,
         container.settingsRepository.settings.flatMapLatest { container.studyRepository.observeTodayPlan(it) },
         container.settingsRepository.settings.flatMapLatest { settings ->
-            container.statsRepository.observeStats(settings.effectivePackId, settings)
+            container.statsRepository.observeStats(settings.effectivePlanId, settings)
         },
         container.settingsRepository.settings.flatMapLatest { settings ->
-            container.studyRepository.observeRecentEvents(settings.effectivePackId, 6)
+            container.studyRepository.observeRecentEvents(settings.effectivePlanId, 6)
         },
         // Two more signals folded into one source: `combine` has no typed overload past five
         // flows, and pairing them keeps the snapshot lambda readable.
         combine(
             resumable,
             container.settingsRepository.settings.flatMapLatest { settings ->
-                container.mistakeRepository.observeOverview(settings.effectivePackId)
+                container.mistakeRepository.observeOverview(settings.effectivePlanId)
             },
             ::Pair,
         ),
@@ -571,14 +577,14 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
         val stats = snapshot.stats
 
         val signals = runCatching {
-            container.insightRepository.signals(settings.effectivePackId, stats)
+            container.insightRepository.signals(settings.effectivePlanId, stats)
         }.getOrNull()
         val insights = signals?.let { InsightEngine.analyze(it) }.orEmpty()
 
-        // The app-bar pack chip reads the pack's display name (not the raw id like
-        // "builtin-cet6"); a missing row hides the chip instead of showing a broken label.
-        val activePackName = runCatching {
-            container.wordRepository.packById(settings.effectivePackId)?.name
+        // The app-bar plan chip reads the plan's display name (not the raw id like
+        // "plan-default"); a missing row hides the chip instead of showing a broken label.
+        val activePlanName = runCatching {
+            container.wordRepository.planById(settings.effectivePlanId)?.name
         }.getOrNull()
 
         return HomeUiState(
@@ -592,7 +598,7 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
             errorMessage = null,
             greeting = greetingFor(Instant.ofEpochMilli(now).atZone(zone).hour),
             dateLabel = HomeDateFormatter.format(now, zone),
-            activePackName = activePackName,
+            activePlanName = activePlanName,
             nextStep = NextStepPlanner.plan(snapshot.plan),
             insights = InsightEngine.forHome(insights),
             motivation = motivationFor(settings, snapshot.plan, stats, signals, now, zone),
@@ -760,7 +766,7 @@ class StudyViewModel(private val container: AppContainer) : ViewModel() {
             runCatching {
                 val settings = container.settingsRepository.current()
                 val items = if (drillIds.isEmpty()) {
-                    val existing = container.studyRepository.resumeActiveSession()
+                    val existing = container.studyRepository.resumeActiveSession(settings.effectivePlanId)
                     if (existing != null) {
                         loadSession(existing)
                         return@runCatching
@@ -799,7 +805,7 @@ class StudyViewModel(private val container: AppContainer) : ViewModel() {
                     StudySessionEngine.create(
                         sessionId = 0L,
                         // Session scope is the pack id (schema v2); display derives from it.
-                        levelId = settings.effectivePackId,
+                        levelId = settings.effectivePlanId,
                         items = items,
                         newWordIds = newIds,
                         startedAt = now,
@@ -1022,7 +1028,7 @@ class ReviewCenterViewModel(private val container: AppContainer) : ViewModel() {
     private var overviewJob: Job? = null
 
     init {
-        // D1: the scope of every query is the active pack. It is read once, when the screen is
+        // D1: the scope of every query is the active plan. It is read once, when the screen is
         // created — exactly like before this change. This view model deliberately does not hold a
         // long-lived `settings` subscription: a collector that outlives the composition keeps
         // DataStore's write actor busy, and the next write (e.g. in another test class sharing the
@@ -1031,23 +1037,23 @@ class ReviewCenterViewModel(private val container: AppContainer) : ViewModel() {
             val settings = container.settingsRepository.current()
             _state.update {
                 it.copy(
-                    filter = it.filter.copy(packId = settings.effectivePackId, level = settings.effectiveLevel),
+                    filter = it.filter.copy(planId = settings.effectivePlanId, level = settings.effectiveLevel),
                     loading = true,
                 )
             }
             observeList()
-            observeOverview(settings.effectivePackId)
+            observeOverview(settings.effectivePlanId)
         }
     }
 
     /**
-     * Category chips only change the category; the pack scope stays the active pack (D1), so
-     * switching a tab never resets the mistake book back to a builtin pack.
+     * Category chips only change the category; the plan scope stays the active plan (D1), so
+     * switching a tab never resets the mistake book back to a default plan.
      */
     fun selectCategory(category: MistakeCategory) {
         _state.update { it.copy(filter = it.filter.copy(category = category), loading = true) }
         observeList()
-        observeOverview(_state.value.filter.packId)
+        observeOverview(_state.value.filter.planId)
     }
 
     fun setSearch(query: String) {
@@ -1126,10 +1132,10 @@ class ReviewCenterViewModel(private val container: AppContainer) : ViewModel() {
         }
     }
 
-    private fun observeOverview(packId: String) {
+    private fun observeOverview(planId: String) {
         overviewJob?.cancel()
         overviewJob = viewModelScope.launch {
-            container.mistakeRepository.observeOverview(packId)
+            container.mistakeRepository.observeOverview(planId)
                 .collect { overview -> _state.update { it.copy(overview = overview) } }
         }
     }
@@ -1146,7 +1152,8 @@ data class ExamUiState(
     val phase: ExamPhase = ExamPhase.SETUP,
     val loading: Boolean = false,
     val level: CetLevel = CetLevel.CET4,
-    val packId: String = "",
+    /** Study scope of the exam: the active plan (schema v4, D1). */
+    val planId: String = "",
     val questionCount: Int = 20,
     val durationMinutes: Int = 15,
     val availableWords: Int = 0,
@@ -1192,12 +1199,12 @@ class ExamViewModel(private val container: AppContainer) : ViewModel() {
     fun refreshSetup() {
         viewModelScope.launch {
             val settings = container.settingsRepository.current()
-            val wordCount = container.wordRepository.examSources(settings.effectivePackId).size
+            val wordCount = container.wordRepository.examSources(settings.effectivePlanId).size
             val draft = container.examRepository.draft()
             _state.update {
                 it.copy(
                     level = settings.effectiveLevel,
-                    packId = settings.effectivePackId,
+                    planId = settings.effectivePlanId,
                     questionCount = settings.examQuestionCount,
                     durationMinutes = settings.examDurationMinutes,
                     availableWords = wordCount,
@@ -1219,9 +1226,9 @@ class ExamViewModel(private val container: AppContainer) : ViewModel() {
             val current = _state.value
             // Persist the chosen shape so the next exam opens with the same settings.
             container.settingsRepository.setExamPreferences(current.questionCount, current.durationMinutes)
-            val words = container.wordRepository.examSources(current.packId)
+            val words = container.wordRepository.examSources(current.planId)
             val blueprint = ExamBlueprint(
-                levelId = current.packId,
+                levelId = current.planId,
                 questionCount = current.questionCount,
                 durationMinutes = current.durationMinutes,
                 // A fresh seed per exam, stored on the row so the paper stays reproducible.
@@ -1423,8 +1430,8 @@ class StatsViewModel(private val container: AppContainer) : ViewModel() {
     val state: StateFlow<StatsUiState> = container.settingsRepository.settings
         .flatMapLatest { settings ->
             combine(
-                container.statsRepository.observeStats(settings.effectivePackId, settings),
-                container.studyRepository.observeRecentEvents(settings.effectivePackId, 10),
+                container.statsRepository.observeStats(settings.effectivePlanId, settings),
+                container.studyRepository.observeRecentEvents(settings.effectivePlanId, 10),
             ) { snapshot, recent ->
                 StatsUiState(
                     loading = false,
@@ -1487,15 +1494,15 @@ class WordBrowserViewModel(private val container: AppContainer) : ViewModel() {
     val state: StateFlow<WordBrowserUiState> = combine(
         container.settingsRepository.settings,
         query,
-    ) { settings, text -> Triple(settings.effectivePackId, settings.effectiveLevel, text) }
+    ) { settings, text -> Triple(settings.effectivePlanId, settings.effectiveLevel, text) }
         .debounce(QUERY_DEBOUNCE_MILLIS)
-        .flatMapLatest { (packId, level, text) ->
+        .flatMapLatest { (planId, level, text) ->
             combine(
-                container.wordRepository.observeWordCount(packId),
+                container.wordRepository.observeWordCount(planId),
                 flow {
-                    val exact = container.wordRepository.search(packId, text, WordRepository.SEARCH_LIMIT)
+                    val exact = container.wordRepository.search(planId, text, WordRepository.SEARCH_LIMIT)
                     val approximate = container.wordRepository.searchApproximate(
-                        packId = packId,
+                        planId = planId,
                         query = text,
                         strictMatchCount = exact.size,
                     )
@@ -1598,14 +1605,16 @@ class ProfileViewModel(private val container: AppContainer) : ViewModel() {
 
     val state: StateFlow<ProfileUiState> = combine(
         container.settingsRepository.settings,
-        container.settingsRepository.settings.flatMapLatest { container.wordRepository.observeWordCount(it.effectivePackId) },
-        container.wordRepository.observePacks(),
+        container.settingsRepository.settings.flatMapLatest { container.wordRepository.observeWordCount(it.effectivePlanId) },
+        container.settingsRepository.settings.flatMapLatest { settings ->
+            container.wordRepository.observePacks(settings.effectivePlanId)
+        },
         container.wordRepository.observeImportHistory(),
     ) { settings, count, packs, history ->
         ProfileUiState(settings = settings, wordCount = count, packs = packs, importHistory = history)
     }.combine(
         container.settingsRepository.settings.flatMapLatest { settings ->
-            container.statsRepository.observeStats(settings.effectivePackId, settings)
+            container.statsRepository.observeStats(settings.effectivePlanId, settings)
         },
     ) { base, stats ->
         base.copy(stats = stats, appVersion = container.appVersionName)
@@ -1780,8 +1789,9 @@ data class DataTransferUiState(
     val importResult: ImportResult? = null,
     val restoreResult: RestoreResult? = null,
     val errorMessage: String? = null,
-    val level: CetLevel = CetLevel.CET4,
-    val packId: String = "",
+    val level: CetLevel = CetLevel.OTHER,
+    /** Scope of the export: the active plan (schema v4). */
+    val planId: String = "",
     val pendingRestore: String? = null,
 )
 
@@ -1802,7 +1812,7 @@ class DataTransferViewModel(private val container: AppContainer) : ViewModel() {
     init {
         viewModelScope.launch {
             val settings = container.settingsRepository.current()
-            _state.update { it.copy(level = settings.effectiveLevel, packId = settings.effectivePackId) }
+            _state.update { it.copy(level = settings.effectiveLevel, planId = settings.effectivePlanId) }
         }
     }
 
@@ -1881,8 +1891,8 @@ class DataTransferViewModel(private val container: AppContainer) : ViewModel() {
     fun exportTo(uri: Uri, scope: ExportScope) {
         _state.update { it.copy(exporting = true, errorMessage = null) }
         viewModelScope.launch {
-            val packId = container.settingsRepository.current().effectivePackId
-            when (val payload = container.backupRepository.export(scope, packId)) {
+            val planId = container.settingsRepository.current().effectivePlanId
+            when (val payload = container.backupRepository.export(scope, planId)) {
                 is Outcome.Success -> {
                     when (val write = container.documentIo.writeText(uri, payload.value)) {
                         is Outcome.Success -> _state.update { it.copy(exporting = false) }
@@ -1940,53 +1950,159 @@ class DataTransferViewModel(private val container: AppContainer) : ViewModel() {
 }
 
 // ---------------------------------------------------------------------------------------------
-// PackList / pack management (M2)
+// Plans / plan management (schema v4)
 // ---------------------------------------------------------------------------------------------
 
+/** One row of the plan list: the plan itself plus how many packs it groups. */
 @Immutable
-data class PackListUiState(
-    /** Built-in packs first, user packs after — the order a learner reasons in. */
-    val packs: List<top.toneup.word.data.local.entity.WordPackEntity> = emptyList(),
-    /** Pack currently studied; the list highlights its row. */
-    val activePackId: String = "",
+data class PlanRowUi(
+    val plan: PlanEntity,
+    val packCount: Int,
+)
+
+@Immutable
+data class PlanListUiState(
+    /** Built-in plans first, user plans after — the order a learner reasons in. */
+    val plans: List<PlanRowUi> = emptyList(),
+    /** Plan currently studied; home/review/exam/stats all follow it. */
+    val activePlanId: String = "",
     /** One-shot operation error / confirmation message for the screen to surface. */
     val message: String? = null,
 )
 
 /**
- * Pack CRUD and switching (plan §5).
+ * Plan CRUD and switching (schema v4, D5).
  *
- * The list is derived, never cached: deleting or renaming a pack updates through the same
- * `observePacks()` flow the rest of the app already reacts to. `legacy-other` is filtered out
- * here — it is a migration bucket (D9), not something a learner can select.
+ * A plan is the study scope; its packs are only content sources. The list is derived, never
+ * cached: creating, renaming or deleting a plan updates through the same `observePlans()` flow
+ * the rest of the app already reacts to.
  */
-class PackListViewModel(private val container: AppContainer) : ViewModel() {
+class PlanListViewModel(private val container: AppContainer) : ViewModel() {
 
     private val _message = MutableStateFlow<String?>(null)
 
-    val state: StateFlow<PackListUiState> = combine(
-        container.wordRepository.observePacks(),
+    val state: StateFlow<PlanListUiState> = combine(
+        container.wordRepository.observePlans(),
+        container.wordRepository.observeAllPacks(),
         container.settingsRepository.settings,
         _message,
-    ) { packs, settings, message ->
-        PackListUiState(
-            packs = packs
-                .filter { it.id != PackIds.LEGACY_OTHER }
-                .sortedByDescending { it.isBuiltIn },
-            activePackId = settings.effectivePackId,
+    ) { plans, packs, settings, message ->
+        val counts = packs.groupingBy { it.planId }.eachCount()
+        PlanListUiState(
+            plans = plans.map { plan -> PlanRowUi(plan, counts[plan.id] ?: 0) },
+            activePlanId = settings.effectivePlanId,
             message = message,
         )
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), PackListUiState())
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), PlanListUiState())
 
-    /** Creates a pack, makes it the active one and hands the id to the screen for navigation. */
-    fun createPack(name: String, onCreated: (String) -> Unit) {
+    /** Creates a plan, makes it the active one and hands the id to the screen for navigation. */
+    fun createPlan(name: String, onCreated: (String) -> Unit) {
         viewModelScope.launch {
-            when (val created = container.wordRepository.createPack(name, container.timeProvider.nowMillis())) {
+            when (val created = container.wordRepository.createPlan(name, container.timeProvider.nowMillis())) {
                 is Outcome.Failure -> _message.value = created.error.message
                 is Outcome.Success -> {
-                    // A brand-new pack is empty: making it active immediately means every
-                    // follow-up screen (home plan, import) operates on the pack just created.
-                    container.settingsRepository.setActivePackId(created.value)
+                    // A brand-new plan is empty, so it becomes the study scope right away: every
+                    // follow-up screen then operates on the plan just created.
+                    container.settingsRepository.setActivePlanId(created.value)
+                    onCreated(created.value)
+                }
+            }
+        }
+    }
+
+    fun renamePlan(planId: String, name: String) {
+        viewModelScope.launch {
+            when (val result = container.wordRepository.renamePlan(planId, name)) {
+                is Outcome.Failure -> _message.value = result.error.message
+                is Outcome.Success -> _message.value = "已重命名。"
+            }
+        }
+    }
+
+    fun deletePlan(planId: String) {
+        viewModelScope.launch {
+            when (val result = container.wordRepository.deletePlan(planId)) {
+                is Outcome.Failure -> _message.value = result.error.message
+                is Outcome.Success -> {
+                    // Deleting the active plan must leave a coherent study scope behind;
+                    // otherwise home/stats would query a plan that no longer exists.
+                    if (container.settingsRepository.current().effectivePlanId == planId) {
+                        container.settingsRepository.setActivePlanId("")
+                    }
+                    _message.value = "计划已删除。"
+                }
+            }
+        }
+    }
+
+    /** Switches the study scope; every screen deriving from `effectivePlanId` follows. */
+    fun activate(planId: String) {
+        viewModelScope.launch { container.settingsRepository.setActivePlanId(planId) }
+    }
+
+    fun dismissMessage() {
+        _message.value = null
+    }
+}
+
+@Immutable
+data class PlanDetailUiState(
+    val planId: String = "",
+    val planName: String = "",
+    val isBuiltInPlan: Boolean = false,
+    /** Packs of this plan; built-in packs first, user packs after. */
+    val packs: List<WordPackEntity> = emptyList(),
+    /** Target choices of the「移动到其他计划」dialog. */
+    val otherPlans: List<PlanEntity> = emptyList(),
+    val activePlanId: String = "",
+    val message: String? = null,
+)
+
+/**
+ * One plan's packs: create, rename, delete, move between plans, import into a pack.
+ *
+ * The plan-level chip (当前计划) lives on the header, so a pack row no longer carries an "active"
+ * state — switching is a plan-level action (schema v4, D1).
+ */
+class PlanDetailViewModel(
+    private val container: AppContainer,
+    private val planId: String,
+) : ViewModel() {
+
+    private val _message = MutableStateFlow<String?>(null)
+
+    val state: StateFlow<PlanDetailUiState> = combine(
+        container.wordRepository.observePlans(),
+        container.wordRepository.observePacks(planId),
+        container.settingsRepository.settings,
+        _message,
+    ) { plans, packs, settings, message ->
+        val plan = plans.firstOrNull { it.id == planId }
+        PlanDetailUiState(
+            planId = planId,
+            planName = plan?.name.orEmpty(),
+            isBuiltInPlan = plan?.isBuiltIn ?: false,
+            packs = packs.sortedByDescending { it.isBuiltIn },
+            otherPlans = plans.filter { it.id != planId },
+            activePlanId = settings.effectivePlanId,
+            message = message,
+        )
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), PlanDetailUiState(planId = planId))
+
+    /** Creates an empty pack inside this plan, then hands the id to the import screen. */
+    fun createPack(name: String, onCreated: (String) -> Unit) {
+        viewModelScope.launch {
+            when (
+                val created = container.wordRepository.createPack(
+                    name,
+                    planId,
+                    container.timeProvider.nowMillis(),
+                )
+            ) {
+                is Outcome.Failure -> _message.value = created.error.message
+                is Outcome.Success -> {
+                    // Imports go to the pack just created, so the plan must be the study scope.
+                    container.settingsRepository.setActivePlanId(planId)
                     onCreated(created.value)
                 }
             }
@@ -2006,21 +2122,23 @@ class PackListViewModel(private val container: AppContainer) : ViewModel() {
         viewModelScope.launch {
             when (val result = container.wordRepository.deletePack(packId)) {
                 is Outcome.Failure -> _message.value = result.error.message
-                is Outcome.Success -> {
-                    // Deleting the active pack must leave a coherent study scope behind,
-                    // otherwise home/stats would query a pack that no longer exists.
-                    if (container.settingsRepository.current().effectivePackId == packId) {
-                        container.settingsRepository.setActivePackId("")
-                    }
-                    _message.value = "词库已删除。"
-                }
+                is Outcome.Success -> _message.value = "词库已删除。"
             }
         }
     }
 
-    /** Switches the study scope; every screen deriving from `effectivePackId` follows. */
-    fun activate(packId: String) {
-        viewModelScope.launch { container.settingsRepository.setActivePackId(packId) }
+    /** Moves a pack (and its word rows) to another plan; the de-dup view follows at once. */
+    fun movePackTo(packId: String, targetPlanId: String) {
+        viewModelScope.launch {
+            when (val result = container.wordRepository.movePackToPlan(packId, targetPlanId)) {
+                is Outcome.Failure -> _message.value = result.error.message
+                is Outcome.Success -> _message.value = "词库已移出本计划。"
+            }
+        }
+    }
+
+    fun activate() {
+        viewModelScope.launch { container.settingsRepository.setActivePlanId(planId) }
     }
 
     fun dismissMessage() {
@@ -2135,8 +2253,9 @@ data class WrittenWordEntry(
 
 @Immutable
 data class WriteWordUiState(
-    val packId: String = "",
-    val packName: String = "",
+    /** Plan the words go into; each plan owns one「手写词」pack (schema v4). */
+    val planId: String = "",
+    val planName: String = "",
     val wordInput: String = "",
     val noteInput: String = "",
     val saving: Boolean = false,
@@ -2168,8 +2287,8 @@ data class WriteWordUiState(
  * the card is studied. A word left without a note is completed later by the gateway, exactly like
  * an imported word.
  *
- * The pack scope follows `effectivePackId`, so a learner who switched packs types into the pack
- * they are currently studying.
+ * The plan scope follows `effectivePlanId`: a learner who switched plans types into the
+ *「手写词」pack of the plan they are currently studying.
  */
 class WriteWordViewModel(
     private val container: AppContainer,
@@ -2192,21 +2311,21 @@ class WriteWordViewModel(
     )
 
     /**
-     * The pack name is resolved from [WordRepository.observePacks] instead of a suspending
-     * `packById` lookup: every keystroke flows through this pipeline, and a Room round-trip per
-     * key made the field's visible value trail behind the IME's composing string (text flicker
-     * and lost letters while typing). With the pack list cached upstream of the combine, the
-     * transform below is a pure, non-suspending mapping — a keystroke reaches the UI in the same
-     * main-loop turn with zero suspension in between.
+     * The plan name is resolved from [WordRepository.observePlans] instead of a suspending
+     * lookup: every keystroke flows through this pipeline, and a Room round-trip per key made the
+     * field's visible value trail behind the IME's composing string (text flicker and lost
+     * letters while typing). With the plan list cached upstream of the combine, the transform
+     * below is a pure, non-suspending mapping — a keystroke reaches the UI in the same main-loop
+     * turn with zero suspension in between.
      */
     val state: StateFlow<WriteWordUiState> = combine(
         container.settingsRepository.settings,
-        container.wordRepository.observePacks(),
+        container.wordRepository.observePlans(),
         _input,
-    ) { settings, packs, input ->
+    ) { settings, plans, input ->
         WriteWordUiState(
-            packId = settings.effectivePackId,
-            packName = packs.firstOrNull { it.id == settings.effectivePackId }?.name.orEmpty(),
+            planId = settings.effectivePlanId,
+            planName = plans.firstOrNull { it.id == settings.effectivePlanId }?.name.orEmpty(),
             wordInput = input.word,
             noteInput = input.note,
             saving = input.saving,
@@ -2237,7 +2356,21 @@ class WriteWordViewModel(
         if (current.saving) return
         _input.update { it.copy(saving = true, message = null, messageIsError = false) }
         viewModelScope.launch {
-            val packId = container.settingsRepository.current().effectivePackId
+            val planId = container.settingsRepository.current().effectivePlanId
+            // Every plan owns exactly one「手写词」pack; create it on the first write so the
+            // learner never has to pick a pack just to type a word.
+            val packId = when (
+                val ensured = container.wordRepository.ensureWritePack(planId, container.timeProvider.nowMillis())
+            ) {
+                is Outcome.Failure -> {
+                    _input.update {
+                        it.copy(saving = false, message = ensured.error.message, messageIsError = true)
+                    }
+                    return@launch
+                }
+
+                is Outcome.Success -> ensured.value
+            }
             when (
                 val result = container.wordRepository.addWordWithNote(
                     packId = packId,

@@ -20,6 +20,7 @@ import top.toneup.word.data.local.ToneUpWordDatabase
 import top.toneup.word.data.repository.AnswerSource
 import top.toneup.word.data.settings.DataStoreSettingsRepository
 import top.toneup.word.data.settings.PackIds
+import top.toneup.word.data.settings.PlanIds
 import top.toneup.word.data.settings.ThemeMode
 import top.toneup.word.data.settings.UserSettings
 import top.toneup.word.domain.model.CetLevel
@@ -129,9 +130,10 @@ class ComposeFlowTest {
      */
     private fun readSettings(): UserSettings = runBlocking(Dispatchers.IO) { settings.current() }
 
-    private fun reviewEventCount(level: CetLevel = CetLevel.CET4): Int =
+    /** Answers are stored per plan since schema v4; the seeded packs all live in the default plan. */
+    private fun reviewEventCount(): Int =
         runBlocking(Dispatchers.IO) {
-            database.reviewEventDao().totalCount(PackIds.defaultPackIdFor(level))
+            database.reviewEventDao().totalCount(PlanIds.DEFAULT_PLAN)
         }
 
     private companion object {

@@ -10,7 +10,7 @@ CET-4/CET-6 单词记忆 Android 应用（fork 自 CetVocab，更名为「一潼
 ## STRUCTURE
 ```
 ToneUp_word/
-├── app/                    # 唯一 Gradle 模块；schemas/ 为 Room 导出 schema（迁移测试依据，含 1/2/3.json）
+├── app/                    # 唯一 Gradle 模块；schemas/ 为 Room 导出 schema（迁移测试依据，含 1/2/3/4.json）
 │   └── src/main/java/top/toneup/word/
 │       ├── core/           # Outcome 结果类型、StudyDay(04:00 学习日边界)、JsonCodec、TimeProvider
 │       ├── domain/         # 纯 Kotlin 业务引擎（11 子包，零 Android 依赖）
@@ -29,11 +29,12 @@ ToneUp_word/
 | 任务 | 位置 | 备注 |
 |------|------|------|
 | 业务规则/算法改动 | `app/src/main/java/top/toneup/word/domain/` | 纯 Kotlin，改必配单测 |
-| 数据库 schema/迁移/DAO | `data/local/`（11 表 1 视图 9 DAO，schema v3） | 升版流程见 data/AGENTS.md |
+| 数据库 schema/迁移/DAO | `data/local/`（12 表 1 视图 10 DAO，schema v4） | 升版流程见 data/AGENTS.md |
 | 仓库/事务/播种 | `data/repository/` + `data/seed/` | 事务只在 Repository 层 |
+| 计划层级 CRUD | `data/repository/WordRepository.kt`（plan 段）+ `data/local/dao/PlanDao.kt` + `data/settings/PlanIds.kt` | 默认计划 `plan-default` 不可删；含词库的计划拒删 |
 | 释义补全/网关 | `data/gateway/` + `data/repository/MeaningSyncRepository.kt` + `work/MeaningSyncWorker.kt` | **联网点 1**；蓝图 `docs/dev/PLAN_CUSTOM_PACKS_GATEWAY.md` |
 | 应用内版本更新 | `data/update/` + `data/repository/AppUpdateRepository.kt` + `domain/update/` + `tool/release.ps1` | **联网点 2**（固定 `version.json` + 镜像回退 + SHA-256 + 断点续传 + 安装提示）；协议 `docs/UPDATE_PROTOCOL.md` |
-| 词库管理/纯文本导入 | `ui/screens/PackScreens.kt` + `domain/importer/PlainTextWordParser.kt` | PACKS/IMPORT_WORDS 路由；导入即返 `PENDING` |
+| 计划/词库管理 + 纯文本导入 | `ui/screens/PackScreens.kt` + `domain/importer/PlainTextWordParser.kt` | PLANS/PLAN_DETAIL/IMPORT_WORDS 路由；导入即返 `PENDING` |
 | 剪贴板/分享导入 | `ui/ExternalImport.kt` + `MainActivity.kt` | Share/Process-Text + 焦点剪贴板探测；原文永不出本地（`docs/SHARE_INTENT.md`） |
 | 页面/组件/主题 | `ui/screens/`、`ui/components/`、`ui/theme/` | 新屏幕接入 `ui/navigation/ToneUpWordNavHost.kt` |
 | 依赖装配 | 根 `AppContainer.kt` | 手写**构造器**注入，**无 Hilt** |
@@ -43,23 +44,25 @@ ToneUp_word/
 | 构建/签名/发布 | `gradle/libs.versions.toml`、`docs/RELEASE_SIGNING.md` | 命令见 COMMANDS |
 
 ## CODE MAP
-启动链：`ToneUpWordApplication.onCreate` → `AppContainer`（对象图根）→ `MainActivity.onCreate`（`enableEdgeToEdge` + Activity 级 `ExternalImportViewModel` + `setContent`）→ `MainViewModel.init` 调 `container.prepare()`（词库播种+提醒调度）与 `appUpdateRepository.init()/autoCheck()` → `ToneUpWordApp`（ready 门控 + 开屏提示语 overlay + 分享/剪贴板导入 Sheet + 更新对话框）→ `ToneUpWordNavHost`（17 路由，起始 HOME/ONBOARDING）→ Screen → `ViewModelFactories` → Repository → DAO / domain 引擎。
+启动链：`ToneUpWordApplication.onCreate` → `AppContainer`（对象图根）→ `MainActivity.onCreate`（`enableEdgeToEdge` + Activity 级 `ExternalImportViewModel` + `setContent`）→ `MainViewModel.init` 调 `container.prepare()`（默认计划+词库播种+提醒调度）与 `appUpdateRepository.init()/autoCheck()` → `ToneUpWordApp`（ready 门控 + 开屏提示语 overlay + 分享/剪贴板导入 Sheet + 更新对话框）→ `ToneUpWordNavHost`（19 路由，起始 HOME/ONBOARDING）→ Screen → `ViewModelFactories` → Repository → DAO / domain 引擎。
 外部输入链：`MainActivity.handleShareIntent`（onCreate 冷启 + onNewIntent）/ `onWindowFocusChanged` 剪贴板探测 → `ExternalImportViewModel` → `PlainTextWordParser` → 导入 Sheet → `WordRepository.addWordsToPack` → `MeaningSyncRepository.enqueueAll`。
 后台链：`ReminderScheduler` → WorkManager → `StudyReminderWorker.doWork()` → 通知 → MainActivity；`MeaningSyncWorker.doWork()` → `MeaningLookupService`（ECDICT→FreeDict→LLM 级联）→ 写回 `word` + `meaning_cache`。
 
 | Symbol | Type | Location | Refs | Role |
 |--------|------|----------|------|------|
 | `AppContainer` | class/DI 根 | `AppContainer.kt` | 全局 | 唯一装配点；`prepare()` 冷启动任务；网关客户端/补全服务装配 |
-| `ViewModelFactories` | object | `ui/ViewModels.kt:95` | 各 Screen | UI 侧 VM 工厂（12 个） |
+| `ViewModelFactories` | object | `ui/ViewModels.kt:100` | 各 Screen | UI 侧 VM 工厂（14 个） |
 | `Word` | data class | `domain/model/Word.kt:10` | — | 词库核心模型（含 v3 笔记/释义/网关字段，有测试） |
 | `WordProgress` | data class | `domain/srs/WordProgress.kt:59` | — | 学习进度模型（有测试） |
-| `WordDao` | @Dao | `data/local/dao/WordDao.kt` | 1（DB） | ⚠️ 无直接测试，经 DatabaseTest 间接覆盖 |
+| `WordDao` | @Dao | `data/local/dao/WordDao.kt` | 1（DB） | ⚠️ 无直接测试，经 DatabaseTest 间接覆盖；pack 维度（`countInPack`/`allForPack`/`byNormalized`）+ plan 维度（`liteForPlan`/`canonicalInPlan`/`idsForPlan`/`search(planId,…)`） |
+| `PlanDao` | @Dao | `data/local/dao/PlanDao.kt` | 1（DB） | 计划 CRUD 与词库计数（`plan` 表，schema v4） |
+| `PlanIds` | object | `data/settings/PlanIds.kt` | 多处 | `DEFAULT_PLAN="plan-default"` / `levelForPlanId` / `writePackIdFor(planId)` |
 | `SpacedRepetition` | object | `domain/srs/SpacedRepetition.kt` | — | SM-2 调度纯函数（26 测试） |
 | `ProgressRecorder` | class | `data/repository/ProgressRecorder.kt:38` | — | 全 app 唯一答题事务写入口 |
 | `MeaningLookupService` | class | `data/gateway/MeaningLookupService.kt:34` | — | 级联查询 + 24h 共享缓存；`manual` 永不覆盖 |
 | `MeaningSyncRepository` | interface | `data/repository/MeaningSyncRepository.kt:50` | — | 补全编排：pending 计数 / unique work 入队 / 单词级即时查 |
 | `PlainTextWordParser` | object | `domain/importer/PlainTextWordParser.kt:24` | — | 粘贴/分享/剪贴板纯文本 → 词表（20 000 条 / 64 字符） |
-| `Migrations` | object | `data/local/Migrations.kt:23` | — | `CURRENT_VERSION=3` + `ALL_MIGRATIONS`（1→2→3） |
+| `Migrations` | object | `data/local/Migrations.kt:23` | — | `CURRENT_VERSION=4` + `ALL_MIGRATIONS`（1→2→3→4） |
 
 ## CONVENTIONS（仅偏离标准处）
 - **无 ktlint/detekt/spotless/.editorconfig**：格式靠 IDE `kotlin.code.style=official`；`.gitattributes` 强制全部源码/文档 LF 入库。
@@ -67,7 +70,7 @@ ToneUp_word/
 - domain 层零 `android.*` import；**时间以参数注入**（`nowMillis`/`today: LocalDate`），不读系统时钟；确定性优先（seed 注入 Random、哈希选句）。
 - 失败是值不是异常：文件/IO/DB/网络失败返回 `Outcome<T>`/`AppError`（`core/result/`）；统计无数据用 `null` 而非 0%。
 - 枚举以稳定字符串入库、在 `data/mapper/Mappers.kt` 显式映射，**不走 TypeConverter**。
-- **学习范围 = `packId`**（schema v2 起，D1）：所有查询/统计/错题/考试/提醒按 `effectivePackId` 隔离，不再按 `level`；`CetLevel` 仅作词库元数据。
+- **学习范围 = `planId`**（schema v4 起）：所有查询/统计/错题/考试/提醒按 `UserSettings.effectivePlanId` 隔离，计划内所有词库合并为一个学习池并由 `word_with_progress` 视图**按 `(plan_id, normalized_word)` 去重**；`packId` 只用于「词库管理/导入/筛选」这类 pack 维度操作；`CetLevel` 仅作词库元数据。
 - 测试：JUnit4 + Truth + Robolectric（Compose 测试在 JVM 跑，**无 androidTest**）；方法名反引号英文；固定时间戳防 flaky；minSdk 路径用 `@Config(sdk=[26])`。
 - 依赖版本只改 `gradle/libs.versions.toml`；**app 版本号只改 `app/build.gradle.kts` 的 `versionName`/`versionCode`**（公式见 `docs/UPDATE_PROTOCOL.md`），仓库集中声明于 `settings.gradle.kts`（`FAIL_ON_PROJECT_REPOS`）。
 - 根 `build.gradle.kts` 故意不应用 `org.jetbrains.kotlin.android`（AGP 9 内置 Kotlin）——**勿"修复"**。
@@ -76,8 +79,8 @@ ToneUp_word/
 - **联网仅限两处**：`INTERNET` 权限允许且仅允许用于 ① 自建释义补全网关（ECDICT/FreeDict/LLM 转发，蓝图 `docs/dev/PLAN_CUSTOM_PACKS_GATEWAY.md`）；② 应用内版本更新（固定 `version.json` + APK 断点续传 + SHA-256 校验，`data/update/`，`REQUEST_INSTALL_PACKAGES` 仅用于把下载好的 APK 交给系统安装器，绝无静默安装）。其余联网能力（云同步、统计/埋点 SDK、远程音频下载、任何联网组件）仍**禁止**；剪贴板/分享的原始文本**永不出本地**（只上传待查询的单词 token + 可选 key），`lastClipboardHash` 只存哈希不存原文。
 - **`ACCESS_NETWORK_STATE` 仍不声明**：只由 androidx.work 合并带入，app 不读连接状态；WorkManager `NetworkType` 约束（联网/仅 Wi-Fi）不需要我们声明该权限。
 - **禁止在本机引入/编译 ktlint、detekt、spotless 等格式化检查**（不加相关依赖与 Gradle 任务）；验证一律 = `.\gradlew.bat :app:testDebugUnitTest` + `.\gradlew.bat :app:assembleDebug`（文件自验证，见 `docs/dev/PLAN_CUSTOM_PACKS_GATEWAY.md` §11/§13-R1）。
-- **禁止**对 `word` 表用 `Insert(REPLACE)`：会删行重建、CASCADE 连带清空 progress/事件/错题/考试快照。用 `@Update` 或身份映射 insert-then-update。唯一身份现为 `(pack_id, normalized_word)`（同词可入多包，进度跟行走）。
-- **禁止**破坏性数据库迁移：升版必须手写 Migration 入 `ALL_MIGRATIONS` + 同步 `version` 字面量与 `Migrations.CURRENT_VERSION`（有测试断言）+ 导出 `app/schemas/` 快照；迁移 SQL 须兼容 SQLite 3.18，且 v3 视图 SQL 必须与 `3.json` 逐字节一致。
+- **禁止**对 `word` 表用 `Insert(REPLACE)`：会删行重建、CASCADE 连带清空 progress/事件/错题/考试快照。用 `@Update` 或身份映射 insert-then-update。行的唯一身份是 `(pack_id, normalized_word)`（同词可入多包，进度**按 plan 可见**：视图在 `(plan_id, normalized_word)` 内只投影一行，优先有进度者）。
+- **禁止**破坏性数据库迁移：升版必须手写 Migration 入 `ALL_MIGRATIONS` + 同步 `version` 字面量与 `Migrations.CURRENT_VERSION`（有测试断言）+ 导出 `app/schemas/` 快照；迁移 SQL 须兼容 SQLite 3.18，且 v4 视图 SQL 必须与 `4.json` 逐字节一致。
 - **禁止**绕过 `meaning_source='manual'` 的保护（`applyLookupToWord`/`idsNeedingLookup`/`recordLookupFailure` 三处守卫）：手动编辑的释义永不被自动补全覆盖。
 - **禁止**提交密钥：`keystore.properties`/`*.jks`/`*.keystore` 已 gitignore；网关 key 默认值硬编码可覆盖（Q3），泄露按 `网关使用文档.md` §5 换。
 - **禁止**在 domain 读系统时钟/未注入的随机数；**禁止** Composable 直连 DAO。
@@ -88,7 +91,7 @@ ToneUp_word/
 - 应用内不出现「美式/英式」字样。
 
 ## UNIQUE STYLES
-- **单文件聚合约定**：12 个 ViewModel 全在 `ui/ViewModels.kt`（~1990 行，`// ----` 分节，节间无共享状态）；`WordCard.kt` 被 Study/Exam/Review 三屏共用；一文件多屏（ExamScreens 三态、ProfileScreens 双屏、PackScreens 双屏）。
+- **单文件聚合约定**：14 个 ViewModel 全在 `ui/ViewModels.kt`（~2425 行，`// ----` 分节，节间无共享状态）；`WordCard.kt` 被 Study/Exam/Review 三屏共用；一文件多屏（ExamScreens 三态、ProfileScreens 双屏、PackScreens 四屏：PlanList/PlanDetail/ImportWords/WriteWord）。
 - 开屏提示语是 **overlay 而非导航目的地**（每进程一次）；分享/剪贴板导入 Sheet 也是跨导航图浮层（`ExternalImportSheet`，由 MainActivity 持有 Activity 级 VM）。
 - 激励/提示语**确定性选择**（多项式哈希，不用时钟/随机）；中文文案内嵌 domain 枚举/`describe()` 使其可测。
 - 演示/内置词库只能清进度不能删除（`deletePack` 守卫内置包）；试卷开考即快照、防重复提交、saveAnswer 不判对错（防答案键泄露）。
@@ -99,7 +102,7 @@ ToneUp_word/
 ```bash
 .\gradlew.bat :app:assembleDebug          # 调试 APK → app\build\outputs\apk\debug\
 .\gradlew.bat :app:installDebug           # 安装到设备/模拟器
-.\gradlew.bat :app:testDebugUnitTest      # 全部单测（596 用例 / 43 类）
+.\gradlew.bat :app:testDebugUnitTest      # 全部单测（640 用例 / 50 类）
 .\gradlew.bat :app:testDebugUnitTest --tests "*.SpacedRepetitionTest*"   # 单类
 .\gradlew.bat :app:assembleRelease -x lintVitalRelease   # R8 发布包（本机约定跳过 lint）
 .\gradlew.bat :app:lintVitalRelease       # Android Lint（唯一静态检查；低内存机会 OOM）
@@ -119,5 +122,6 @@ python tools/wordpack/validate_packs.py   # 词库校验（依赖 cache/ecdict.c
 - `attach_examples.py` 重复执行会在 PACK_INFO.json `transformNotes` 累加重复段（现状已有痕迹）——勿反复追跑。
 - 网关网络栈版本由 M0 spike 钉死：**okhttp 5.4.0 / retrofit 3.0.0**（5.5.0 的 AAR 要求 compileSdk 37）；`compileSdk=36` 下勿升级。
 - 签名双通道：环境变量 `TONEUP_KEYSTORE_*` 优先，其次根 `keystore.properties`；都没有时 release 产出**未签名包而非失败**。
+- **本机默认不做编译验证**（2026-10-23 起）：这台开发机只做**文件静态验证**（读文件、grep 符号/常量、与 `4.json` 对齐等）；`testDebugUnitTest` / `assembleDebug` 留到具备 JDK 21 + SDK 36 的环境再跑。
 - **本机跑单测前先把 `TEMP`/`TMP` 指到纯 ASCII 路径**（如 `E:\Temp`）：用户目录含中文时，Robolectric 的 `robolectric-nativeruntime.dll`（解压到 `%TEMP%`）JNI_OnLoad 会失败，测试 JVM 在 SQLite 首次 open 时以 EXCEPTION_ACCESS_VIOLATION 崩溃（hs_err 见 `app/`）。做法：`.\gradlew.bat --stop` 后设 `$env:TEMP="E:\Temp"; $env:TMP="E:\Temp"` 再跑 `testDebugUnitTest`（M0 实测，2026-10-14）。
 - Kotlin LSP（kotlin-ls）未安装，符号导航靠 codegraph/grep。

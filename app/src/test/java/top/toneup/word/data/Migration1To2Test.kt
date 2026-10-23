@@ -241,36 +241,18 @@ class Migration1To2Test {
             assertThat(queryString(db, "SELECT pack_id FROM wrong_answer WHERE word_id = 1"))
                 .isEqualTo("builtin-cet4")
 
-            // Sessions and rollups map level → reserved pack id; the summary keeps its level column.
+            // Sessions keep their mapped pack. The rollups end up in one plan bucket: the whole
+            // chain runs 1 → 4 here, and 3 → 4 sums the per-pack rows of a day into `plan-default`.
             assertThat(queryString(db, "SELECT pack_id FROM study_session WHERE id = 1"))
                 .isEqualTo("builtin-cet4")
             assertThat(queryString(db, "SELECT pack_id FROM exam_session WHERE id = 1"))
                 .isEqualTo("builtin-cet6")
-            assertThat(
-                queryString(
-                    db,
-                    "SELECT pack_id FROM daily_study_summary " +
-                        "WHERE day_key = '2026-01-15' AND level = 'CET4'",
-                ),
-            ).isEqualTo("builtin-cet4")
-            assertThat(
-                queryString(
-                    db,
-                    "SELECT level FROM daily_study_summary " +
-                        "WHERE day_key = '2026-01-15' AND pack_id = 'builtin-cet4'",
-                ),
-            ).isEqualTo("CET4")
-            assertThat(
-                queryString(
-                    db,
-                    "SELECT pack_id FROM daily_study_summary " +
-                        "WHERE day_key = '2026-01-15' AND level = 'MISC'",
-                ),
-            ).isEqualTo("legacy-other")
-            // Counts are carried over untouched.
-            assertThat(
-                queryLong(db, "SELECT studied_words FROM daily_study_summary WHERE pack_id = 'builtin-cet4'"),
-            ).isEqualTo(3L)
+            assertThat(queryLong(db, "SELECT COUNT(*) FROM daily_study_summary")).isEqualTo(1L)
+            assertThat(queryString(db, "SELECT plan_id FROM daily_study_summary"))
+                .isEqualTo("plan-default")
+            // Counts are carried over untouched (3 + 1 studied words of the two v1 rows).
+            assertThat(queryLong(db, "SELECT studied_words FROM daily_study_summary"))
+                .isEqualTo(4L)
         } finally {
             database.close()
         }

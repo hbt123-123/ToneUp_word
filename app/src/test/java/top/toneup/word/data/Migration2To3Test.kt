@@ -180,7 +180,6 @@ class Migration2To3Test {
             val db = database.openHelper.writableDatabase
 
             assertThat(db.version).isEqualTo(Migrations.CURRENT_VERSION)
-            assertThat(Migrations.CURRENT_VERSION).isEqualTo(3)
 
             // Existing rows are untouched: content, identity and the gateway columns alike.
             assertThat(queryString(db, "SELECT meanings FROM word WHERE id = 1")).isEqualTo("""["苹果"]""")

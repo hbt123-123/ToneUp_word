@@ -28,12 +28,12 @@ data class UserSettings(
     val onboardingCompleted: Boolean = false,
     val level: CetLevel = CetLevel.CET6,
     /**
-     * Pack the learner is studying, `""` until a pack is chosen explicitly (schema v2, D1).
+     * Plan the learner is studying, `""` until a plan is chosen explicitly (schema v4, D1).
      *
      * Empty is a legitimate state: it means "derive from [level]" so a pre-upgrade install
      * keeps studying exactly what it studied before without any migration of its own.
      */
-    val activePackId: String = "",
+    val activePlanId: String = "",
     val dailyNewWordGoal: Int = DEFAULT_NEW_WORDS,
     val dailyReviewLimit: Int = DEFAULT_REVIEW_LIMIT,
     val reminderEnabled: Boolean = false,
@@ -115,16 +115,17 @@ data class UserSettings(
         get() = "%02d:%02d".format(reminderHour, reminderMinute)
 
     /**
-     * The pack every query must scope by: the explicit choice, or the builtin pack matching
-     * [level] when none was made yet. Never `""` — callers can pass it straight to a DAO.
+     * The plan every query must scope by: the explicit choice, or the built-in default plan
+     * (which holds every pack that existed before v4). Never `""` — callers can pass it
+     * straight to a DAO.
      */
-    val effectivePackId: String
-        get() = activePackId.ifEmpty { PackIds.defaultPackIdFor(level) }
+    val effectivePlanId: String
+        get() = activePlanId.ifEmpty { PlanIds.DEFAULT_PLAN }
 
     /**
-     * Display level of [effectivePackId]. UI labels (四级/六级/自定义) read this, never the raw
-     * [level], so an explicit pack choice always wins over the onboarding default.
+     * Display level of [effectivePlanId]. UI labels (四级/六级/自定义) read this, never the raw
+     * [level], so an explicit plan choice always wins over the onboarding default.
      */
     val effectiveLevel: CetLevel
-        get() = PackIds.levelForPackId(effectivePackId)
+        get() = PlanIds.levelForPlanId(effectivePlanId)
 }

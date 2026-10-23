@@ -12,9 +12,10 @@ import kotlinx.coroutines.flow.Flow
  * Notes on SQLite compatibility: only statements available in SQLite 3.18 (the version
  * shipped with Android 8.0) are used — no UPSERT clause, no window functions, no RETURNING.
  *
- * Scope is the **pack id** since schema v2 (D1): `word_with_progress` exposes `word.pack_id`,
- * so the queue queries filter on the view directly; the two raw-join queries join `word`
- * precisely to reach that column (the progress table itself has no pack column).
+ * Scope is the **plan id** since schema v4: `word_with_progress` exposes `word.plan_id` and
+ * collapses duplicate words inside a plan to one canonical row, so filtering the view on
+ * `plan_id` is both the scope and the de-duplication (D2). Queries never need the `word` join
+ * to reach a scope column any more.
  */
 @Dao
 interface ProgressDao {
@@ -34,6 +35,13 @@ interface ProgressDao {
     @Query("SELECT * FROM word_with_progress WHERE word_id = :wordId")
     suspend fun wordWithProgress(wordId: Long): WordWithProgressView?
 
+    /**
+     * Hands a progress row from one word row to its surviving sibling (D10). Only called by
+     * `deletePack`, and only when the target row has no progress row of its own.
+     */
+    @Query("UPDATE user_word_progress SET word_id = :toWordId WHERE word_id = :fromWordId")
+    suspend fun reassignWordId(fromWordId: Long, toWordId: Long)
+
     // --- Queues --------------------------------------------------------------------------
 
     /**
@@ -43,7 +51,7 @@ interface ProgressDao {
     @Query(
         """
         SELECT * FROM word_with_progress
-        WHERE pack_id = :packId
+        WHERE plan_id = :planId
           AND status IS NOT NULL
           AND status != 'NEW'
           AND due_at IS NOT NULL
@@ -52,7 +60,7 @@ interface ProgressDao {
         LIMIT :limit
         """,
     )
-    suspend fun dueWords(packId: String, now: Long, limit: Int): List<WordWithProgressView>
+    suspend fun dueWords(planId: String, now: Long, limit: Int): List<WordWithProgressView>
 
     /**
      * Words that are not due yet but are still fragile: repeatedly answered wrong or sitting
@@ -62,7 +70,7 @@ interface ProgressDao {
     @Query(
         """
         SELECT * FROM word_with_progress
-        WHERE pack_id = :packId
+        WHERE plan_id = :planId
           AND status IN ('RELEARNING', 'LEARNING')
           AND (wrong_count >= 2 OR status = 'RELEARNING')
           AND (due_at IS NULL OR due_at > :now)
@@ -70,29 +78,29 @@ interface ProgressDao {
         LIMIT :limit
         """,
     )
-    suspend fun fragileWords(packId: String, now: Long, limit: Int): List<WordWithProgressView>
+    suspend fun fragileWords(planId: String, now: Long, limit: Int): List<WordWithProgressView>
 
     /** Words never studied yet, oldest row id first (stable order, reproducible tests). */
     @Query(
         """
         SELECT * FROM word_with_progress
-        WHERE pack_id = :packId AND status IS NULL
+        WHERE plan_id = :planId AND status IS NULL
         ORDER BY word_id ASC
         LIMIT :limit
         """,
     )
-    suspend fun newWords(packId: String, limit: Int): List<WordWithProgressView>
+    suspend fun newWords(planId: String, limit: Int): List<WordWithProgressView>
 
     /** Words with the most mistakes, regardless of schedule — used by mistake drills. */
     @Query(
         """
         SELECT * FROM word_with_progress
-        WHERE pack_id = :packId AND wrong_count IS NOT NULL AND wrong_count > 0
+        WHERE plan_id = :planId AND wrong_count IS NOT NULL AND wrong_count > 0
         ORDER BY wrong_count DESC, COALESCE(last_reviewed_at, 0) ASC
         LIMIT :limit
         """,
     )
-    suspend fun mostWrongWords(packId: String, limit: Int): List<WordWithProgressView>
+    suspend fun mostWrongWords(planId: String, limit: Int): List<WordWithProgressView>
 
     @Query("SELECT * FROM word_with_progress WHERE word_id IN (:wordIds) ORDER BY word_id ASC")
     suspend fun wordsByIds(wordIds: List<Long>): List<WordWithProgressView>
@@ -101,7 +109,7 @@ interface ProgressDao {
     @Query(
         """
         SELECT * FROM word_with_progress
-        WHERE pack_id = :packId
+        WHERE plan_id = :planId
           AND status IS NOT NULL
           AND status != 'NEW'
           AND due_at IS NOT NULL
@@ -110,33 +118,33 @@ interface ProgressDao {
         LIMIT :limit
         """,
     )
-    fun observeDueWords(packId: String, now: Long, limit: Int): Flow<List<WordWithProgressView>>
+    fun observeDueWords(planId: String, now: Long, limit: Int): Flow<List<WordWithProgressView>>
 
     /** Reactive version of [fragileWords], used by the review centre ("未巩固词"). */
     @Query(
         """
         SELECT * FROM word_with_progress
-        WHERE pack_id = :packId
+        WHERE plan_id = :planId
           AND status IN ('RELEARNING', 'LEARNING')
           AND (wrong_count >= 2 OR status = 'RELEARNING')
         ORDER BY wrong_count DESC, COALESCE(last_reviewed_at, 0) ASC
         LIMIT :limit
         """,
     )
-    fun observeFragileWords(packId: String, limit: Int): Flow<List<WordWithProgressView>>
+    fun observeFragileWords(planId: String, limit: Int): Flow<List<WordWithProgressView>>
 
     /** Every word the learner has touched, newest activity first (all-words browse list). */
     @Query(
         """
         SELECT * FROM word_with_progress
-        WHERE pack_id = :packId AND status IS NOT NULL
+        WHERE plan_id = :planId AND status IS NOT NULL
           AND (:search IS NULL OR :search = '' OR word LIKE :like ESCAPE '!' OR meanings LIKE :like ESCAPE '!')
         ORDER BY COALESCE(last_reviewed_at, 0) DESC, word_id ASC
         LIMIT :limit
         """,
     )
     fun observeLearnedWords(
-        packId: String,
+        planId: String,
         search: String?,
         like: String,
         limit: Int,
@@ -147,67 +155,68 @@ interface ProgressDao {
     @Query(
         """
         SELECT COUNT(*) FROM word_with_progress
-        WHERE pack_id = :packId AND status IS NOT NULL AND status != 'NEW'
+        WHERE plan_id = :planId AND status IS NOT NULL AND status != 'NEW'
           AND (due_at IS NULL OR due_at <= :now)
         """,
     )
-    fun observeDueCount(packId: String, now: Long): Flow<Int>
+    fun observeDueCount(planId: String, now: Long): Flow<Int>
 
-    @Query("SELECT COUNT(*) FROM word_with_progress WHERE pack_id = :packId AND status IS NULL")
-    fun observeNewCount(packId: String): Flow<Int>
+    @Query("SELECT COUNT(*) FROM word_with_progress WHERE plan_id = :planId AND status IS NULL")
+    fun observeNewCount(planId: String): Flow<Int>
 
     @Query(
         """
         SELECT COUNT(*) FROM word_with_progress
-        WHERE pack_id = :packId AND status IS NOT NULL AND status != 'NEW'
+        WHERE plan_id = :planId AND status IS NOT NULL AND status != 'NEW'
           AND (due_at IS NULL OR due_at <= :now)
         """,
     )
-    suspend fun dueCount(packId: String, now: Long): Int
+    suspend fun dueCount(planId: String, now: Long): Int
 
-    @Query("SELECT COUNT(*) FROM word_with_progress WHERE pack_id = :packId AND status IS NULL")
-    suspend fun newCount(packId: String): Int
-
-    @Query(
-        """
-        SELECT COUNT(*) FROM word_with_progress
-        WHERE pack_id = :packId AND status IS NOT NULL AND status != 'NEW'
-        """,
-    )
-    fun observeLearnedCount(packId: String): Flow<Int>
-
-    @Query("SELECT COUNT(*) FROM word_with_progress WHERE pack_id = :packId AND status = 'MASTERED'")
-    fun observeMasteredCount(packId: String): Flow<Int>
+    @Query("SELECT COUNT(*) FROM word_with_progress WHERE plan_id = :planId AND status IS NULL")
+    suspend fun newCount(planId: String): Int
 
     @Query(
         """
         SELECT COUNT(*) FROM word_with_progress
-        WHERE pack_id = :packId AND status IN ('LEARNING', 'RELEARNING')
+        WHERE plan_id = :planId AND status IS NOT NULL AND status != 'NEW'
         """,
     )
-    fun observeFragileCount(packId: String): Flow<Int>
+    fun observeLearnedCount(planId: String): Flow<Int>
 
-    @Query("SELECT COUNT(*) FROM word_with_progress WHERE pack_id = :packId AND is_favorite = 1")
-    fun observeFavoriteCount(packId: String): Flow<Int>
+    @Query("SELECT COUNT(*) FROM word_with_progress WHERE plan_id = :planId AND status = 'MASTERED'")
+    fun observeMasteredCount(planId: String): Flow<Int>
 
     @Query(
         """
-        SELECT p.status AS status, COUNT(*) AS count
-        FROM user_word_progress p JOIN word w ON w.id = p.word_id
-        WHERE w.pack_id = :packId
-        GROUP BY p.status
+        SELECT COUNT(*) FROM word_with_progress
+        WHERE plan_id = :planId AND status IN ('LEARNING', 'RELEARNING')
         """,
     )
-    fun observeStatusCounts(packId: String): Flow<List<StatusCountRow>>
+    fun observeFragileCount(planId: String): Flow<Int>
+
+    @Query("SELECT COUNT(*) FROM word_with_progress WHERE plan_id = :planId AND is_favorite = 1")
+    fun observeFavoriteCount(planId: String): Flow<Int>
+
+    /** Status histogram of a plan, read from the canonical view so duplicates count once. */
+    @Query(
+        """
+        SELECT status AS status, COUNT(*) AS count
+        FROM word_with_progress
+        WHERE plan_id = :planId AND status IS NOT NULL
+        GROUP BY status
+        """,
+    )
+    fun observeStatusCounts(planId: String): Flow<List<StatusCountRow>>
 
     /** Words already reviewed during the current study day; used for the completion rate. */
     @Query(
         """
         SELECT COUNT(*) FROM word_with_progress
-        WHERE pack_id = :packId AND last_reviewed_at IS NOT NULL AND last_reviewed_at >= :since
+        WHERE plan_id = :planId AND last_reviewed_at IS NOT NULL AND last_reviewed_at >= :since
         """,
     )
-    suspend fun reviewedSince(packId: String, since: Long): Int
+    suspend fun reviewedSince(planId: String, since: Long): Int
 
     /**
      * The words that keep coming back wrong, worst first.
@@ -217,39 +226,37 @@ interface ProgressDao {
      * counts rather than guessed from word shapes (the vocabulary data carries no tense or
      * morphology, so a linguistic grouping would be invented).
      *
-     * `pack_id` is read from `word`, because it is a property of the vocabulary, not of the
-     * progress row — the progress table has no pack column.
+     * Read from the canonical view, so a word shared by two packs inside the plan is named once.
      */
     @Query(
         """
-        SELECT p.word_id FROM user_word_progress p
-        INNER JOIN word w ON w.id = p.word_id
-        WHERE w.pack_id = :packId AND p.wrong_count >= :minWrongCount
-        ORDER BY p.wrong_count DESC, p.word_id ASC
+        SELECT word_id FROM word_with_progress
+        WHERE plan_id = :planId AND wrong_count >= :minWrongCount
+        ORDER BY wrong_count DESC, word_id ASC
         LIMIT :limit
         """,
     )
-    suspend fun weakestWordIds(packId: String, minWrongCount: Int, limit: Int): List<Long>
+    suspend fun weakestWordIds(planId: String, minWrongCount: Int, limit: Int): List<Long>
 
     // --- Favourites ----------------------------------------------------------------------
 
     @Query(
         """
         SELECT * FROM word_with_progress
-        WHERE pack_id = :packId AND is_favorite = 1
+        WHERE plan_id = :planId AND is_favorite = 1
         ORDER BY COALESCE(last_reviewed_at, 0) DESC, word_id ASC
         """,
     )
-    fun observeFavorites(packId: String): Flow<List<WordWithProgressView>>
+    fun observeFavorites(planId: String): Flow<List<WordWithProgressView>>
 
     @Query(
         """
         SELECT * FROM word_with_progress
-        WHERE pack_id = :packId AND is_favorite = 1
+        WHERE plan_id = :planId AND is_favorite = 1
         ORDER BY COALESCE(last_reviewed_at, 0) DESC, word_id ASC
         """,
     )
-    suspend fun favorites(packId: String): List<WordWithProgressView>
+    suspend fun favorites(planId: String): List<WordWithProgressView>
 
     @Query("UPDATE user_word_progress SET is_favorite = :favorite, updated_at = :now WHERE word_id = :wordId")
     suspend fun setFavorite(wordId: Long, favorite: Boolean, now: Long)

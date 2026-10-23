@@ -157,8 +157,9 @@ fun newProgressFor(wordId: Long, nowMillis: Long): WordProgress = WordProgress(
     introducedAt = nowMillis,
 )
 
-fun ParsedWordRecord.toEntity(packId: String, nowMillis: Long): WordEntity = WordEntity(
+fun ParsedWordRecord.toEntity(packId: String, planId: String, nowMillis: Long): WordEntity = WordEntity(
     packId = packId,
+    planId = planId,
     externalId = externalId,
     word = word,
     normalizedWord = Word.normalizeWordKey(word),
@@ -212,6 +213,7 @@ fun WrongAnswerRow.toEntity(nowMillis: Long): WrongAnswerEntity = WrongAnswerEnt
     level = level,
     updatedAt = nowMillis,
     packId = packId,
+    planId = planId,
 )
 
 fun RecentEventRow.toReviewEventDisplay(): top.toneup.word.domain.study.RecentEvent = top.toneup.word.domain.study.RecentEvent(
@@ -226,9 +228,9 @@ fun RecentEventRow.toReviewEventDisplay(): top.toneup.word.domain.study.RecentEv
 fun StudySessionEntity.toState(reasons: Map<Long, top.toneup.word.domain.study.QueueReason>): StudySessionState =
     StudySessionState(
         sessionId = id,
-        // The study scope is the pack id since v2; the field keeps its legacy name so the
+        // The study scope is the plan id since v4; the field keeps its legacy name so the
         // domain engine and its tests stay untouched (D1).
-        levelId = packId,
+        levelId = planId,
         queue = JsonCodec.decodeLongs(queue),
         reasons = reasons,
         newWordIds = emptySet(),

@@ -9,13 +9,11 @@ import top.toneup.word.core.result.AppError
 import top.toneup.word.core.result.Outcome
 import top.toneup.word.data.gateway.LookupResult
 import top.toneup.word.data.local.ToneUpWordDatabase
-import top.toneup.word.data.local.entity.WordPackEntity
 import top.toneup.word.data.repository.BatchReport
 import top.toneup.word.data.repository.MeaningSyncRepository
 import top.toneup.word.data.repository.PackAddResult
-import top.toneup.word.data.settings.PackIds
+import top.toneup.word.data.settings.PlanIds
 import top.toneup.word.data.settings.UserSettings
-import top.toneup.word.domain.model.CetLevel
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
@@ -91,11 +89,11 @@ class ExternalImportViewModelTest {
         runBlocking(Dispatchers.IO) { container.settingsRepository.resetToDefaults() }
         meaningSync = RecordingMeaningSync()
         viewModel = ExternalImportViewModel(container, meaningSync)
-        // The pack / active-pack flows are `WhileSubscribed` (they must not stay subscribed after
+        // The pack / plan flows are `WhileSubscribed` (they must not stay subscribed after
         // the sheet is gone). These warm collectors give the assertions a live subscriber for the
         // whole test; the coroutines run inside [viewModelScope], so [tearDown] cancels them too.
         viewModel.viewModelScope.launch { viewModel.packs.collect { } }
-        viewModel.viewModelScope.launch { viewModel.activePackId.collect { } }
+        viewModel.viewModelScope.launch { viewModel.defaultPackId.collect { } }
     }
 
     @After
@@ -138,7 +136,7 @@ class ExternalImportViewModelTest {
         runBlocking(Dispatchers.IO) { database.wordDao().byNormalized(packId, word) }
 
     private fun countIn(packId: String) =
-        runBlocking(Dispatchers.IO) { database.wordDao().count(packId) }
+        runBlocking(Dispatchers.IO) { database.wordDao().countInPack(packId) }
 
     private fun awaitPhase(phase: ExternalImportPhase) =
         awaitCondition("phase == $phase") { viewModel.state.value.phase == phase }
@@ -146,9 +144,12 @@ class ExternalImportViewModelTest {
     private fun awaitStoredHash(hash: String) =
         awaitCondition("lastClipboardHash == $hash") { storedSettings().lastClipboardHash == hash }
 
-    private fun createTestPack(name: String = "测试词库"): String {
+    private fun createTestPack(
+        name: String = "测试词库",
+        planId: String = PlanIds.DEFAULT_PLAN,
+    ): String {
         val outcome = runBlocking(Dispatchers.IO) {
-            container.wordRepository.createPack(name, now)
+            container.wordRepository.createPack(name, planId, now)
         }
         return requireNotNull(outcome.getOrNull())
     }
@@ -274,20 +275,19 @@ class ExternalImportViewModelTest {
     }
 
     @Test
-    fun `createPackAndImport creates activates and imports in one flow`() {
+    fun `createPackAndImport creates the pack inside the current plan and imports in one flow`() {
         viewModel.onSharedText("apple, banana")
 
         viewModel.createPackAndImport("新词库")
         awaitPhase(ExternalImportPhase.DONE)
 
-        awaitCondition("the new pack became the active study scope") {
-            storedSettings().activePackId.startsWith("user-")
+        awaitCondition("the new pack shows up under the current plan") {
+            viewModel.packs.value.any { it.name == "新词库" }
         }
-        val packId = storedSettings().activePackId
-        assertThat(
-            runBlocking(Dispatchers.IO) { database.wordDao().packById(packId) }!!.name,
-        ).isEqualTo("新词库")
-        assertThat(wordIn(packId, "banana")!!.lookupState).isEqualTo("PENDING")
+        val pack = viewModel.packs.value.first { it.name == "新词库" }
+        assertThat(pack.planId).isEqualTo(PlanIds.DEFAULT_PLAN)
+        assertThat(storedSettings().effectivePlanId).isEqualTo(PlanIds.DEFAULT_PLAN)
+        assertThat(wordIn(pack.id, "banana")!!.lookupState).isEqualTo("PENDING")
         assertThat(viewModel.state.value.result?.inserted).isEqualTo(2)
         assertThat(meaningSync.enqueues).isEqualTo(1)
     }
@@ -330,39 +330,28 @@ class ExternalImportViewModelTest {
     // --- pack list --------------------------------------------------------------------------
 
     @Test
-    fun `the selectable packs exclude the legacy bucket`() {
+    fun `the selectable packs stay inside the current plan`() {
         val packId = createTestPack("自定义库")
-        runBlocking(Dispatchers.IO) {
-            database.wordDao().upsertPack(
-                WordPackEntity(
-                    id = PackIds.LEGACY_OTHER,
-                    name = "历史归档",
-                    level = CetLevel.OTHER.id,
-                    isBuiltIn = false,
-                    wordCount = 0,
-                    createdAt = now,
-                    updatedAt = now,
-                ),
-            )
-        }
+        val otherPlanPack = createTestPack("别的计划库", planId = "plan-six")
 
-        awaitCondition("the custom pack is visible") {
+        awaitCondition("the current plan's pack is visible") {
             viewModel.packs.value.any { it.id == packId }
         }
-        assertThat(viewModel.packs.value.map { it.id }).doesNotContain(PackIds.LEGACY_OTHER)
+        assertThat(viewModel.packs.value.map { it.id }).doesNotContain(otherPlanPack)
     }
 
     @Test
-    fun `the default pack follows the active pack setting`() {
-        awaitCondition("the builtin default is exposed before any choice") {
-            viewModel.activePackId.value == PackIds.BUILTIN_CET6
+    fun `the default pack follows the current plan`() {
+        val defaultPlanPack = createTestPack("新库")
+        awaitCondition("the sheet default is the plan's first pack") {
+            viewModel.defaultPackId.value == defaultPlanPack
         }
 
-        val packId = createTestPack("新库")
-        runBlocking(Dispatchers.IO) { container.settingsRepository.setActivePackId(packId) }
+        val otherPlanPack = createTestPack("别的计划库", planId = "plan-six")
+        runBlocking(Dispatchers.IO) { container.settingsRepository.setActivePlanId("plan-six") }
 
-        awaitCondition("the sheet default follows the learner's choice") {
-            viewModel.activePackId.value == packId
+        awaitCondition("switching the plan moves the sheet default") {
+            viewModel.defaultPackId.value == otherPlanPack
         }
     }
 

@@ -48,10 +48,10 @@ data class MistakeFilter(
     val favoritesOnly: Boolean = false,
     val level: CetLevel = CetLevel.CET4,
     /**
-     * Pack scope of the queries (schema v2, D1). `""` means "derive from [level]", which keeps
+     * Plan scope of the queries (schema v4, D1). `""` means "use the default plan", which keeps
      * call sites that only know the display level working; the repository resolves it.
      */
-    val packId: String = "",
+    val planId: String = "",
 ) {
     /** Rows of a "minimum mistakes" filter: 0 = off, 3 = 3+ mistakes. */
     val hasActiveFilters: Boolean

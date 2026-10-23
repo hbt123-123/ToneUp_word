@@ -69,6 +69,7 @@ data class UserWordProgressEntity(
         Index("grade"),
         Index("source"),
         Index("pack_id"),
+        Index("plan_id"),
     ],
 )
 data class ReviewEventEntity(
@@ -88,6 +89,8 @@ data class ReviewEventEntity(
     @ColumnInfo(name = "response_time_ms") val responseTimeMs: Long? = null,
     /** Pack the word belonged to when answered (backfilled from `word` in migration 1→2). */
     @ColumnInfo(name = "pack_id") val packId: String,
+    /** Plan the answer counts towards (schema v4). Source metadata stays in `pack_id` (D4). */
+    @ColumnInfo(name = "plan_id") val planId: String = "plan-default",
 )
 
 /**
@@ -114,6 +117,7 @@ data class ReviewEventEntity(
         Index("resolved_at"),
         Index("is_favorite"),
         Index("pack_id"),
+        Index("plan_id"),
     ],
 )
 data class WrongAnswerEntity(
@@ -132,4 +136,6 @@ data class WrongAnswerEntity(
     @ColumnInfo(name = "updated_at") val updatedAt: Long,
     /** Pack the word belongs to (backfilled from `word` in migration 1→2). */
     @ColumnInfo(name = "pack_id") val packId: String,
+    /** Plan this mistake counts towards (schema v4). */
+    @ColumnInfo(name = "plan_id") val planId: String = "plan-default",
 )

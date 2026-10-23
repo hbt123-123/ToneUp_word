@@ -12,9 +12,11 @@ import kotlinx.coroutines.flow.Flow
  * One row per word lives in the `wrong_answer` table; this DAO adds the word columns through
  * the `word_with_progress` view so lists can be filtered and ordered entirely in SQL.
  *
- * Scope is the **pack id** since schema v2 (D1): list queries filter on the view's `pack_id`,
- * counts and deletes use `wrong_answer.pack_id` directly (backfilled from the word row in
- * migration 1→2), so no query needs the `word` join just to reach a scope.
+ * Scope is the **plan id** since schema v4 (D4/D2): list queries filter on `wa.plan_id` and
+ * join the canonical view, so a word imported into two packs of one plan appears once. Counts
+ * join the view for the same reason — counting `wrong_answer` rows directly would count the
+ * hidden duplicate rows too. `deleteEverythingForPack` still works on the pack, because restore
+ * replaces data pack by pack.
  *
  * Filters are explicit parameters rather than assembled SQL strings, and search terms are
  * bound *and* escaped (`ESCAPE '!'`), so typing `%` looks for a literal percent sign instead
@@ -42,6 +44,9 @@ interface MistakeBookDao {
     @Query("DELETE FROM wrong_answer WHERE pack_id = :packId")
     suspend fun deleteEverythingForPack(packId: String)
 
+    @Query("UPDATE wrong_answer SET word_id = :toWordId WHERE word_id = :fromWordId")
+    suspend fun reassignWordId(fromWordId: Long, toWordId: Long)
+
     /** Marks a word as re-consolidated; the row stays so history filters keep working. */
     @Query("UPDATE wrong_answer SET resolved_at = :now, updated_at = :now WHERE word_id = :wordId")
     suspend fun markResolved(wordId: Long, now: Long)
@@ -61,7 +66,7 @@ interface MistakeBookDao {
         SELECT wa.word_id AS word_id, v.word AS word, v.phonetic AS phonetic,
                v.part_of_speech AS part_of_speech, v.meanings AS meanings,
                v.example_sentence AS example_sentence, v.level AS level,
-               wa.pack_id AS pack_id,
+               wa.pack_id AS pack_id, wa.plan_id AS plan_id,
                wa.wrong_count AS wrong_count, wa.fuzzy_count AS fuzzy_count,
                wa.first_wrong_at AS first_wrong_at, wa.last_wrong_at AS last_wrong_at,
                wa.last_source AS last_source, wa.correct_since_wrong AS correct_since_wrong,
@@ -70,7 +75,7 @@ interface MistakeBookDao {
                v.last_reviewed_at AS last_reviewed_at, v.last_answer AS last_answer
         FROM wrong_answer wa
         JOIN word_with_progress v ON v.word_id = wa.word_id
-        WHERE wa.pack_id = :packId
+        WHERE wa.plan_id = :planId
           AND (:includeResolved = 1 OR wa.resolved_at IS NULL)
           AND (:favoriteOnly = 0 OR wa.is_favorite = 1)
           AND (:minWrongCount <= 0 OR wa.wrong_count >= :minWrongCount)
@@ -80,7 +85,7 @@ interface MistakeBookDao {
         """,
     )
     fun observeMistakes(
-        packId: String,
+        planId: String,
         includeResolved: Int,
         favoriteOnly: Int,
         minWrongCount: Int,
@@ -95,7 +100,7 @@ interface MistakeBookDao {
         SELECT wa.word_id AS word_id, v.word AS word, v.phonetic AS phonetic,
                v.part_of_speech AS part_of_speech, v.meanings AS meanings,
                v.example_sentence AS example_sentence, v.level AS level,
-               wa.pack_id AS pack_id,
+               wa.pack_id AS pack_id, wa.plan_id AS plan_id,
                wa.wrong_count AS wrong_count, wa.fuzzy_count AS fuzzy_count,
                wa.first_wrong_at AS first_wrong_at, wa.last_wrong_at AS last_wrong_at,
                wa.last_source AS last_source, wa.correct_since_wrong AS correct_since_wrong,
@@ -104,7 +109,7 @@ interface MistakeBookDao {
                v.last_reviewed_at AS last_reviewed_at, v.last_answer AS last_answer
         FROM wrong_answer wa
         JOIN word_with_progress v ON v.word_id = wa.word_id
-        WHERE wa.pack_id = :packId
+        WHERE wa.plan_id = :planId
           AND (:includeResolved = 1 OR wa.resolved_at IS NULL)
           AND (:favoriteOnly = 0 OR wa.is_favorite = 1)
           AND (:minWrongCount <= 0 OR wa.wrong_count >= :minWrongCount)
@@ -114,7 +119,7 @@ interface MistakeBookDao {
         """,
     )
     fun observeMistakesByCount(
-        packId: String,
+        planId: String,
         includeResolved: Int,
         favoriteOnly: Int,
         minWrongCount: Int,
@@ -128,7 +133,7 @@ interface MistakeBookDao {
         """
         SELECT wa.word_id FROM wrong_answer wa
         JOIN word_with_progress v ON v.word_id = wa.word_id
-        WHERE wa.pack_id = :packId
+        WHERE wa.plan_id = :planId
           AND (:includeResolved = 1 OR wa.resolved_at IS NULL)
           AND (:favoriteOnly = 0 OR wa.is_favorite = 1)
           AND (:minWrongCount <= 0 OR wa.wrong_count >= :minWrongCount)
@@ -138,7 +143,7 @@ interface MistakeBookDao {
         """,
     )
     suspend fun mistakeIdsForFilter(
-        packId: String,
+        planId: String,
         includeResolved: Int,
         favoriteOnly: Int,
         minWrongCount: Int,
@@ -147,29 +152,50 @@ interface MistakeBookDao {
         like: String,
     ): List<Long>
 
-    @Query("SELECT COUNT(*) FROM wrong_answer WHERE pack_id = :packId AND resolved_at IS NULL")
-    fun observeActiveCount(packId: String): Flow<Int>
+    /** Active mistakes of a plan, de-duplicated through the canonical view (D2). */
+    @Query(
+        """
+        SELECT COUNT(*) FROM wrong_answer wa
+        JOIN word_with_progress v ON v.word_id = wa.word_id
+        WHERE wa.plan_id = :planId AND wa.resolved_at IS NULL
+        """,
+    )
+    fun observeActiveCount(planId: String): Flow<Int>
 
-    /** Every record ever created for this pack, resolved or not (the 历史错题 counter). */
-    @Query("SELECT COUNT(*) FROM wrong_answer WHERE pack_id = :packId")
-    fun observeTotalCount(packId: String): Flow<Int>
-
-    @Query("SELECT COUNT(*) FROM wrong_answer WHERE pack_id = :packId AND resolved_at IS NULL")
-    suspend fun activeCount(packId: String): Int
+    /** Every record ever created for this plan, resolved or not (the 历史错题 counter). */
+    @Query(
+        """
+        SELECT COUNT(*) FROM wrong_answer wa
+        JOIN word_with_progress v ON v.word_id = wa.word_id
+        WHERE wa.plan_id = :planId
+        """,
+    )
+    fun observeTotalCount(planId: String): Flow<Int>
 
     @Query(
         """
-        SELECT COUNT(*) FROM wrong_answer
-        WHERE pack_id = :packId AND resolved_at IS NULL AND wrong_count >= :minWrongCount
+        SELECT COUNT(*) FROM wrong_answer wa
+        JOIN word_with_progress v ON v.word_id = wa.word_id
+        WHERE wa.plan_id = :planId AND wa.resolved_at IS NULL
         """,
     )
-    fun observeHighWrongCount(packId: String, minWrongCount: Int): Flow<Int>
+    suspend fun activeCount(planId: String): Int
 
     @Query(
         """
-        SELECT COUNT(*) FROM wrong_answer
-        WHERE pack_id = :packId AND resolved_at IS NULL AND last_wrong_at >= :since
+        SELECT COUNT(*) FROM wrong_answer wa
+        JOIN word_with_progress v ON v.word_id = wa.word_id
+        WHERE wa.plan_id = :planId AND wa.resolved_at IS NULL AND wa.wrong_count >= :minWrongCount
         """,
     )
-    fun observeRecentlyWrong(packId: String, since: Long): Flow<Int>
+    fun observeHighWrongCount(planId: String, minWrongCount: Int): Flow<Int>
+
+    @Query(
+        """
+        SELECT COUNT(*) FROM wrong_answer wa
+        JOIN word_with_progress v ON v.word_id = wa.word_id
+        WHERE wa.plan_id = :planId AND wa.resolved_at IS NULL AND wa.last_wrong_at >= :since
+        """,
+    )
+    fun observeRecentlyWrong(planId: String, since: Long): Flow<Int>
 }

@@ -9,14 +9,16 @@ import top.toneup.word.core.time.TimeProvider
 import top.toneup.word.data.local.ToneUpWordDatabase
 import top.toneup.word.data.local.dao.WordLiteRow
 import top.toneup.word.data.local.entity.ImportHistoryEntity
+import top.toneup.word.data.local.entity.PlanEntity
 import top.toneup.word.data.local.entity.WordEntity
 import top.toneup.word.data.local.entity.WordPackEntity
-import top.toneup.word.data.mapper.toDomain
 import top.toneup.word.data.mapper.toEntity
+import top.toneup.word.data.mapper.toWord
 import top.toneup.word.data.mapper.toWordWithProgress
 import top.toneup.word.data.seed.BuiltInPackDefinition
 import top.toneup.word.data.seed.BuiltInWordPacks
 import top.toneup.word.data.seed.PackSource
+import top.toneup.word.data.settings.PlanIds
 import top.toneup.word.domain.exam.ExamWordSource
 import top.toneup.word.domain.importer.ImportPreview
 import top.toneup.word.domain.importer.ImportResult
@@ -45,24 +47,73 @@ interface WordRepository {
     /** Seeds the built-in demo packs once; a no-op afterwards. */
     suspend fun ensureBuiltInPacks()
 
-    fun observeWordCount(packId: String): Flow<Int>
+    // --- Plans (schema v4, D1) ---------------------------------------------------------------
 
-    fun observePacks(): Flow<List<WordPackEntity>>
+    /**
+     * Makes sure the built-in default plan exists.
+     *
+     * Migration 3→4 already writes it, but a fresh install (or a restored backup) reaches the
+     * repository without any migration, so the seeding path calls this before it writes packs.
+     */
+    suspend fun ensureDefaultPlan()
+
+    /** Every plan, built-in first (the plan-management screen). */
+    fun observePlans(): Flow<List<PlanEntity>>
+
+    /** Single plan lookup (detail screen, delete/move guards). */
+    suspend fun planById(planId: String): PlanEntity?
+
+    /** Creates an empty user plan; the default plan's level mapping is static (D5). */
+    suspend fun createPlan(name: String, now: Long): Outcome<String>
+
+    /** Renames a plan; the built-in default plan may be renamed too (D7). */
+    suspend fun renamePlan(planId: String, name: String): Outcome<Unit>
+
+    /**
+     * Deletes a plan. Refused while it still holds packs — the learner must delete or move them
+     * first (D7) — and refused for the built-in default plan.
+     */
+    suspend fun deletePlan(planId: String): Outcome<Unit>
+
+    /**
+     * Moves a pack (and every word row in it) to another plan.
+     *
+     * The current state follows the pack; review events, sessions and daily summaries stay
+     * with the plan they happened in (D9).
+     */
+    suspend fun movePackToPlan(packId: String, planId: String): Outcome<Unit>
+
+    /**
+     * The lazily created per-plan 「手写词」 pack (D6); a no-op if it already exists.
+     *
+     * The pack id embeds the plan (`write-<planId>`), so a pack found under another plan (it was
+     * moved from the plan detail screen) is refused instead of written to.
+     */
+    suspend fun ensureWritePack(planId: String, now: Long): Outcome<String>
+
+    /** Distinct words a plan studies, de-duplicated by the canonical view (D2). */
+    fun observeWordCount(planId: String): Flow<Int>
+
+    /** Packs of one plan, user content first. */
+    fun observePacks(planId: String): Flow<List<WordPackEntity>>
+
+    /** Every pack, plan-agnostic (backup, clear-all, migration maintenance). */
+    fun observeAllPacks(): Flow<List<WordPackEntity>>
 
     /** Single pack lookup (import screen title, repository-side guards). */
     suspend fun packById(packId: String): WordPackEntity?
 
     fun observeImportHistory(limit: Int = 20): Flow<List<ImportHistoryEntity>>
 
-    suspend fun hasWords(packId: String): Boolean
+    suspend fun hasWords(planId: String): Boolean
 
     suspend fun wordDetail(wordId: Long): WordWithProgress?
 
     /** Snapshot of the words used to build an exam paper. */
-    suspend fun examSources(packId: String): List<ExamWordSource>
+    suspend fun examSources(planId: String): List<ExamWordSource>
 
-    /** All words of a pack, for export. */
-    suspend fun allWords(packId: String): List<Word>
+    /** All words of a plan, for export (canonical rows, D2). */
+    suspend fun allWords(planId: String): List<Word>
 
     /**
      * Writes a validated preview.
@@ -86,9 +137,10 @@ interface WordRepository {
      * is enough for a single-device app.
      *
      * @param name learner-supplied display name; trimmed and required to be non-blank.
+     * @param planId the plan the pack belongs to (its words are studied as part of that plan).
      * @return the new pack id, so the caller can navigate straight into the import screen.
      */
-    suspend fun createPack(name: String, now: Long): Outcome<String>
+    suspend fun createPack(name: String, planId: String, now: Long): Outcome<String>
 
     /** Renames a user pack (built-in packs keep their shipped name and are refused). */
     suspend fun renamePack(packId: String, name: String): Outcome<Unit>
@@ -97,6 +149,10 @@ interface WordRepository {
      * Deletes a pack and every word in it; progress, review events, mistakes and exam
      * snapshots follow the foreign keys (CASCADE). Built-in packs are refused — they may be
      * cleared of progress but not removed.
+     *
+     * Before the rows go, progress and mistakes of a word that still has a same-named sibling
+     * in the same plan are handed over to that sibling (D10), so deleting one pack never turns
+     * a studied word back into an unstudied one.
      */
     suspend fun deletePack(packId: String): Outcome<Unit>
 
@@ -139,7 +195,7 @@ interface WordRepository {
      * Matches the English word and the Chinese meanings; prefix matches on the word sort first so
      * typing "ab" surfaces `abandon` before a word that merely contains "ab" in a meaning.
      */
-    suspend fun search(packId: String, query: String, limit: Int = SEARCH_LIMIT): List<WordWithProgress>
+    suspend fun search(planId: String, query: String, limit: Int = SEARCH_LIMIT): List<WordWithProgress>
 
     /**
      * Close spellings of [query] — the "你是不是想找" list.
@@ -151,7 +207,7 @@ interface WordRepository {
      * not exist in the local vocabulary.
      */
     suspend fun searchApproximate(
-        packId: String,
+        planId: String,
         query: String,
         strictMatchCount: Int,
         limit: Int = APPROX_LIMIT,
@@ -247,6 +303,9 @@ class DefaultWordRepository(
      *    progress/mistake/event row points at. Nothing is ever deleted here.
      */
     override suspend fun ensureBuiltInPacks() {
+        // The scope of every study query is a plan (schema v4): a fresh install has no
+        // migration to write the default plan, so seeding creates it first.
+        ensureDefaultPlan()
         val definitions = runCatching { packLoader.definitions() }.getOrDefault(emptyList())
         if (definitions.isEmpty()) {
             seedInlineDemoPacks()
@@ -291,7 +350,7 @@ class DefaultWordRepository(
             chunk.forEach { record ->
                 val normalized = Word.normalizeWordKey(record.word)
                 val existingId = existingIds[normalized]
-                val entity = record.toEntity(definition.id, now)
+                val entity = record.toEntity(definition.id, PlanIds.DEFAULT_PLAN, now)
                 if (existingId == null) {
                     toInsert += entity
                 } else {
@@ -322,6 +381,7 @@ class DefaultWordRepository(
             WordPackEntity(
                 id = definition.id,
                 name = definition.name,
+                planId = PlanIds.DEFAULT_PLAN,
                 level = level.id,
                 description = "${records.size} 条词汇（$inserted 新增 / $updated 更新）",
                 source = records.firstOrNull()?.source.orEmpty().ifBlank { BuiltInWordPacks.SOURCE },
@@ -357,6 +417,7 @@ class DefaultWordRepository(
                         missing.map { seed ->
                             WordEntity(
                                 packId = packId,
+                                planId = PlanIds.DEFAULT_PLAN,
                                 externalId = null,
                                 word = seed.word,
                                 normalizedWord = Word.normalizeWordKey(seed.word),
@@ -380,6 +441,7 @@ class DefaultWordRepository(
                     WordPackEntity(
                         id = packId,
                         name = "六级演示词库",
+                        planId = PlanIds.DEFAULT_PLAN,
                         level = level.id,
                         description = "${words.size} 个自建演示词条",
                         source = BuiltInWordPacks.SOURCE,
@@ -396,18 +458,18 @@ class DefaultWordRepository(
     }
 
     override suspend fun search(
-        packId: String,
+        planId: String,
         query: String,
         limit: Int,
     ): List<WordWithProgress> {
         val trimmed = query.trim()
         val like = likePattern(trimmed)
         val prefix = prefixPattern(trimmed)
-        return db.wordDao().search(packId, trimmed, like, prefix, limit).map { it.toWordWithProgress() }
+        return db.wordDao().search(planId, trimmed, like, prefix, limit).map { it.toWordWithProgress() }
     }
 
     override suspend fun searchApproximate(
-        packId: String,
+        planId: String,
         query: String,
         strictMatchCount: Int,
         limit: Int,
@@ -420,7 +482,7 @@ class DefaultWordRepository(
         val maxDistance = ApproximateWordMatcher.maxDistanceFor(needle.length)
 
         val rows = db.wordDao().byWordLengthBand(
-            packId = packId,
+            planId = planId,
             minLength = (needle.length - maxDistance).coerceAtLeast(1),
             maxLength = needle.length + maxDistance,
             limit = WordRepository.APPROX_CANDIDATE_LIMIT,
@@ -458,30 +520,181 @@ class DefaultWordRepository(
         return "$escaped%"
     }
 
-    override fun observeWordCount(packId: String): Flow<Int> = db.wordDao().observeCount(packId)
+    override fun observeWordCount(planId: String): Flow<Int> = db.wordDao().observePlanWordCount(planId)
 
-    override fun observePacks(): Flow<List<WordPackEntity>> = db.wordDao().observePacks()
+    override fun observePacks(planId: String): Flow<List<WordPackEntity>> = db.wordDao().observePacks(planId)
+
+    override fun observeAllPacks(): Flow<List<WordPackEntity>> = db.wordDao().observeAllPacks()
 
     override suspend fun packById(packId: String): WordPackEntity? = db.wordDao().packById(packId)
 
     override fun observeImportHistory(limit: Int): Flow<List<ImportHistoryEntity>> =
         db.importHistoryDao().observeRecent(limit)
 
-    override suspend fun hasWords(packId: String): Boolean = db.wordDao().hasWords(packId)
+    override suspend fun hasWords(planId: String): Boolean = db.wordDao().hasWordsInPlan(planId)
 
     override suspend fun wordDetail(wordId: Long): WordWithProgress? =
         db.progressDao().wordWithProgress(wordId)?.toWordWithProgress()
 
-    override suspend fun examSources(packId: String): List<ExamWordSource> =
-        db.wordDao().liteForPack(packId).map { it.toExamSource() }
+    override suspend fun examSources(planId: String): List<ExamWordSource> =
+        db.wordDao().liteForPlan(planId).map { it.toExamSource() }
 
-    override suspend fun allWords(packId: String): List<Word> =
-        db.wordDao().allForPack(packId).map { it.toDomain() }
+    override suspend fun allWords(planId: String): List<Word> =
+        db.wordDao().allForPlan(planId).map { it.toWord() }
+
+    // --- Plans (schema v4, D1) ---------------------------------------------------------------
+
+    override suspend fun ensureDefaultPlan() {
+        db.planDao().insert(
+            PlanEntity(
+                id = PlanIds.DEFAULT_PLAN,
+                name = PlanIds.DEFAULT_PLAN_NAME,
+                isBuiltIn = true,
+                createdAt = 0L,
+                updatedAt = 0L,
+            ),
+        )
+    }
+
+    override fun observePlans(): Flow<List<PlanEntity>> = db.planDao().observePlans()
+
+    override suspend fun planById(planId: String): PlanEntity? = db.planDao().planById(planId)
+
+    override suspend fun createPlan(name: String, now: Long): Outcome<String> = try {
+        val trimmed = name.trim()
+        when {
+            trimmed.isEmpty() -> Outcome.Failure(AppError(ErrorCode.EMPTY, "计划名称不能为空。"))
+            trimmed.length > MAX_PACK_NAME_LENGTH -> Outcome.Failure(
+                AppError(ErrorCode.TOO_LARGE, "计划名称过长，请控制在 $MAX_PACK_NAME_LENGTH 个字符内。"),
+            )
+
+            else -> {
+                val id = "plan-$now-${Random.nextInt(0x1000000).toString(16).padStart(6, '0')}"
+                db.planDao().upsert(
+                    PlanEntity(
+                        id = id,
+                        name = trimmed,
+                        isBuiltIn = false,
+                        createdAt = now,
+                        updatedAt = now,
+                    ),
+                )
+                Outcome.Success(id)
+            }
+        }
+    } catch (throwable: Throwable) {
+        Outcome.Failure(AppError.database(throwable.javaClass.simpleName))
+    }
+
+    override suspend fun renamePlan(planId: String, name: String): Outcome<Unit> = try {
+        val trimmed = name.trim()
+        when {
+            trimmed.isEmpty() -> Outcome.Failure(AppError(ErrorCode.EMPTY, "计划名称不能为空。"))
+            trimmed.length > MAX_PACK_NAME_LENGTH -> Outcome.Failure(
+                AppError(ErrorCode.TOO_LARGE, "计划名称过长，请控制在 $MAX_PACK_NAME_LENGTH 个字符内。"),
+            )
+
+            db.planDao().planById(planId) == null ->
+                Outcome.Failure(AppError(ErrorCode.DATABASE, "计划不存在或已被删除。"))
+
+            // The built-in plan may be renamed (D7) — only deletion is refused.
+            else -> {
+                db.planDao().rename(planId, trimmed, time.nowMillis())
+                Outcome.Success(Unit)
+            }
+        }
+    } catch (throwable: Throwable) {
+        Outcome.Failure(AppError.database(throwable.javaClass.simpleName))
+    }
+
+    override suspend fun deletePlan(planId: String): Outcome<Unit> = try {
+        if (planId == PlanIds.DEFAULT_PLAN) {
+            return Outcome.Failure(
+                AppError(ErrorCode.DATABASE, "默认计划不能删除，可以重命名。"),
+            )
+        }
+        if (db.planDao().planById(planId) == null) {
+            return Outcome.Failure(AppError(ErrorCode.DATABASE, "计划不存在或已被删除。"))
+        }
+        val packCount = db.planDao().packCount(planId)
+        if (packCount > 0) {
+            return Outcome.Failure(
+                AppError(ErrorCode.DATABASE, "该计划下还有 $packCount 个词库，请先删除或移出词库。"),
+            )
+        }
+        db.withTransaction { db.planDao().deletePlan(planId) }
+        Outcome.Success(Unit)
+    } catch (throwable: Throwable) {
+        Outcome.Failure(AppError.database(throwable.javaClass.simpleName))
+    }
+
+    override suspend fun movePackToPlan(packId: String, planId: String): Outcome<Unit> = try {
+        when {
+            db.wordDao().packById(packId) == null ->
+                Outcome.Failure(AppError(ErrorCode.DATABASE, "词库不存在或已被删除。"))
+
+            db.planDao().planById(planId) == null ->
+                Outcome.Failure(AppError(ErrorCode.DATABASE, "计划不存在或已被删除。"))
+
+            else -> {
+                val now = time.nowMillis()
+                db.withTransaction {
+                    db.wordDao().updatePackPlan(packId, planId, now)
+                    // The word rows carry the scope too, so the de-dup view follows at once (D9).
+                    db.wordDao().updateWordsPlan(packId, planId, now)
+                }
+                Outcome.Success(Unit)
+            }
+        }
+    } catch (throwable: Throwable) {
+        Outcome.Failure(AppError.database(throwable.javaClass.simpleName))
+    }
+
+    override suspend fun ensureWritePack(planId: String, now: Long): Outcome<String> = try {
+        val id = PlanIds.writePackIdFor(planId)
+        val existing = db.wordDao().packById(id)
+        when {
+            existing == null -> {
+                db.wordDao().upsertPack(
+                    WordPackEntity(
+                        id = id,
+                        name = PlanIds.WRITE_PACK_NAME,
+                        planId = planId,
+                        level = CetLevel.OTHER.id,
+                        description = "",
+                        isBuiltIn = false,
+                        wordCount = 0,
+                        createdAt = now,
+                        updatedAt = now,
+                    ),
+                )
+                Outcome.Success(id)
+            }
+
+            // The id embeds the plan, so this pack belongs to the plan the learner is writing in.
+            // If it was moved elsewhere (plan detail → move), writing through it would drop the
+            // words into another plan's study pool; refuse instead and say how to fix it.
+            existing.planId != planId -> Outcome.Failure(
+                AppError(
+                    ErrorCode.DATABASE,
+                    "「手写词」词库已被移动到其他计划，请先在计划页把它移回当前计划。",
+                ),
+            )
+
+            else -> Outcome.Success(id)
+        }
+    } catch (throwable: Throwable) {
+        Outcome.Failure(AppError.database(throwable.javaClass.simpleName))
+    }
 
     override suspend fun importPack(preview: ImportPreview, packId: String): Outcome<ImportResult> {
         val now = time.nowMillis()
         return try {
             val result = db.withTransaction {
+                // A brand-new imported pack lands in the default plan; a re-import keeps the
+                // plan the pack was moved to.
+                val existingPack = db.wordDao().packById(packId)
+                val planId = existingPack?.planId ?: PlanIds.DEFAULT_PLAN
                 var inserted = 0
                 var updated = 0
                 preview.records.forEach { record ->
@@ -490,7 +703,7 @@ class DefaultWordRepository(
                     // pack is a different row with its own progress.
                     val existing = db.wordDao().byNormalized(packId, normalized)
                     if (existing == null) {
-                        db.wordDao().insert(record.toEntity(packId, now))
+                        db.wordDao().insert(record.toEntity(packId, planId, now))
                         inserted++
                     } else {
                         // Content is refreshed, the row id (and with it every progress row,
@@ -498,6 +711,7 @@ class DefaultWordRepository(
                         db.wordDao().update(
                             existing.copy(
                                 packId = packId,
+                                planId = planId,
                                 externalId = record.externalId ?: existing.externalId,
                                 word = record.word,
                                 normalizedWord = normalized,
@@ -518,11 +732,11 @@ class DefaultWordRepository(
                 }
 
                 val level = preview.levelCounts.maxByOrNull { it.value }?.key ?: CetLevel.CET4
-                val existingPack = db.wordDao().packById(packId)
                 db.wordDao().upsertPack(
                     WordPackEntity(
                         id = packId,
                         name = preview.packName,
+                        planId = planId,
                         level = level.id,
                         description = "导入自 ${preview.fileName}",
                         source = preview.records.firstOrNull()?.source.orEmpty(),
@@ -602,6 +816,16 @@ class DefaultWordRepository(
 
             else -> {
                 db.withTransaction {
+                    // D10: hand progress/mistakes to a same-named sibling inside the plan when
+                    // that sibling has neither, so deleting a pack never un-learns a word.
+                    db.wordDao().duplicateSiblingIds(packId).forEach { pair ->
+                        if (db.progressDao().byWordId(pair.targetId) == null) {
+                            db.progressDao().reassignWordId(pair.sourceId, pair.targetId)
+                        }
+                        if (db.mistakeBookDao().byWordId(pair.targetId) == null) {
+                            db.mistakeBookDao().reassignWordId(pair.sourceId, pair.targetId)
+                        }
+                    }
                     // Progress, review events and exam snapshots follow the foreign keys.
                     db.wordDao().deleteForPack(packId)
                     // Then the pack row itself — a deleted pack must disappear from the list.
@@ -614,7 +838,7 @@ class DefaultWordRepository(
         Outcome.Failure(AppError.database(throwable.javaClass.simpleName))
     }
 
-    override suspend fun createPack(name: String, now: Long): Outcome<String> = try {
+    override suspend fun createPack(name: String, planId: String, now: Long): Outcome<String> = try {
         val trimmed = name.trim()
         if (trimmed.isEmpty()) {
             return Outcome.Failure(AppError(ErrorCode.EMPTY, "词库名称不能为空。"))
@@ -631,6 +855,7 @@ class DefaultWordRepository(
             WordPackEntity(
                 id = id,
                 name = trimmed,
+                planId = planId,
                 level = CetLevel.OTHER.id,
                 description = "",
                 isBuiltIn = false,
@@ -705,6 +930,7 @@ class DefaultWordRepository(
                 }
                 toInsert += WordEntity(
                     packId = packId,
+                    planId = pack.planId,
                     externalId = null,
                     word = trimmed,
                     normalizedWord = normalized,
@@ -748,13 +974,19 @@ class DefaultWordRepository(
                 ?: return Outcome.Failure(AppError(ErrorCode.DATABASE, "词库不存在或已被删除。"))
             val cleanedNote = note.trim()
             db.withTransaction {
+                // D8: the note belongs on the row the learner actually sees, which is the plan's
+                // canonical row — an earlier row than the one this pack would create. Resolving
+                // it first is enough: only the insert below can change the answer, and a fresh
+                // row is canonical by definition (it is the only one for this word).
+                val canonicalBefore = db.wordDao().canonicalInPlan(pack.planId, normalized)
                 // D2 identity: look the row up first so an existing word keeps its progress,
                 // mistakes and exam snapshots — never `Insert(REPLACE)`.
                 val existingId = db.wordDao().byNormalized(packId, normalized)?.id
-                val wordId: Long? = existingId ?: db.wordDao().insertAll(
+                val targetId: Long? = existingId ?: db.wordDao().insertAll(
                     listOf(
                         WordEntity(
                             packId = packId,
+                            planId = pack.planId,
                             externalId = null,
                             word = trimmed,
                             normalizedWord = normalized,
@@ -773,12 +1005,15 @@ class DefaultWordRepository(
                         ),
                     ),
                 ).firstOrNull()?.takeIf { it >= 0L }
-                if (wordId == null) {
+                if (targetId == null) {
                     return@withTransaction Outcome.Failure(AppError.database("insert-failed"))
                 }
                 if (existingId == null) {
                     db.wordDao().updatePackWordCount(packId, db.wordDao().countInPack(packId), now)
                 }
+                // D8: write the note to the canonical row and return its id, so a word that is
+                // already visible through an earlier pack does not silently gain a hidden note.
+                val wordId = canonicalBefore?.id ?: targetId
                 // Only a non-blank note writes through; an empty field means "no note", so it
                 // must not erase a note the learner already saved for this word.
                 if (cleanedNote.isNotEmpty()) {

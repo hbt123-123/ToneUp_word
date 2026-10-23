@@ -35,11 +35,11 @@ interface SettingsRepository {
     suspend fun setLevel(level: CetLevel)
 
     /**
-     * Chooses the pack to study (schema v2, D1). `""` clears the explicit choice and falls
-     * back to `defaultPackIdFor(level)` — used when the learner switches back to the
+     * Chooses the plan to study (schema v4, D1). `""` clears the explicit choice and falls
+     * back to the built-in default plan — used when the learner switches back to the
      * onboarding level default.
      */
-    suspend fun setActivePackId(packId: String)
+    suspend fun setActivePlanId(planId: String)
     suspend fun setDailyNewWordGoal(count: Int)
     suspend fun setDailyReviewLimit(limit: Int)
     suspend fun setReminder(enabled: Boolean, hour: Int, minute: Int)
@@ -122,16 +122,16 @@ class DataStoreSettingsRepository(private val context: Context) : SettingsReposi
     override suspend fun setLevel(level: CetLevel) {
         context.settingsDataStore.edit { prefs ->
             prefs[Keys.LEVEL] = level.id
-            // Choosing a level re-derives the default pack: a stale explicit pack id must not
+            // Choosing a level re-derives the default plan: a stale explicit plan id must not
             // silently override the learner's new choice (D1).
-            prefs.remove(Keys.ACTIVE_PACK_ID)
+            prefs.remove(Keys.ACTIVE_PLAN_ID)
         }
     }
 
-    override suspend fun setActivePackId(packId: String) {
+    override suspend fun setActivePlanId(planId: String) {
         context.settingsDataStore.edit { prefs ->
-            if (packId.isEmpty()) prefs.remove(Keys.ACTIVE_PACK_ID)
-            else prefs[Keys.ACTIVE_PACK_ID] = packId
+            if (planId.isEmpty()) prefs.remove(Keys.ACTIVE_PLAN_ID)
+            else prefs[Keys.ACTIVE_PLAN_ID] = planId
         }
     }
 
@@ -275,7 +275,7 @@ class DataStoreSettingsRepository(private val context: Context) : SettingsReposi
         return UserSettings(
             onboardingCompleted = this[Keys.ONBOARDING_COMPLETED] ?: defaults.onboardingCompleted,
             level = CetLevel.fromId(this[Keys.LEVEL] ?: defaults.level.id),
-            activePackId = this[Keys.ACTIVE_PACK_ID] ?: defaults.activePackId,
+            activePlanId = this[Keys.ACTIVE_PLAN_ID] ?: defaults.activePlanId,
             dailyNewWordGoal = UserSettings.clampNewWords(
                 this[Keys.DAILY_NEW_WORDS] ?: defaults.dailyNewWordGoal,
             ),
@@ -320,8 +320,8 @@ class DataStoreSettingsRepository(private val context: Context) : SettingsReposi
         val ONBOARDING_COMPLETED = booleanPreferencesKey("onboarding_completed")
         val LEVEL = stringPreferencesKey("level")
 
-        /** Explicit pack choice; absent → derive from [Keys.LEVEL] (see `UserSettings`). */
-        val ACTIVE_PACK_ID = stringPreferencesKey("active_pack_id")
+        /** Explicit plan choice; absent → the built-in default plan (see `UserSettings`). */
+        val ACTIVE_PLAN_ID = stringPreferencesKey("active_plan_id")
         val DAILY_NEW_WORDS = intPreferencesKey("daily_new_words")
         val DAILY_REVIEW_LIMIT = intPreferencesKey("daily_review_limit")
         val REMINDER_ENABLED = booleanPreferencesKey("reminder_enabled")

@@ -51,7 +51,7 @@ fun ToneUpWordApp(
     // the Activity-scoped ExternalImportViewModel (defaults = feature dormant).
     externalImportState: ExternalImportUiState = ExternalImportUiState(),
     externalImportPacks: List<WordPackEntity> = emptyList(),
-    externalImportActivePackId: String = "",
+    externalImportDefaultPackId: String = "",
     externalImportCallbacks: ExternalImportCallbacks = ExternalImportCallbacks(),
     // In-app update: the profile row can open the dialog, while the launch check raises it
     // automatically once a verified APK is ready.
@@ -119,7 +119,7 @@ fun ToneUpWordApp(
                 ExternalImportSheet(
                     state = externalImportState,
                     packs = externalImportPacks,
-                    activePackId = externalImportActivePackId,
+                    defaultPackId = externalImportDefaultPackId,
                     callbacks = externalImportCallbacks,
                 )
 

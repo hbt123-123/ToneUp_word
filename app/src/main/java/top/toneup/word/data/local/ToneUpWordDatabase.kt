@@ -10,6 +10,7 @@ import top.toneup.word.data.local.dao.ExamDao
 import top.toneup.word.data.local.dao.ImportHistoryDao
 import top.toneup.word.data.local.dao.MeaningCacheDao
 import top.toneup.word.data.local.dao.MistakeBookDao
+import top.toneup.word.data.local.dao.PlanDao
 import top.toneup.word.data.local.dao.ProgressDao
 import top.toneup.word.data.local.dao.ReviewEventDao
 import top.toneup.word.data.local.dao.StudySessionDao
@@ -20,6 +21,7 @@ import top.toneup.word.data.local.entity.ExamQuestionEntity
 import top.toneup.word.data.local.entity.ExamSessionEntity
 import top.toneup.word.data.local.entity.ImportHistoryEntity
 import top.toneup.word.data.local.entity.MeaningCacheEntity
+import top.toneup.word.data.local.entity.PlanEntity
 import top.toneup.word.data.local.entity.ReviewEventEntity
 import top.toneup.word.data.local.entity.StudySessionEntity
 import top.toneup.word.data.local.entity.UserWordProgressEntity
@@ -37,6 +39,7 @@ import top.toneup.word.data.local.entity.WrongAnswerEntity
  */
 @Database(
     entities = [
+        PlanEntity::class,
         WordPackEntity::class,
         WordEntity::class,
         UserWordProgressEntity::class,
@@ -52,12 +55,13 @@ import top.toneup.word.data.local.entity.WrongAnswerEntity
     views = [WordWithProgressView::class],
     // Kept as a literal: the annotation processor requires a compile-time constant, while
     // `Migrations.CURRENT_VERSION` mirrors it and a test asserts the two stay equal.
-    version = 3,
+    version = 4,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
 abstract class ToneUpWordDatabase : RoomDatabase() {
 
+    abstract fun planDao(): PlanDao
     abstract fun wordDao(): WordDao
     abstract fun progressDao(): ProgressDao
     abstract fun mistakeBookDao(): MistakeBookDao

@@ -113,7 +113,7 @@ fun StatsScreen(container: AppContainer) {
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Text("当前词库", style = MaterialTheme.typography.bodyMedium)
+                            Text("当前计划", style = MaterialTheme.typography.bodyMedium)
                             ReviewBadge(
                                 text = state.level.label,
                                 container = MaterialTheme.colorScheme.primaryContainer,

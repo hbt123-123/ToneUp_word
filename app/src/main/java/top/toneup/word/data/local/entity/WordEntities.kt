@@ -14,11 +14,13 @@ import androidx.room.PrimaryKey
  */
 @Entity(
     tableName = "word_pack",
-    indices = [Index("level"), Index("is_built_in")],
+    indices = [Index("level"), Index("is_built_in"), Index("plan_id")],
 )
 data class WordPackEntity(
     @PrimaryKey val id: String,
     val name: String,
+    /** Plan this pack currently belongs to (schema v4); the pack stays the content unit. */
+    @ColumnInfo(name = "plan_id") val planId: String = "plan-default",
     @ColumnInfo(name = "level") val level: String,
     @ColumnInfo(name = "description") val description: String = "",
     @ColumnInfo(name = "source") val source: String = "",
@@ -49,7 +51,9 @@ data class WordPackEntity(
     indices = [
         Index(value = ["pack_id", "normalized_word"], unique = true, name = "index_word_pack_normalized_word"),
         Index(value = ["normalized_word"], name = "index_word_normalized"),
+        Index(value = ["plan_id", "normalized_word"], name = "index_word_plan_normalized_word"),
         Index("pack_id"),
+        Index("plan_id"),
         Index("word"),
         Index("level"),
     ],
@@ -57,6 +61,11 @@ data class WordPackEntity(
 data class WordEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0L,
     @ColumnInfo(name = "pack_id") val packId: String?,
+    /**
+     * Plan the row's pack belongs to (schema v4), denormalised so the canonical de-dup
+     * subquery in `word_with_progress` needs no join to `word_pack`.
+     */
+    @ColumnInfo(name = "plan_id") val planId: String = "plan-default",
     /** Identifier supplied by the imported file, kept for round-tripping exports. */
     @ColumnInfo(name = "external_id") val externalId: String? = null,
     @ColumnInfo(name = "word") val word: String,

@@ -161,7 +161,7 @@ fun ExamSetupScreen(
                         onIncrease = { viewModel.setDurationMinutes(state.durationMinutes + 5) },
                         testTagPrefix = "exam_duration",
                     )
-                    KeyValueRow("当前词库", "${state.level.label} · ${state.availableWords} 个单词")
+                    KeyValueRow("当前计划", "${state.level.label} · ${state.availableWords} 个单词")
                     Text(
                         text = "题型包含英译中、中译英、四选一与拼写填空，由程序随机组合。",
                         style = MaterialTheme.typography.bodySmall,
@@ -181,7 +181,7 @@ fun ExamSetupScreen(
             )
             if (state.availableWords == 0) {
                 Text(
-                    text = "当前词库为空，无法生成试卷。请先在「我的 - 词库导入」中导入词库。",
+                    text = "当前计划为空，无法生成试卷。请先在「我的 - 计划管理」中导入词库。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error,
                 )

@@ -12,6 +12,7 @@ import top.toneup.word.data.local.entity.WordPackEntity
 import top.toneup.word.data.repository.DefaultWordRepository
 import top.toneup.word.data.repository.PackAddResult
 import top.toneup.word.data.settings.PackIds
+import top.toneup.word.data.settings.PlanIds
 import top.toneup.word.domain.importer.ImportPreview
 import top.toneup.word.domain.model.CetLevel
 import top.toneup.word.domain.model.Word
@@ -78,7 +79,7 @@ class AddWordsToPackTest {
     // --- helpers ---------------------------------------------------------------------------
 
     private suspend fun createTestPack(name: String = "测试词库"): String {
-        val outcome = repository.createPack(name, now)
+        val outcome = repository.createPack(name, PlanIds.DEFAULT_PLAN, now)
         assertThat(outcome.isSuccess).isTrue()
         return requireNotNull(outcome.getOrNull())
     }
@@ -88,6 +89,7 @@ class AddWordsToPackTest {
             WordPackEntity(
                 id = id,
                 name = "六级演示词库",
+                planId = PlanIds.DEFAULT_PLAN,
                 level = CetLevel.CET6.id,
                 isBuiltIn = true,
                 wordCount = 0,
@@ -135,7 +137,7 @@ class AddWordsToPackTest {
     @Test
     fun `createPack refuses a blank name`() = runTest {
         for (blank in listOf("", "   ")) {
-            val outcome = repository.createPack(blank, now)
+            val outcome = repository.createPack(blank, PlanIds.DEFAULT_PLAN, now)
             assertThat(outcome.isSuccess).isFalse()
             assertThat((outcome as Outcome.Failure).error.code)
                 .isEqualTo(top.toneup.word.core.result.ErrorCode.EMPTY)
@@ -144,7 +146,7 @@ class AddWordsToPackTest {
 
     @Test
     fun `createPack refuses an over-long name`() = runTest {
-        val outcome = repository.createPack("词".repeat(41), now)
+        val outcome = repository.createPack("词".repeat(41), PlanIds.DEFAULT_PLAN, now)
         assertThat(outcome.isSuccess).isFalse()
     }
 
@@ -235,7 +237,7 @@ class AddWordsToPackTest {
     fun `adding to a missing pack fails without writing anything`() = runTest {
         val outcome = repository.addWordsToPack("no-such-pack", listOf("apple"), now)
         assertThat(outcome.isSuccess).isFalse()
-        assertThat(database.wordDao().count("no-such-pack")).isEqualTo(0)
+        assertThat(database.wordDao().countInPack("no-such-pack")).isEqualTo(0)
     }
 
     @Test
@@ -334,7 +336,7 @@ class AddWordsToPackTest {
 
         val missing = repository.addWordWithNote("no-such-pack", "apple", "", now)
         assertThat(missing.isSuccess).isFalse()
-        assertThat(database.wordDao().count("no-such-pack")).isEqualTo(0)
+        assertThat(database.wordDao().countInPack("no-such-pack")).isEqualTo(0)
     }
 
     // --- renamePack ----------------------------------------------------------------------------
@@ -372,7 +374,7 @@ class AddWordsToPackTest {
 
         assertThat(outcome.isSuccess).isTrue()
         assertThat(database.wordDao().packById(packId)).isNull()
-        assertThat(database.wordDao().count(packId)).isEqualTo(0)
+        assertThat(database.wordDao().countInPack(packId)).isEqualTo(0)
         assertThat(database.progressDao().byWordId(wordId)).isNull()
     }
 
@@ -401,7 +403,7 @@ class AddWordsToPackTest {
     fun `observePacks emits user packs created at runtime`() = runTest {
         val packId = createTestPack("运行期词库")
 
-        val packs = repository.observePacks().first()
+        val packs = repository.observePacks(PlanIds.DEFAULT_PLAN).first()
         assertThat(packs.map { it.id }).contains(packId)
     }
 }
