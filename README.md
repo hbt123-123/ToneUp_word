@@ -40,19 +40,28 @@
 
 | 版本 | versionName / Code | 对应提交 | 大小 | SHA-256 | 下载 |
 | --- | --- | --- | --- | --- | --- |
-| **v0.2**（最新） | 0.2 / 2 | [`a032432`](https://github.com/hbt123-123/ToneUp_word/commit/a0324320935e06603269c0c0b4f06f78f5ca680a) | 3,277,452 B | `CEC922255813F7DD9C8D1A81EE6E260A2F277A50B84D4CB98686C87E40455F18` | [ToneUpWord-v0.2.apk](https://github.com/hbt123-123/ToneUp_word/releases/download/v0.2/ToneUpWord-v0.2.apk) |
+| **v1.0.4**（最新） | 1.0.4 / 104 | [`8eafb6b`](https://github.com/hbt123-123/ToneUp_word/commit/8eafb6b7389b124fae7aa2ffcca5794f37f0e0f7) | 3,343,650 B | `616CC0D4784AFF1D5D4E7E51B5F11A55CBE2DCE1C457B16419185C13619FFCDA` | [ToneUpWord.apk](https://github.com/hbt123-123/ToneUp_word/releases/download/v1.0.4/ToneUpWord.apk) |
+| v0.3 | 0.3 / 3 | [`afb5943`](https://github.com/hbt123-123/ToneUp_word/commit/afb594304eac517efc90e3cf493d9a89c107f12b) | 3,310,817 B | `52BC35064F359DB5D5B28CCC22B2C6A7A06DE21D27AF69D9B4B00943C2BBBEC7` | [ToneUpWord.apk](https://github.com/hbt123-123/ToneUp_word/releases/download/v0.3/ToneUpWord.apk) |
+| v0.2 | 0.2 / 2 | [`a032432`](https://github.com/hbt123-123/ToneUp_word/commit/a0324320935e06603269c0c0b4f06f78f5ca680a) | 3,277,452 B | `CEC922255813F7DD9C8D1A81EE6E260A2F277A50B84D4CB98686C87E40455F18` | [ToneUpWord-v0.2.apk](https://github.com/hbt123-123/ToneUp_word/releases/download/v0.2/ToneUpWord-v0.2.apk) |
 | v0.1 | 0.1 / 1 | [`fbfeefe`](https://github.com/hbt123-123/ToneUp_word/commit/fbfeefe228218b69cee9b96d950a6ccab762189e) | 3,601,943 B | `4E9915F3D1610AC2E8F2969A12DF183AF7D74CDEAEA25C794ABD83EF18751828` | [ToneUpWord-v0.1.apk](https://github.com/hbt123-123/ToneUp_word/releases/download/v0.1/ToneUpWord-v0.1.apk) |
 
-* **v0.2**（最新，提交 [`a032432`](https://github.com/hbt123-123/ToneUp_word/compare/fbfeefe...a032432)）：
+* **v1.0.4**（最新，提交 [`8eafb6b`](https://github.com/hbt123-123/ToneUp_word/compare/afb5943...8eafb6b)）：
+  学习范围从「词库」迁移到「计划」（数据库 schema v4，旧数据自动迁移），复习、错题、考试与统计按计划隔离；
+  TTS 朗读新增语音 fallback 链并显示实际使用的语音。
+* **v0.3**（提交 [`afb5943`](https://github.com/hbt123-123/ToneUp_word/compare/a032432...afb5943)）：
+  新增**应用内自动更新**——后台检查 version.json、断点续传下载、SHA-256 校验、提示一键安装，
+  支持手动「检查更新」与「跳过此版本」；修复写词库连续录入的焦点与布局问题。
+* **v0.2**（提交 [`a032432`](https://github.com/hbt123-123/ToneUp_word/compare/fbfeefe...a032432)）：
   移除内置四级词库（只保留六级），新增**「写词库」**——可逐条手写输入单词并填写**自己的中文注释**，
   学习时优先展示你写的释义、未填写时才走释义补全网关；错题本收进首页，腾出的位置作为写词库入口。
 * **v0.1**：内置四级 + 六级词库的首个公开测试包；对应提交 [`fbfeefe`](https://github.com/hbt123-123/ToneUp_word/commit/fbfeefe228218b69cee9b96d950a6ccab762189e)。
 
-> 两个历史包由**另一台机器**构建，包名均为 `top.toneup.word`，`minSdk 26` / `targetSdk 36`，
-> 采用 **APK Signature Scheme v2** 签名（证书 `OU=ToneUp`）。其 `versionName`（0.1 / 0.2）
-> 与本仓库 `app/build.gradle.kts` 中的取值（`1.0.3`）**不一致**——上表数值才是该 APK 的真实版本。
+> v0.1 / v0.2 两个历史包由**另一台机器**构建，包名均为 `top.toneup.word`，`minSdk 26` / `targetSdk 36`，
+> 采用 **APK Signature Scheme v2** 签名（证书 `OU=ToneUp`）。其 `versionName`（0.1 / 0.2）与当时的
+> 仓库取值**不一致**——上表数值才是该 APK 的真实版本；v1.0.4 起三者（tag / versionName / versionCode）
+> 与仓库保持一致。
 >
-> **从 v1.0.3 起**，Releases 的资产名固定为 `ToneUpWord.apk` 与 `version.json`，应用内自动更新只认
+> **从 v0.3 起**，Releases 的资产名固定为 `ToneUpWord.apk` 与 `version.json`，应用内自动更新只认
 > 这两个名字；tag 必须等于 `v<versionName>`，`versionCode == major*100+minor*10+patch`。发布脚本
 > `tool/release.ps1` 会校验版本号公式并生成两个资产，字段契约见
 > [应用内更新协议](docs/UPDATE_PROTOCOL.md)。

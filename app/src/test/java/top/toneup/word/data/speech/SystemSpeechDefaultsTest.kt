@@ -45,6 +45,10 @@ class SystemSpeechDefaultsTest {
         assertThat(parseSystemSpeechFactor("0.5")).isEqualTo(0.5f)
         assertThat(parseSystemSpeechFactor("2.0")).isEqualTo(2.0f)
         assertThat(parseSystemSpeechFactor(" 1.5 ")).isEqualTo(1.5f)
+        // `toFloatOrNull` delegates to Float.parseFloat, which accepts a trailing f/F/d/D suffix;
+        // "1.0f" therefore decodes to exactly 1.0 — the harmless default speed — and is accepted
+        // rather than treated as junk. Guarded here because a test once assumed otherwise.
+        assertThat(parseSystemSpeechFactor("1.0f")).isEqualTo(1.0f)
     }
 
     // --- unreadable values: must not override the engine default ---
@@ -55,7 +59,6 @@ class SystemSpeechDefaultsTest {
         assertThat(parseSystemSpeechFactor("")).isNull()
         assertThat(parseSystemSpeechFactor("   ")).isNull()
         assertThat(parseSystemSpeechFactor("fast")).isNull()
-        assertThat(parseSystemSpeechFactor("1.0f")).isNull()
         assertThat(parseSystemSpeechFactor("0")).isNull()
         assertThat(parseSystemSpeechFactor("-1")).isNull()
         assertThat(parseSystemSpeechFactor("NaN")).isNull()
