@@ -32,6 +32,7 @@ keystore.properties
 *.keystore
 *.p12
 *.pfx
+key.txt
 
 # 本地 IDE / 工具索引目录
 .codegraph/
