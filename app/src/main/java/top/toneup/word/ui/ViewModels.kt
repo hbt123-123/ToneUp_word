@@ -21,6 +21,7 @@ import top.toneup.word.data.repository.SessionStatus
 import top.toneup.word.data.repository.WordRepository
 import top.toneup.word.data.update.AppUpdateUiState
 import top.toneup.word.data.update.UpdatePhase
+import top.toneup.word.data.speech.SpeechEngineMode
 import top.toneup.word.data.speech.SpeechRateMode
 import top.toneup.word.domain.insight.Insight
 import top.toneup.word.domain.insight.InsightEngine
@@ -730,6 +731,7 @@ data class StudyUiState(
     val lastAnswer: ReviewGrade? = null,
     /** Reading preferences, mirrored into state so the card can speak without touching DataStore. */
     val speechRateMode: SpeechRateMode = SpeechRateMode.SYSTEM,
+    val speechEngineMode: SpeechEngineMode = SpeechEngineMode.SYSTEM,
     val readExampleSentences: Boolean = false,
     val autoPlayPronunciation: Boolean = false,
 ) {
@@ -790,6 +792,7 @@ class StudyViewModel(private val container: AppContainer) : ViewModel() {
                             // would leave the ViewModel holding stale preferences, and the state
                             // would disagree with the settings the learner just changed.
                             speechRateMode = settings.speechRateMode,
+                            speechEngineMode = settings.speechEngineMode,
                             readExampleSentences = settings.readExampleSentences,
                             autoPlayPronunciation = settings.autoPlayPronunciation,
                         )
@@ -833,6 +836,7 @@ class StudyViewModel(private val container: AppContainer) : ViewModel() {
                 finished = card == null,
                 errorMessage = null,
                 speechRateMode = settings.speechRateMode,
+                speechEngineMode = settings.speechEngineMode,
                 readExampleSentences = settings.readExampleSentences,
                 autoPlayPronunciation = settings.autoPlayPronunciation,
                 emptyMessage = if (card == null) "这个队列里的单词已不存在，请重新开始。" else null,
@@ -849,6 +853,18 @@ class StudyViewModel(private val container: AppContainer) : ViewModel() {
     fun reveal() {
         if (_state.value.saving) return
         _state.update { it.copy(revealed = true) }
+    }
+
+    /**
+     * Turns the card back to the prompt.
+     *
+     * Used by the swipe gesture so the card behaves like a two-sided flash card: swiping one way
+     * pages to the meaning, the other way pages back. Answering still collides with the next card's
+     * collapsed state, so the next card can never inherit this reveal.
+     */
+    fun hideReveal() {
+        if (_state.value.saving) return
+        _state.update { it.copy(revealed = false) }
     }
 
     /**
@@ -1639,6 +1655,9 @@ class ProfileViewModel(private val container: AppContainer) : ViewModel() {
 
     fun setDailyReviewLimit(value: Int) = launchSettings { setDailyReviewLimit(value) }
 
+    /** Limits the daily queue to one pack of the active plan; empty means "全部词库". */
+    fun setDailyStudyPackId(packId: String) = launchSettings { setDailyStudyPackId(packId) }
+
     fun setReminder(enabled: Boolean, hour: Int, minute: Int) = launchSettings {
         setReminder(enabled, hour, minute)
         val settings = current()
@@ -1651,6 +1670,8 @@ class ProfileViewModel(private val container: AppContainer) : ViewModel() {
     fun setShuffleWords(enabled: Boolean) = launchSettings { setShuffleWords(enabled) }
 
     fun setSpeechRateMode(mode: SpeechRateMode) = launchSettings { setSpeechRateMode(mode) }
+
+    fun setSpeechEngineMode(mode: SpeechEngineMode) = launchSettings { setSpeechEngineMode(mode) }
 
     fun setThemeMode(mode: ThemeMode) = launchSettings { setThemeMode(mode) }
 
@@ -2253,9 +2274,17 @@ data class WrittenWordEntry(
 
 @Immutable
 data class WriteWordUiState(
-    /** Plan the words go into; each plan owns one「手写词」pack (schema v4). */
+    /** Plan the word packs belong to; the plan owns packs, and a pack owns words (schema v4). */
     val planId: String = "",
     val planName: String = "",
+    /** Packs in the active plan, shown as the target picker. */
+    val packs: List<WordPackEntity> = emptyList(),
+    /**
+     * Pack the next word is written into. Empty means the plan's「手写词」pack, which is created
+     * lazily on the first write; a non-empty id is a pack the learner picked explicitly.
+     */
+    val targetPackId: String = "",
+    val targetPackName: String = PlanIds.WRITE_PACK_NAME,
     val wordInput: String = "",
     val noteInput: String = "",
     val saving: Boolean = false,
@@ -2287,8 +2316,9 @@ data class WriteWordUiState(
  * the card is studied. A word left without a note is completed later by the gateway, exactly like
  * an imported word.
  *
- * The plan scope follows `effectivePlanId`: a learner who switched plans types into the
- *「手写词」pack of the plan they are currently studying.
+ * The plan scope follows `effectivePlanId`, but the write target is a **pack**, not the plan:
+ * the learner can keep the default「手写词」pack or pick any pack of the plan, and the words land
+ * in that pack (the plan only owns the pack).
  */
 class WriteWordViewModel(
     private val container: AppContainer,
@@ -2301,6 +2331,8 @@ class WriteWordViewModel(
     private data class WriteWordInput(
         val word: String = "",
         val note: String = "",
+        /** Empty = the lazy「手写词」pack; otherwise a pack id from [packs]. */
+        val targetPackId: String = "",
         val saving: Boolean = false,
         val written: List<WrittenWordEntry> = emptyList(),
         val message: String? = null,
@@ -2321,11 +2353,20 @@ class WriteWordViewModel(
     val state: StateFlow<WriteWordUiState> = combine(
         container.settingsRepository.settings,
         container.wordRepository.observePlans(),
+        container.settingsRepository.settings.flatMapLatest { settings ->
+            container.wordRepository.observePacks(settings.effectivePlanId)
+        },
         _input,
-    ) { settings, plans, input ->
+    ) { settings, plans, packs, input ->
+        // A pack id is only meaningful inside its plan: after a plan switch, fall back to the
+        // default「手写词」pack instead of writing into a pack this plan cannot see.
+        val selectedPackId = input.targetPackId.takeIf { id -> packs.any { it.id == id } }.orEmpty()
         WriteWordUiState(
             planId = settings.effectivePlanId,
             planName = plans.firstOrNull { it.id == settings.effectivePlanId }?.name.orEmpty(),
+            packs = packs,
+            targetPackId = selectedPackId,
+            targetPackName = packs.firstOrNull { it.id == selectedPackId }?.name ?: PlanIds.WRITE_PACK_NAME,
             wordInput = input.word,
             noteInput = input.note,
             saving = input.saving,
@@ -2343,6 +2384,9 @@ class WriteWordViewModel(
 
     fun onNoteChanged(value: String) = _input.update { it.copy(note = value) }
 
+    /** Picks the target pack; empty goes back to the lazy「手写词」pack. */
+    fun selectPack(packId: String) = _input.update { it.copy(targetPackId = packId) }
+
     /** Writes the current word + note, then clears the fields so the next word can be typed. */
     fun write() {
         val current = _input.value
@@ -2357,19 +2401,24 @@ class WriteWordViewModel(
         _input.update { it.copy(saving = true, message = null, messageIsError = false) }
         viewModelScope.launch {
             val planId = container.settingsRepository.current().effectivePlanId
-            // Every plan owns exactly one「手写词」pack; create it on the first write so the
-            // learner never has to pick a pack just to type a word.
-            val packId = when (
-                val ensured = container.wordRepository.ensureWritePack(planId, container.timeProvider.nowMillis())
-            ) {
-                is Outcome.Failure -> {
-                    _input.update {
-                        it.copy(saving = false, message = ensured.error.message, messageIsError = true)
+            // A pack id is only meaningful inside its plan: after a plan switch, fall back to the
+            // default「手写词」pack instead of writing into a pack this plan cannot see.
+            val selectedPackId = state.value.targetPackId
+            val packId = if (selectedPackId.isNotEmpty()) {
+                selectedPackId
+            } else {
+                when (
+                    val ensured = container.wordRepository.ensureWritePack(planId, container.timeProvider.nowMillis())
+                ) {
+                    is Outcome.Failure -> {
+                        _input.update {
+                            it.copy(saving = false, message = ensured.error.message, messageIsError = true)
+                        }
+                        return@launch
                     }
-                    return@launch
-                }
 
-                is Outcome.Success -> ensured.value
+                    is Outcome.Success -> ensured.value
+                }
             }
             when (
                 val result = container.wordRepository.addWordWithNote(

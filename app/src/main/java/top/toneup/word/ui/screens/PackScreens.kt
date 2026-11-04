@@ -60,6 +60,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import top.toneup.word.AppContainer
 import top.toneup.word.data.local.entity.PlanEntity
 import top.toneup.word.data.local.entity.WordPackEntity
+import top.toneup.word.data.settings.PlanIds
 import top.toneup.word.domain.model.CetLevel
 import top.toneup.word.ui.ImportWordsViewModel
 import top.toneup.word.ui.PlanDetailViewModel
@@ -72,6 +73,7 @@ import top.toneup.word.ui.components.AccentPanel
 import top.toneup.word.ui.components.AppCard
 import top.toneup.word.ui.components.ConfirmDialog
 import top.toneup.word.ui.components.EmptyState
+import top.toneup.word.ui.components.FilterChipGroup
 import top.toneup.word.ui.components.PrimaryButton
 import top.toneup.word.ui.components.ReviewBadge
 import top.toneup.word.ui.components.SecondaryButton
@@ -975,12 +977,44 @@ fun WriteWordScreen(
             item(key = "write_pack_hint") {
                 AccentPanel {
                     Text(
-                        text = "写入到当前计划：${
-                            state.planName.ifBlank { state.planId }.ifBlank { "（未选择）" }
-                        }",
+                        // Words live in packs, packs live in plans: name the pack first and the
+                        // plan only as its owner, so "写词库" never reads as "写入计划".
+                        text = "写入到词库：${state.targetPackName}" +
+                            state.planName.ifBlank { state.planId }.takeIf { it.isNotBlank() }
+                                ?.let { "（所属计划：$it）" }
+                                .orEmpty(),
                         style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier.testTag("write_pack_hint"),
                     )
+                }
+            }
+
+            item(key = "write_pack_picker") {
+                AppCard(modifier = Modifier.fillMaxWidth()) {
+                    Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                        Text(
+                            text = "目标词库",
+                            style = MaterialTheme.typography.titleSmall,
+                        )
+                        FilterChipGroup(
+                            options = listOf("") + state.packs.map { it.id },
+                            selected = state.targetPackId,
+                            onSelect = viewModel::selectPack,
+                            label = { packId ->
+                                if (packId.isEmpty()) {
+                                    "${PlanIds.WRITE_PACK_NAME}（默认）"
+                                } else {
+                                    state.packs.firstOrNull { it.id == packId }?.name ?: packId
+                                }
+                            },
+                            modifier = Modifier.testTag("write_pack_picker"),
+                        )
+                        Text(
+                            text = "不选则写入计划自带的「${PlanIds.WRITE_PACK_NAME}」，也可以写进任意已有词库。",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
             }
 

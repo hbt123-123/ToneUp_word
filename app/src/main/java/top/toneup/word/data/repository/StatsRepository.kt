@@ -51,7 +51,7 @@ class DefaultStatsRepository(
             db.reviewEventDao().observeTrendsSince(planId, yearAgoKey),
             db.progressDao().observeStatusCounts(planId),
             db.wordDao().observePlanWordCount(planId),
-            db.progressDao().observeDueCount(planId, now),
+            db.progressDao().observeDueCount(planId, null, now),
         ) { summaries, trends, statuses, wordCount, dueCount ->
             CoreStats(
                 summaries = summaries.map { it.toInput() },
@@ -100,7 +100,7 @@ class DefaultStatsRepository(
                 top.toneup.word.data.mapper.masteryStatusFromId(it.status) to it.count
             },
             wordCount = db.wordDao().planWordCount(planId),
-            dueCount = db.progressDao().dueCount(planId, now),
+            dueCount = db.progressDao().dueCount(planId, null, now),
         )
         val partial = Partial(
             core = core,

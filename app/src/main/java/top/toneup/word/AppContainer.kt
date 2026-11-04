@@ -18,6 +18,8 @@ import top.toneup.word.data.repository.InsightRepository
 import top.toneup.word.data.repository.MeaningSyncRepository
 import top.toneup.word.data.speech.SpeechDiagnostic
 import top.toneup.word.data.speech.SpeechDiagnosticsStore
+import top.toneup.word.data.speech.EdgeTts
+import top.toneup.word.data.speech.EdgeTtsPlayer
 import top.toneup.word.data.speech.SpeechService
 import top.toneup.word.data.speech.SystemTtsSpeechService
 import top.toneup.word.data.repository.AppUpdateFactory
@@ -157,6 +159,14 @@ class AppContainer(
         context = context,
         onDiagnostic = speechDiagnostics::record,
     )
+
+    /**
+     * The opt-in online reading engine (Edge read-aloud voices).
+     *
+     * Shared like [speechService] so a new tap cancels the previous stream. Lazy so devices that
+     * never select it never build an HTTP stack; failures always fall back to system TTS.
+     */
+    val edgeTts: EdgeTts by lazy { EdgeTtsPlayer() }
 
     // --- Gateway 释义补全 (M4) --------------------------------------------------------------
 

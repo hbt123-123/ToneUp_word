@@ -1,6 +1,7 @@
 package top.toneup.word.data.settings
 
 import top.toneup.word.data.gateway.GatewayDefaults
+import top.toneup.word.data.speech.SpeechEngineMode
 import top.toneup.word.data.speech.SpeechRateMode
 import top.toneup.word.domain.model.CetLevel
 
@@ -36,6 +37,13 @@ data class UserSettings(
     val activePlanId: String = "",
     val dailyNewWordGoal: Int = DEFAULT_NEW_WORDS,
     val dailyReviewLimit: Int = DEFAULT_REVIEW_LIMIT,
+    /**
+     * Optional pack the daily queue is limited to (`""` = every pack in the active plan).
+     *
+     * This is a *study scope*, not a plan: the plan still owns progress, statistics and mistakes;
+     * only building the daily queue and its counters narrows to this pack.
+     */
+    val dailyStudyPackId: String = "",
     val reminderEnabled: Boolean = false,
     val reminderHour: Int = 20,
     val reminderMinute: Int = 0,
@@ -57,6 +65,8 @@ data class UserSettings(
     val readExampleSentences: Boolean = false,
     /** How fast to read; SYSTEM means "use the operating system's setting". */
     val speechRateMode: SpeechRateMode = SpeechRateMode.SYSTEM,
+    /** Which engine reads aloud; Edge is online and falls back to the system engine on failure. */
+    val speechEngineMode: SpeechEngineMode = SpeechEngineMode.SYSTEM,
     val examQuestionCount: Int = 20,
     val examDurationMinutes: Int = 15,
     /** Day key (`yyyy-MM-dd`) of the last motivational line shown on the home screen. */

@@ -1,6 +1,8 @@
 package top.toneup.word.ui.speech
 
+import top.toneup.word.data.speech.EdgeTts
 import top.toneup.word.data.speech.SpeechContent
+import top.toneup.word.data.speech.SpeechEngineMode
 import top.toneup.word.data.speech.SpeechRateMode
 import top.toneup.word.data.speech.SpeechRecovery
 import top.toneup.word.data.speech.SpeechRequest
@@ -79,6 +81,24 @@ class SpeechControllerTest {
         rateMode = SpeechRateMode.SYSTEM,
     )
 
+    /** A scriptable online engine: reports success or failure without touching the network. */
+    private class FakeEdge(private val succeeds: Boolean) : EdgeTts {
+        var speakCount = 0
+            private set
+        var stopCount = 0
+            private set
+
+        override suspend fun speak(request: SpeechRequest, onStart: () -> Unit): Boolean {
+            speakCount++
+            if (succeeds) onStart()
+            return succeeds
+        }
+
+        override fun stop() {
+            stopCount++
+        }
+    }
+
     private val ready = SpeechStatus.Ready(
         engine = "com.example.tts",
         language = "en",
@@ -101,6 +121,63 @@ class SpeechControllerTest {
         assertThat(phases).containsExactly(SpeechPhase.IDLE)
         assertThat(service.speakCount).isEqualTo(1)
         assertThat(controller.state.value.message).isNull()
+    }
+
+    @Test
+    fun `edge mode reads online without touching system tts`() = runTest {
+        val service = FakeSpeechService(ready)
+        val edge = FakeEdge(succeeds = true)
+        val controller = SpeechController(
+            service,
+            this,
+            engineMode = { SpeechEngineMode.EDGE },
+            edgeTts = edge,
+        )
+
+        controller.speak(request())
+        advanceUntilIdle()
+
+        assertThat(edge.speakCount).isEqualTo(1)
+        assertThat(service.speakCount).isEqualTo(0)
+        assertThat(controller.state.value.phase).isEqualTo(SpeechPhase.IDLE)
+    }
+
+    @Test
+    fun `an edge failure falls back to system tts`() = runTest {
+        val service = FakeSpeechService(ready)
+        val edge = FakeEdge(succeeds = false)
+        val controller = SpeechController(
+            service,
+            this,
+            engineMode = { SpeechEngineMode.EDGE },
+            edgeTts = edge,
+        )
+
+        controller.speak(request())
+        advanceUntilIdle()
+
+        assertThat(service.speakCount).isEqualTo(1)
+        assertThat(controller.state.value.phase).isEqualTo(SpeechPhase.IDLE)
+        // The learner never sees a failure caused only by the network.
+        assertThat(controller.state.value.message).isNull()
+    }
+
+    @Test
+    fun `system mode never calls the online engine`() = runTest {
+        val service = FakeSpeechService(ready)
+        val edge = FakeEdge(succeeds = true)
+        val controller = SpeechController(
+            service,
+            this,
+            engineMode = { SpeechEngineMode.SYSTEM },
+            edgeTts = edge,
+        )
+
+        controller.speak(request())
+        advanceUntilIdle()
+
+        assertThat(edge.speakCount).isEqualTo(0)
+        assertThat(service.speakCount).isEqualTo(1)
     }
 
     @Test

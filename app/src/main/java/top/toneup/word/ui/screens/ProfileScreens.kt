@@ -1,6 +1,7 @@
 package top.toneup.word.ui.screens
 
 import androidx.compose.ui.platform.LocalContext
+import top.toneup.word.data.speech.SpeechEngineMode
 import top.toneup.word.data.speech.SpeechRateMode
 import top.toneup.word.data.speech.SystemTtsSpeechService
 import top.toneup.word.ui.components.SpeechMessage
@@ -311,8 +312,14 @@ fun SettingsScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val settings = state.settings
     val context = LocalContext.current
-    // The sample-reading button speaks through the shared engine, using the live rate setting.
-    val speech = rememberSpeechActions(container.speechService) { state.settings.speechRateMode }
+    // The sample-reading button speaks through the shared engine, using the live rate setting;
+    // engine mode is read through the same lambda so switching to Edge takes effect immediately.
+    val speech = rememberSpeechActions(
+        service = container.speechService,
+        rateModeProvider = { state.settings.speechRateMode },
+        engineModeProvider = { state.settings.speechEngineMode },
+        edgeTts = container.edgeTts,
+    )
     val speechState by speech.state.collectAsStateWithLifecycle()
 
     var pendingReset by remember { mutableStateOf(false) }
@@ -386,6 +393,35 @@ fun SettingsScreen(
                         onIncrease = { viewModel.setDailyReviewLimit(settings.dailyReviewLimit + 10) },
                         testTagPrefix = "settings_review_limit",
                     )
+                    Text(
+                        text = "每天学习哪个词库",
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                    // The daily queue may be narrowed to one pack. The plan still owns progress,
+                    // statistics and mistakes; this only changes which words enter today's queue.
+                    // A pack deleted elsewhere leaves a dangling id: show「全部词库」, which is also
+                    // how the queue behaves in that case.
+                    FilterChipGroup(
+                        options = listOf("") + state.packs.map { it.id },
+                        selected = settings.dailyStudyPackId
+                            .takeIf { id -> state.packs.any { it.id == id } }
+                            .orEmpty(),
+                        onSelect = viewModel::setDailyStudyPackId,
+                        label = { packId ->
+                            if (packId.isEmpty()) {
+                                "全部词库"
+                            } else {
+                                state.packs.firstOrNull { it.id == packId }?.name ?: packId
+                            }
+                        },
+                        modifier = Modifier.testTag("settings_daily_pack"),
+                    )
+                    Text(
+                        text = "「全部词库」按整个计划排课；选中某个词库后，每日新词与复习都只从该词库取词。" +
+                            "切换计划会自动回到「全部词库」。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = AppTheme.colors.mutedText,
+                    )
                 }
             }
 
@@ -455,7 +491,7 @@ fun SettingsScreen(
 
             AppCard {
                 Column(verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
-                    SectionHeader(title = "朗读（系统语音）")
+                    SectionHeader(title = "朗读")
                     SpeechStatusCard(
                         status = state.speechStatus,
                         diagnostics = state.speechDiagnostics,
@@ -469,6 +505,27 @@ fun SettingsScreen(
                         onRetry = speech::retry,
                         onOpenSettings = speech::openSystemSpeechSettings,
                         onInstallVoiceData = speech::installVoiceData,
+                    )
+                    Text(
+                        text = "朗读引擎",
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                    FilterChipGroup(
+                        options = SpeechEngineMode.entries.toList(),
+                        selected = settings.speechEngineMode,
+                        onSelect = viewModel::setSpeechEngineMode,
+                        label = { it.label },
+                        modifier = Modifier.testTag("settings_speech_engine"),
+                    )
+                    Text(
+                        text = if (settings.speechEngineMode == SpeechEngineMode.EDGE) {
+                            "Edge 在线语音更自然，但需要联网：只发送当前要朗读的单词/释义/例句，不发送学习记录。" +
+                                "断网、超时或服务不可用时自动改用系统语音。"
+                        } else {
+                            "系统语音完全离线，使用手机自带的文字转语音服务。"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = AppTheme.colors.mutedText,
                     )
                     Text(
                         text = "朗读速度",
@@ -500,8 +557,8 @@ fun SettingsScreen(
                         testTag = "settings_read_examples_switch",
                     )
                     Text(
-                        text = "朗读使用系统自带的文字转语音服务：单词与例句用英语，" +
-                            "「朗读释义」用中文。应用不联网、不下载音频，也不需要额外的权限。" +
+                        text = "系统语音：单词与例句用英语，「朗读释义」用中文；" +
+                            "「跟随系统」时语速与音调由系统的文字转语音设置决定。" +
                             "如果系统没有安装语音引擎或缺少英语语音包，朗读会给出提示并提供设置入口。",
                         style = MaterialTheme.typography.bodySmall,
                         color = AppTheme.colors.mutedText,

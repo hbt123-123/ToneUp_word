@@ -1,7 +1,7 @@
 # data/ — Room + Repository + 数据适配层
 
 ## OVERVIEW
-单库 `toneup_word.db` v4（12 表 1 视图 10 DAO）；Repository 是唯一事务边界与失败收敛点。学习范围自 v4 起按 **`planId`**（计划内所有词库合并、视图按 `(plan_id, normalized_word)` 去重），`packId` 只用于词库管理与导入这类 pack 维度操作。`data/gateway/` 与 `data/update/` 是**全 app 仅有的两个联网点**（网关释义补全 / 应用内版本更新）。
+单库 `toneup_word.db` v4（12 表 1 视图 10 DAO）；Repository 是唯一事务边界与失败收敛点。学习范围自 v4 起按 **`planId`**（计划内所有词库合并、视图按 `(plan_id, normalized_word)` 去重），`packId` 只用于词库管理与导入这类 pack 维度操作。联网点共三处：`data/gateway/`（网关释义补全）、`data/update/`（应用内版本更新）与 `data/speech/EdgeTtsPlayer.kt`（可选 Edge 在线朗读，只发送朗读文本、失败回退系统 TTS）。
 
 ## STRUCTURE
 ```
@@ -14,7 +14,7 @@ data/
 ├── update/      UpdateManifestSource(固定 version.json + 镜像回退) + AppUpdateModels/Defaults/Store + ApkDownloader(断点续传 + SHA-256) + ApkInstaller（联网点 2，应用内版本更新）
 ├── seed/        BuiltInPackLoader(manifest), BuiltInWordPacks(CC0 回退), SeedWord
 ├── settings/    DataStore "toneup_settings"（IOException 才降级空偏好）+ PackIds(内置/保留包 id + level↔pack 映射) + PlanIds(默认计划/手写词库 id/计划→等级)
-├── speech/      SpeechService 接口, SystemTtsSpeechService(单实例), AudioUrlPlayer(在线发音失败回落 TTS), SpeechDiagnosticsStore(仅内存计数)
+├── speech/      SpeechService 接口, SystemTtsSpeechService(单实例), AudioUrlPlayer(在线发音失败回落 TTS), EdgeTtsProtocol/EdgeTtsPlayer(可选 Edge 在线朗读，失败回落系统 TTS), SpeechDiagnosticsStore(仅内存计数)
 ├── io/          DocumentIo（SAF，大小上限，无存储权限）
 ├── mapper/      Mappers.kt 单文件显式枚举映射
 └── motivation/  StartupTipSource（ASSET_PATH="motivation/tips.json"）

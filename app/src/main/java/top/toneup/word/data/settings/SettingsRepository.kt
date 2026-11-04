@@ -9,6 +9,7 @@ import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import top.toneup.word.data.speech.SpeechEngineMode
 import top.toneup.word.data.speech.SpeechRateMode
 import top.toneup.word.domain.model.CetLevel
 import kotlinx.coroutines.flow.Flow
@@ -42,6 +43,13 @@ interface SettingsRepository {
     suspend fun setActivePlanId(planId: String)
     suspend fun setDailyNewWordGoal(count: Int)
     suspend fun setDailyReviewLimit(limit: Int)
+
+    /**
+     * Limits the daily study queue to one pack (`""` = every pack in the active plan).
+     *
+     * Switching plans clears it, because a pack id is only meaningful inside its own plan.
+     */
+    suspend fun setDailyStudyPackId(packId: String)
     suspend fun setReminder(enabled: Boolean, hour: Int, minute: Int)
     suspend fun setThemeMode(mode: ThemeMode)
     suspend fun setDynamicColor(enabled: Boolean)
@@ -56,6 +64,9 @@ interface SettingsRepository {
 
     /** How fast to read; [SpeechRateMode.SYSTEM] defers to the operating-system setting. */
     suspend fun setSpeechRateMode(mode: SpeechRateMode)
+
+    /** Which engine reads aloud: the system engine or the online Edge voices. */
+    suspend fun setSpeechEngineMode(mode: SpeechEngineMode)
 
     /** Records that today's motivational line has been shown, so it appears once per day. */
     suspend fun setLastMotivationDayKey(dayKey: String)
@@ -125,6 +136,9 @@ class DataStoreSettingsRepository(private val context: Context) : SettingsReposi
             // Choosing a level re-derives the default plan: a stale explicit plan id must not
             // silently override the learner's new choice (D1).
             prefs.remove(Keys.ACTIVE_PLAN_ID)
+            // A pack id is only meaningful inside its plan; the daily scope must not survive
+            // the plan switch and silently empty the queue.
+            prefs.remove(Keys.DAILY_STUDY_PACK)
         }
     }
 
@@ -132,6 +146,7 @@ class DataStoreSettingsRepository(private val context: Context) : SettingsReposi
         context.settingsDataStore.edit { prefs ->
             if (planId.isEmpty()) prefs.remove(Keys.ACTIVE_PLAN_ID)
             else prefs[Keys.ACTIVE_PLAN_ID] = planId
+            prefs.remove(Keys.DAILY_STUDY_PACK)
         }
     }
 
@@ -141,6 +156,13 @@ class DataStoreSettingsRepository(private val context: Context) : SettingsReposi
 
     override suspend fun setDailyReviewLimit(limit: Int) {
         context.settingsDataStore.edit { it[Keys.DAILY_REVIEW_LIMIT] = UserSettings.clampReviewLimit(limit) }
+    }
+
+    override suspend fun setDailyStudyPackId(packId: String) {
+        context.settingsDataStore.edit { prefs ->
+            if (packId.isEmpty()) prefs.remove(Keys.DAILY_STUDY_PACK)
+            else prefs[Keys.DAILY_STUDY_PACK] = packId
+        }
     }
 
     override suspend fun setReminder(enabled: Boolean, hour: Int, minute: Int) {
@@ -177,6 +199,10 @@ class DataStoreSettingsRepository(private val context: Context) : SettingsReposi
 
     override suspend fun setSpeechRateMode(mode: SpeechRateMode) {
         context.settingsDataStore.edit { it[Keys.SPEECH_RATE_MODE] = mode.id }
+    }
+
+    override suspend fun setSpeechEngineMode(mode: SpeechEngineMode) {
+        context.settingsDataStore.edit { it[Keys.SPEECH_ENGINE_MODE] = mode.id }
     }
 
     override suspend fun setLastMotivationDayKey(dayKey: String) {
@@ -282,6 +308,7 @@ class DataStoreSettingsRepository(private val context: Context) : SettingsReposi
             dailyReviewLimit = UserSettings.clampReviewLimit(
                 this[Keys.DAILY_REVIEW_LIMIT] ?: defaults.dailyReviewLimit,
             ),
+            dailyStudyPackId = this[Keys.DAILY_STUDY_PACK] ?: defaults.dailyStudyPackId,
             reminderEnabled = this[Keys.REMINDER_ENABLED] ?: defaults.reminderEnabled,
             reminderHour = (this[Keys.REMINDER_HOUR] ?: defaults.reminderHour).coerceIn(0, 23),
             reminderMinute = (this[Keys.REMINDER_MINUTE] ?: defaults.reminderMinute).coerceIn(0, 59),
@@ -293,6 +320,9 @@ class DataStoreSettingsRepository(private val context: Context) : SettingsReposi
             readExampleSentences = this[Keys.READ_EXAMPLES] ?: defaults.readExampleSentences,
             speechRateMode = SpeechRateMode.fromId(
                 this[Keys.SPEECH_RATE_MODE] ?: defaults.speechRateMode.id,
+            ),
+            speechEngineMode = SpeechEngineMode.fromId(
+                this[Keys.SPEECH_ENGINE_MODE] ?: defaults.speechEngineMode.id,
             ),
             lastMotivationDayKey = this[Keys.LAST_MOTIVATION_DAY],
             lastStartupTipId = this[Keys.LAST_STARTUP_TIP],
@@ -324,6 +354,9 @@ class DataStoreSettingsRepository(private val context: Context) : SettingsReposi
         val ACTIVE_PLAN_ID = stringPreferencesKey("active_plan_id")
         val DAILY_NEW_WORDS = intPreferencesKey("daily_new_words")
         val DAILY_REVIEW_LIMIT = intPreferencesKey("daily_review_limit")
+
+        /** Optional daily study scope; absent → the whole active plan. */
+        val DAILY_STUDY_PACK = stringPreferencesKey("daily_study_pack_id")
         val REMINDER_ENABLED = booleanPreferencesKey("reminder_enabled")
         val REMINDER_HOUR = intPreferencesKey("reminder_hour")
         val REMINDER_MINUTE = intPreferencesKey("reminder_minute")
@@ -339,6 +372,7 @@ class DataStoreSettingsRepository(private val context: Context) : SettingsReposi
         val SHUFFLE_WORDS = booleanPreferencesKey("shuffle_words")
         val READ_EXAMPLES = booleanPreferencesKey("read_example_sentences")
         val SPEECH_RATE_MODE = stringPreferencesKey("speech_rate_mode")
+        val SPEECH_ENGINE_MODE = stringPreferencesKey("speech_engine_mode")
         val LAST_MOTIVATION_DAY = stringPreferencesKey("last_motivation_day")
         val LAST_STARTUP_TIP = stringPreferencesKey("last_startup_tip_id")
         val CELEBRATED_STREAK = intPreferencesKey("celebrated_streak")

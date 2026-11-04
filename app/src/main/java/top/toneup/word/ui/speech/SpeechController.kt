@@ -9,7 +9,9 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import top.toneup.word.data.speech.AudioPlayback
 import top.toneup.word.data.speech.AudioUrlPlayer
+import top.toneup.word.data.speech.EdgeTts
 import top.toneup.word.data.speech.SpeechContent
+import top.toneup.word.data.speech.SpeechEngineMode
 import top.toneup.word.data.speech.SpeechRecovery
 import top.toneup.word.data.speech.SpeechRequest
 import top.toneup.word.data.speech.SpeechService
@@ -66,6 +68,8 @@ class SpeechController(
     private val scope: CoroutineScope,
     private val timeoutMillis: Long = INIT_TIMEOUT_MILLIS,
     private val audio: AudioPlayback = AudioUrlPlayer(),
+    private val engineMode: () -> SpeechEngineMode = { SpeechEngineMode.SYSTEM },
+    private val edgeTts: EdgeTts? = null,
 ) {
 
     private val _state = MutableStateFlow(SpeechUiState())
@@ -92,6 +96,7 @@ class SpeechController(
         cancelWatchdog()
         service.stop()
         audio.stop() // streaming audio and TTS are mutually exclusive, at every entry point
+        edgeTts?.stop()
         lastRequest = request
         val requestEpoch = ++epoch
         _state.value = SpeechUiState(phase = SpeechPhase.LOADING, content = request.content)
@@ -99,6 +104,14 @@ class SpeechController(
         job = scope.launch {
             if (playOwnRecording(request)) {
                 _state.value = SpeechUiState(phase = SpeechPhase.IDLE, content = request.content)
+                return@launch
+            }
+            // The online engine is an opt-in upgrade, not a requirement: when it cannot deliver
+            // audio (offline, timeout, dead service) the request falls through to system TTS.
+            if (playWithEdge(request, requestEpoch)) {
+                if (requestEpoch == epoch) {
+                    _state.value = SpeechUiState(phase = SpeechPhase.IDLE, content = request.content)
+                }
                 return@launch
             }
             // Nothing playable (or the stream failed): silently carry on with system TTS. The
@@ -181,6 +194,28 @@ class SpeechController(
         }
     }
 
+    /**
+     * Reads [request] through the opt-in online engine.
+     *
+     * Returns `false` for "not selected, unavailable, or delivery failed" so the caller can
+     * continue with system TTS; the learner never sees a failure caused *only* by the network.
+     */
+    private suspend fun playWithEdge(request: SpeechRequest, requestEpoch: Int): Boolean {
+        if (engineMode() != SpeechEngineMode.EDGE) return false
+        val engine = edgeTts ?: return false
+        return try {
+            engine.speak(request) {
+                if (requestEpoch == epoch) {
+                    _state.value = SpeechUiState(phase = SpeechPhase.PLAYING, content = request.content)
+                }
+            }
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (failure: Exception) {
+            false
+        }
+    }
+
     /** Re-runs the last request; used by the "重试" action in the failed state. */
     fun retry() {
         lastRequest?.let { request ->
@@ -195,6 +230,7 @@ class SpeechController(
         cancelWatchdog()
         service.stop()
         audio.stop()
+        edgeTts?.stop()
         _state.value = SpeechUiState(phase = SpeechPhase.IDLE, content = _state.value.content)
     }
 
@@ -264,11 +300,22 @@ class SpeechController(
  * but never shuts down the engine behind other screens' backs.
  */
 @Composable
-fun rememberSpeechController(service: SpeechService): SpeechController {
+fun rememberSpeechController(
+    service: SpeechService,
+    engineMode: () -> SpeechEngineMode = { SpeechEngineMode.SYSTEM },
+    edgeTts: EdgeTts? = null,
+): SpeechController {
     val scope = rememberCoroutineScope()
     val currentService by rememberUpdatedState(service)
-    return androidx.compose.runtime.remember(currentService, scope) {
-        SpeechController(currentService, scope)
+    val currentEngineMode by rememberUpdatedState(engineMode)
+    val currentEdgeTts by rememberUpdatedState(edgeTts)
+    return androidx.compose.runtime.remember(currentService, scope, currentEdgeTts) {
+        SpeechController(
+            currentService,
+            scope,
+            engineMode = { currentEngineMode() },
+            edgeTts = currentEdgeTts,
+        )
     }
 }
 

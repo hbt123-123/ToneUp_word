@@ -25,6 +25,23 @@ enum class SpeechRateMode(val id: String, val label: String, val factor: Float?)
     }
 }
 
+/**
+ * Which engine reads the text.
+ *
+ * [SYSTEM] delegates to the platform `TextToSpeech` engine (offline, voice packs supplied by the
+ * OS). [EDGE] uses Microsoft Edge's online read-aloud voices, which sound more natural but need
+ * a network connection; any failure falls back to [SYSTEM] silently, so offline devices keep
+ * working exactly as before.
+ */
+enum class SpeechEngineMode(val id: String, val label: String) {
+    SYSTEM("SYSTEM", "系统语音"),
+    EDGE("EDGE", "Edge 在线语音");
+
+    companion object {
+        fun fromId(id: String?): SpeechEngineMode = entries.firstOrNull { it.id == id } ?: SYSTEM
+    }
+}
+
 /** Which text is being read; used for logging/diagnostics and to label the button. */
 enum class SpeechContent(val label: String) {
     WORD("单词"),

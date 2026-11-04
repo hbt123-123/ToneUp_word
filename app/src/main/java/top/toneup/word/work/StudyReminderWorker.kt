@@ -57,7 +57,15 @@ class StudyReminderWorker(
                 val now = System.currentTimeMillis()
                 val dayKey = StudyDay.dayKey(now, ZoneId.systemDefault())
                 val summary = database.dailySummaryDao().get(dayKey, settings.effectivePlanId)
-                val due = database.progressDao().dueCount(settings.effectivePlanId, now)
+                // Respect the daily pack scope, otherwise the notification promises words the
+                // study queue will not show; a dangling id falls back to the whole plan.
+                val requestedPackId = settings.dailyStudyPackId.ifEmpty { null }
+                val packId = requestedPackId?.let { id ->
+                    database.wordDao().packById(id)
+                        ?.takeIf { pack -> pack.planId == settings.effectivePlanId }
+                        ?.id
+                }
+                val due = database.progressDao().dueCount(settings.effectivePlanId, packId, now)
                 postNotification(
                     ReminderContent(
                         studiedToday = summary?.studiedWords ?: 0,

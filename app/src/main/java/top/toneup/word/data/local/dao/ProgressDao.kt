@@ -45,13 +45,22 @@ interface ProgressDao {
     // --- Queues --------------------------------------------------------------------------
 
     /**
-     * Words that are due now. Repeatedly failed words come first so "错题和长期未巩固词"
-     * are met before ordinary due words; `due_at` keeps the rest in schedule order.
+     * Words that are due now inside [packId] (or the whole plan when it is `null`). Repeatedly
+     * failed words come first so "错题和长期未巩固词" are met before ordinary due words;
+     * `due_at` keeps the rest in schedule order.
      */
     @Query(
         """
         SELECT * FROM word_with_progress
         WHERE plan_id = :planId
+          AND (:packId IS NULL OR word_id IN (
+              SELECT w.id FROM word w
+              WHERE w.plan_id = :planId
+                AND w.normalized_word IN (
+                    SELECT w2.normalized_word FROM word w2
+                    WHERE w2.pack_id = :packId AND w2.plan_id = :planId
+                )
+          ))
           AND status IS NOT NULL
           AND status != 'NEW'
           AND due_at IS NOT NULL
@@ -60,7 +69,12 @@ interface ProgressDao {
         LIMIT :limit
         """,
     )
-    suspend fun dueWords(planId: String, now: Long, limit: Int): List<WordWithProgressView>
+    suspend fun dueWords(
+        planId: String,
+        packId: String?,
+        now: Long,
+        limit: Int,
+    ): List<WordWithProgressView>
 
     /**
      * Words that are not due yet but are still fragile: repeatedly answered wrong or sitting
@@ -71,6 +85,14 @@ interface ProgressDao {
         """
         SELECT * FROM word_with_progress
         WHERE plan_id = :planId
+          AND (:packId IS NULL OR word_id IN (
+              SELECT w.id FROM word w
+              WHERE w.plan_id = :planId
+                AND w.normalized_word IN (
+                    SELECT w2.normalized_word FROM word w2
+                    WHERE w2.pack_id = :packId AND w2.plan_id = :planId
+                )
+          ))
           AND status IN ('RELEARNING', 'LEARNING')
           AND (wrong_count >= 2 OR status = 'RELEARNING')
           AND (due_at IS NULL OR due_at > :now)
@@ -78,18 +100,32 @@ interface ProgressDao {
         LIMIT :limit
         """,
     )
-    suspend fun fragileWords(planId: String, now: Long, limit: Int): List<WordWithProgressView>
+    suspend fun fragileWords(
+        planId: String,
+        packId: String?,
+        now: Long,
+        limit: Int,
+    ): List<WordWithProgressView>
 
     /** Words never studied yet, oldest row id first (stable order, reproducible tests). */
     @Query(
         """
         SELECT * FROM word_with_progress
-        WHERE plan_id = :planId AND status IS NULL
+        WHERE plan_id = :planId
+          AND (:packId IS NULL OR word_id IN (
+              SELECT w.id FROM word w
+              WHERE w.plan_id = :planId
+                AND w.normalized_word IN (
+                    SELECT w2.normalized_word FROM word w2
+                    WHERE w2.pack_id = :packId AND w2.plan_id = :planId
+                )
+          ))
+          AND status IS NULL
         ORDER BY word_id ASC
         LIMIT :limit
         """,
     )
-    suspend fun newWords(planId: String, limit: Int): List<WordWithProgressView>
+    suspend fun newWords(planId: String, packId: String?, limit: Int): List<WordWithProgressView>
 
     /** Words with the most mistakes, regardless of schedule — used by mistake drills. */
     @Query(
@@ -155,23 +191,56 @@ interface ProgressDao {
     @Query(
         """
         SELECT COUNT(*) FROM word_with_progress
-        WHERE plan_id = :planId AND status IS NOT NULL AND status != 'NEW'
+        WHERE plan_id = :planId
+          AND (:packId IS NULL OR word_id IN (
+              SELECT w.id FROM word w
+              WHERE w.plan_id = :planId
+                AND w.normalized_word IN (
+                    SELECT w2.normalized_word FROM word w2
+                    WHERE w2.pack_id = :packId AND w2.plan_id = :planId
+                )
+          ))
+          AND status IS NOT NULL AND status != 'NEW'
           AND (due_at IS NULL OR due_at <= :now)
         """,
     )
-    fun observeDueCount(planId: String, now: Long): Flow<Int>
-
-    @Query("SELECT COUNT(*) FROM word_with_progress WHERE plan_id = :planId AND status IS NULL")
-    fun observeNewCount(planId: String): Flow<Int>
+    fun observeDueCount(planId: String, packId: String?, now: Long): Flow<Int>
 
     @Query(
         """
         SELECT COUNT(*) FROM word_with_progress
-        WHERE plan_id = :planId AND status IS NOT NULL AND status != 'NEW'
+        WHERE plan_id = :planId
+          AND (:packId IS NULL OR word_id IN (
+              SELECT w.id FROM word w
+              WHERE w.plan_id = :planId
+                AND w.normalized_word IN (
+                    SELECT w2.normalized_word FROM word w2
+                    WHERE w2.pack_id = :packId AND w2.plan_id = :planId
+                )
+          ))
+          AND status IS NULL
+        """,
+    )
+    fun observeNewCount(planId: String, packId: String?): Flow<Int>
+
+    /** Non-reactive due count, used by the reminder notification (optionally pack-scoped). */
+    @Query(
+        """
+        SELECT COUNT(*) FROM word_with_progress
+        WHERE plan_id = :planId
+          AND (:packId IS NULL OR word_id IN (
+              SELECT w.id FROM word w
+              WHERE w.plan_id = :planId
+                AND w.normalized_word IN (
+                    SELECT w2.normalized_word FROM word w2
+                    WHERE w2.pack_id = :packId AND w2.plan_id = :planId
+                )
+          ))
+          AND status IS NOT NULL AND status != 'NEW'
           AND (due_at IS NULL OR due_at <= :now)
         """,
     )
-    suspend fun dueCount(planId: String, now: Long): Int
+    suspend fun dueCount(planId: String, packId: String?, now: Long): Int
 
     @Query("SELECT COUNT(*) FROM word_with_progress WHERE plan_id = :planId AND status IS NULL")
     suspend fun newCount(planId: String): Int
@@ -190,10 +259,19 @@ interface ProgressDao {
     @Query(
         """
         SELECT COUNT(*) FROM word_with_progress
-        WHERE plan_id = :planId AND status IN ('LEARNING', 'RELEARNING')
+        WHERE plan_id = :planId
+          AND (:packId IS NULL OR word_id IN (
+              SELECT w.id FROM word w
+              WHERE w.plan_id = :planId
+                AND w.normalized_word IN (
+                    SELECT w2.normalized_word FROM word w2
+                    WHERE w2.pack_id = :packId AND w2.plan_id = :planId
+                )
+          ))
+          AND status IN ('LEARNING', 'RELEARNING')
         """,
     )
-    fun observeFragileCount(planId: String): Flow<Int>
+    fun observeFragileCount(planId: String, packId: String?): Flow<Int>
 
     @Query("SELECT COUNT(*) FROM word_with_progress WHERE plan_id = :planId AND is_favorite = 1")
     fun observeFavoriteCount(planId: String): Flow<Int>

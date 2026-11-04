@@ -26,6 +26,7 @@ import top.toneup.word.domain.study.StudySessionState
 import top.toneup.word.domain.study.TodayPlan
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 
 /** Session status values stored in `study_session.status`. */
@@ -97,37 +98,45 @@ class DefaultStudyRepository(
     override fun observeTodayPlan(settings: UserSettings): Flow<TodayPlan> {
         // D1: the study scope is the active plan; the displayed level follows it.
         val planId = settings.effectivePlanId
+        // Optional daily scope: one pack of the plan, or all of them when unset.
+        val requestedPackId = settings.dailyStudyPackId.ifEmpty { null }
         val level = settings.effectiveLevel
         val now = time.nowMillis()
         val dayKey = StudyDay.dayKey(now, time.zone())
-        return combine(
-            db.progressDao().observeDueCount(planId, now),
-            db.progressDao().observeFragileCount(planId),
-            db.progressDao().observeNewCount(planId),
-            db.mistakeBookDao().observeActiveCount(planId),
-            db.dailySummaryDao().observe(dayKey, planId),
-        ) { due, fragile, newAvailable, mistakes, summary ->
-            TodayPlan(
-                level = level,
-                dueCount = due,
-                fragileCount = fragile,
-                newAvailableCount = newAvailable,
-                activeMistakeCount = mistakes,
-                studiedToday = summary?.studiedWords ?: 0,
-                answeredToday = summary?.reviewEvents ?: 0,
-                correctToday = summary?.masteredCount ?: 0,
-                dailyNewGoal = settings.dailyNewWordGoal,
-                dailyReviewLimit = settings.dailyReviewLimit,
-            )
+        // A pack deleted (or moved to another plan) leaves a dangling id in settings. Falling
+        // back to the whole plan keeps the daily queue usable instead of silently showing zero.
+        return db.wordDao().observePacks(planId).flatMapLatest { packs ->
+            val packId = requestedPackId?.takeIf { id -> packs.any { it.id == id } }
+            combine(
+                db.progressDao().observeDueCount(planId, packId, now),
+                db.progressDao().observeFragileCount(planId, packId),
+                db.progressDao().observeNewCount(planId, packId),
+                db.mistakeBookDao().observeActiveCount(planId),
+                db.dailySummaryDao().observe(dayKey, planId),
+            ) { due, fragile, newAvailable, mistakes, summary ->
+                TodayPlan(
+                    level = level,
+                    dueCount = due,
+                    fragileCount = fragile,
+                    newAvailableCount = newAvailable,
+                    activeMistakeCount = mistakes,
+                    studiedToday = summary?.studiedWords ?: 0,
+                    answeredToday = summary?.reviewEvents ?: 0,
+                    correctToday = summary?.masteredCount ?: 0,
+                    dailyNewGoal = settings.dailyNewWordGoal,
+                    dailyReviewLimit = settings.dailyReviewLimit,
+                )
+            }
         }
     }
 
     override suspend fun buildQueue(settings: UserSettings): List<StudyQueueItem> {
         val planId = settings.effectivePlanId
+        val packId = resolveDailyPackId(settings, planId)
         val now = time.nowMillis()
-        val due = db.progressDao().dueWords(planId, now, settings.dailyReviewLimit).map { it.wordId }
-        val fragile = db.progressDao().fragileWords(planId, now, settings.dailyReviewLimit).map { it.wordId }
-        val newWords = db.progressDao().newWords(planId, settings.dailyNewWordGoal).map { it.wordId }
+        val due = db.progressDao().dueWords(planId, packId, now, settings.dailyReviewLimit).map { it.wordId }
+        val fragile = db.progressDao().fragileWords(planId, packId, now, settings.dailyReviewLimit).map { it.wordId }
+        val newWords = db.progressDao().newWords(planId, packId, settings.dailyNewWordGoal).map { it.wordId }
         return StudyQueueBuilder.build(
             dueWordIds = due,
             fragileWordIds = fragile,
@@ -141,6 +150,19 @@ class DefaultStudyRepository(
 
     override fun buildDrillQueue(wordIds: List<Long>, shuffle: Boolean): List<StudyQueueItem> =
         StudyQueueBuilder.drillQueue(wordIds, shuffle = shuffle)
+
+    /**
+     * The pack the learner picked for today, or `null` for "the whole plan".
+     *
+     * Deleting a pack (or moving it into another plan) does not rewrite settings, so the stored id
+     * can dangle; treating it as "whole plan" keeps the queue from silently going empty.
+     */
+    private suspend fun resolveDailyPackId(settings: UserSettings, planId: String): String? {
+        val requested = settings.dailyStudyPackId
+        if (requested.isEmpty()) return null
+        val pack = db.wordDao().packById(requested) ?: return null
+        return pack.id.takeIf { pack.planId == planId }
+    }
 
     override suspend fun resumeActiveSession(planId: String): StudySessionState? {
         val entity = db.studySessionDao().activeForPlan(planId) ?: return null

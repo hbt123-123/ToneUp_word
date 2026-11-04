@@ -95,7 +95,7 @@ class DefaultInsightRepository(
      * scoped to the currently selected plan while this method is called with an explicit plan id.
      */
     private suspend fun dueTodayFor(planId: String): Int =
-        db.progressDao().dueCount(planId, time.nowMillis())
+        db.progressDao().dueCount(planId, null, time.nowMillis())
 
     /** Question types are stored as stable ids; the UI shows the same labels the exam screens use. */
     private fun examTypeLabel(type: String): String = when (type.uppercase()) {

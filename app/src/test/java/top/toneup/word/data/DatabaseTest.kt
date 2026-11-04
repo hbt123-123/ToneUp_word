@@ -348,11 +348,24 @@ class DatabaseTest {
         database.wordDao().insert(wordEntity("banana"))
         database.progressDao().upsert(progressEntity(studied))
 
-        val newWords = database.progressDao().newWords(plan, limit = 10)
+        val newWords = database.progressDao().newWords(plan, packId = null, limit = 10)
 
         assertThat(newWords.map { it.word }).containsExactly("banana")
         assertThat(database.progressDao().newCount(plan)).isEqualTo(1)
-        assertThat(database.progressDao().dueCount(plan, now)).isEqualTo(1)
+        assertThat(database.progressDao().dueCount(plan, null, now)).isEqualTo(1)
+    }
+
+    @Test
+    fun `new words can be narrowed to one pack`() = runTest {
+        database.wordDao().insert(wordEntity("apple", packId = "pack-a"))
+        database.wordDao().insert(wordEntity("banana", packId = "pack-b"))
+
+        val inPackA = database.progressDao().newWords(plan, packId = "pack-a", limit = 10)
+
+        assertThat(inPackA.map { it.word }).containsExactly("apple")
+        assertThat(database.progressDao().observeNewCount(plan, "pack-a").first()).isEqualTo(1)
+        // Without a pack the whole plan stays visible.
+        assertThat(database.progressDao().newWords(plan, packId = null, limit = 10)).hasSize(2)
     }
 
     @Test

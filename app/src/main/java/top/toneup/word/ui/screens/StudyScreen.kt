@@ -1,6 +1,7 @@
 package top.toneup.word.ui.screens
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -24,10 +25,13 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -80,7 +84,12 @@ fun StudyScreen(
 ) {
     val viewModel: StudyViewModel = viewModel(factory = ViewModelFactories.study(container))
     val state by viewModel.state.collectAsStateWithLifecycle()
-    val speech = rememberSpeechActions(container.speechService) { state.speechRateMode }
+    val speech = rememberSpeechActions(
+        service = container.speechService,
+        rateModeProvider = { state.speechRateMode },
+        engineModeProvider = { state.speechEngineMode },
+        edgeTts = container.edgeTts,
+    )
     val speechState by speech.state.collectAsStateWithLifecycle()
     // Note/meaning editor (plan §9): the dialog writes through the repository, and the card is
     // re-read from the database when it closes so the reveal shows the text just saved.
@@ -161,76 +170,113 @@ fun StudyScreen(
                 onAction = onGoHome,
             )
 
-            else -> Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = Spacing.lg),
-                verticalArrangement = Arrangement.spacedBy(Spacing.lg),
-            ) {
-                StudyProgressIndicator(
-                    current = (session?.position ?: 0) + 1,
-                    total = session?.totalCards ?: 0,
-                    reasonLabel = state.reasonLabel,
-                    modifier = Modifier.testTag("study_progress"),
-                )
-
-                WordCard(
-                    word = card.word,
-                    progress = card.progress,
-                    revealed = state.revealed,
-                    isFavorite = card.progress.isFavorite,
-                    onToggleReveal = viewModel::reveal,
-                    onToggleFavorite = viewModel::toggleFavorite,
-                    onSpeakWord = { speech.speakWord(card.word) },
-                    speechState = speechState,
-                    // Reading the example is offered only when the card actually has one.
-                    onSpeakExample = if (state.readExampleSentences) {
-                        { speech.speakExample(card.word) }
-                    } else {
-                        null
-                    },
-                    onRetrySpeech = speech::retry,
-                    onOpenSpeechSettings = speech::openSystemSpeechSettings,
-                    onInstallVoiceData = speech::installVoiceData,
-                    onEdit = { showEdit = true },
-                    modifier = Modifier.testTag("study_word_card"),
-                )
-
-                if (!state.revealed) {
-                    PrimaryButton(
-                        text = "显示释义",
-                        onClick = viewModel::reveal,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("study_reveal"),
+            else -> {
+                // Reset the page position whenever the card changes: a long expanded meaning
+                // could otherwise leave the next card scrolled past its prompt.
+                val scrollState = rememberScrollState()
+                LaunchedEffect(card.word.id) { scrollState.scrollTo(0) }
+                val swipeThreshold = with(LocalDensity.current) { 64.dp.toPx() }
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(padding)
+                        .verticalScroll(scrollState)
+                        .padding(horizontal = Spacing.lg),
+                    verticalArrangement = Arrangement.spacedBy(Spacing.lg),
+                ) {
+                    StudyProgressIndicator(
+                        current = (session?.position ?: 0) + 1,
+                        total = session?.totalCards ?: 0,
+                        reasonLabel = state.reasonLabel,
+                        modifier = Modifier.testTag("study_progress"),
                     )
-                } else {
-                    AnswerActionBar(
-                        onUnknown = { viewModel.answer(ReviewGrade.UNKNOWN) },
-                        onFuzzy = { viewModel.answer(ReviewGrade.FUZZY) },
-                        onMastered = { viewModel.answer(ReviewGrade.MASTERED) },
-                        enabled = !state.saving,
-                        modifier = Modifier.testTag("study_answer_bar"),
-                    )
-                }
 
-                AppCard {
-                    Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-                        Text(
-                            text = "本会话已作答 ${state.answeredCards} 次",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = AppTheme.colors.mutedText,
-                        )
-                        Text(
-                            text = "答题后结果会立即保存；中途退出不会丢失进度。",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = AppTheme.colors.mutedText,
+                    // `key` scopes the card subtree to the word: a reveal animation from the
+                    // previous word cannot leak into the next card, which always starts collapsed.
+                    key(card.word.id) {
+                        WordCard(
+                            word = card.word,
+                            progress = card.progress,
+                            revealed = state.revealed,
+                            isFavorite = card.progress.isFavorite,
+                            onToggleReveal = viewModel::reveal,
+                            onToggleFavorite = viewModel::toggleFavorite,
+                            onSpeakWord = { speech.speakWord(card.word) },
+                            speechState = speechState,
+                            // Reading the example is offered only when the card actually has one.
+                            onSpeakExample = if (state.readExampleSentences) {
+                                { speech.speakExample(card.word) }
+                            } else {
+                                null
+                            },
+                            onRetrySpeech = speech::retry,
+                            onOpenSpeechSettings = speech::openSystemSpeechSettings,
+                            onInstallVoiceData = speech::installVoiceData,
+                            onEdit = { showEdit = true },
+                            modifier = Modifier
+                                // Swipe as page-turn: drag left pages to the meaning, drag right
+                                // pages back to the prompt. Tapping still works.
+                                .pointerInput(card.word.id) {
+                                    var dragged = 0f
+                                    detectHorizontalDragGestures(
+                                        onDragStart = { dragged = 0f },
+                                        onDragEnd = {
+                                            when {
+                                                dragged <= -swipeThreshold -> viewModel.reveal()
+                                                dragged >= swipeThreshold -> viewModel.hideReveal()
+                                            }
+                                        },
+                                        onHorizontalDrag = { change, amount ->
+                                            dragged += amount
+                                            change.consume()
+                                        },
+                                    )
+                                }
+                                .testTag("study_word_card"),
                         )
                     }
+
+                    Text(
+                        text = "左右滑动卡片可翻到释义或翻回正面",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = AppTheme.colors.mutedText,
+                        modifier = Modifier.testTag("study_swipe_hint"),
+                    )
+
+                    if (!state.revealed) {
+                        PrimaryButton(
+                            text = "显示释义",
+                            onClick = viewModel::reveal,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("study_reveal"),
+                        )
+                    } else {
+                        AnswerActionBar(
+                            onUnknown = { viewModel.answer(ReviewGrade.UNKNOWN) },
+                            onFuzzy = { viewModel.answer(ReviewGrade.FUZZY) },
+                            onMastered = { viewModel.answer(ReviewGrade.MASTERED) },
+                            enabled = !state.saving,
+                            modifier = Modifier.testTag("study_answer_bar"),
+                        )
+                    }
+
+                    AppCard {
+                        Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                            Text(
+                                text = "本会话已作答 ${state.answeredCards} 次",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = AppTheme.colors.mutedText,
+                            )
+                            Text(
+                                text = "答题后结果会立即保存；中途退出不会丢失进度。",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = AppTheme.colors.mutedText,
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(Spacing.lg))
                 }
-                Spacer(Modifier.height(Spacing.lg))
             }
         }
     }

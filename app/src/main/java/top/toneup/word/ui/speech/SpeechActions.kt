@@ -2,9 +2,13 @@ package top.toneup.word.ui.speech
 
 import android.content.Context
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.platform.LocalContext
+import top.toneup.word.data.speech.EdgeTts
 import top.toneup.word.data.speech.SpeechContent
+import top.toneup.word.data.speech.SpeechEngineMode
 import top.toneup.word.data.speech.SpeechRateMode
 import top.toneup.word.data.speech.SpeechRequest
 import top.toneup.word.data.speech.SystemTtsSpeechService
@@ -123,10 +127,13 @@ class SpeechActions(
 fun rememberSpeechActions(
     service: top.toneup.word.data.speech.SpeechService,
     rateModeProvider: () -> SpeechRateMode,
+    engineModeProvider: () -> SpeechEngineMode = { SpeechEngineMode.SYSTEM },
+    edgeTts: EdgeTts? = null,
 ): SpeechActions {
-    val controller = rememberSpeechController(service)
+    val controller = rememberSpeechController(service, engineModeProvider, edgeTts)
     val context = LocalContext.current
+    val currentRateModeProvider by rememberUpdatedState(rateModeProvider)
     return remember(controller, context) {
-        SpeechActions(controller, context.applicationContext, rateModeProvider)
+        SpeechActions(controller, context.applicationContext) { currentRateModeProvider() }
     }
 }

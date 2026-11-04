@@ -1,6 +1,7 @@
 package top.toneup.word.ui.screens
 
 import androidx.compose.foundation.clickable
+import top.toneup.word.data.speech.SpeechEngineMode
 import top.toneup.word.data.speech.SpeechRateMode
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -455,6 +456,7 @@ fun WordDetailScreen(
     var detail by remember { mutableStateOf<top.toneup.word.domain.model.WordWithProgress?>(null) }
     var pendingDelete by remember { mutableStateOf(false) }
     var rateMode by remember { mutableStateOf(SpeechRateMode.SYSTEM) }
+    var engineMode by remember { mutableStateOf(SpeechEngineMode.SYSTEM) }
     // Gateway re-lookup (M4): the button is always offered — the row's `meaning_source` guards
     // (manual is never overwritten) decide the effect, so a re-lookup on an edited word is a
     // safe no-op rather than something the UI has to predict.
@@ -462,7 +464,12 @@ fun WordDetailScreen(
     var relookupMessage by remember { mutableStateOf<String?>(null) }
     // Note/meaning editor (M6a, plan §9): same dialog as the study card, same repository writes.
     var showEdit by remember { mutableStateOf(false) }
-    val speech = top.toneup.word.ui.speech.rememberSpeechActions(container.speechService) { rateMode }
+    val speech = top.toneup.word.ui.speech.rememberSpeechActions(
+        service = container.speechService,
+        rateModeProvider = { rateMode },
+        engineModeProvider = { engineMode },
+        edgeTts = container.edgeTts,
+    )
     val speechState by speech.state.collectAsStateWithLifecycle()
     // The screen owns its own coroutine scope: no GlobalScope, and every write is cancelled
     // automatically when the user leaves the screen.
@@ -474,7 +481,9 @@ fun WordDetailScreen(
 
     LaunchedEffect(wordId) {
         reloadDetail()
-        rateMode = container.settingsRepository.current().speechRateMode
+        val settings = container.settingsRepository.current()
+        rateMode = settings.speechRateMode
+        engineMode = settings.speechEngineMode
     }
 
     Scaffold(

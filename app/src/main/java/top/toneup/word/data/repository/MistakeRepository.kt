@@ -60,8 +60,8 @@ class DefaultMistakeRepository(
         val now = if (nowMillis > 0) nowMillis else time.nowMillis()
         val weekAgo = now - 7L * 24L * 60L * 60L * 1000L
         return combine(
-            db.progressDao().observeDueCount(planId, now),
-            db.progressDao().observeFragileCount(planId),
+            db.progressDao().observeDueCount(planId, null, now),
+            db.progressDao().observeFragileCount(planId, null),
             db.mistakeBookDao().observeHighWrongCount(planId, HIGH_WRONG_THRESHOLD),
             db.mistakeBookDao().observeRecentlyWrong(planId, weekAgo),
             db.mistakeBookDao().observeActiveCount(planId),
@@ -144,10 +144,10 @@ class DefaultMistakeRepository(
         val planId = scopeOf(filter)
         return when (filter.category) {
             MistakeCategory.DUE_TODAY -> db.progressDao()
-                .dueWords(planId, time.nowMillis(), LIST_LIMIT).map { it.wordId }
+                .dueWords(planId, null, time.nowMillis(), LIST_LIMIT).map { it.wordId }
 
             MistakeCategory.UNCONSOLIDATED -> db.progressDao()
-                .fragileWords(planId, time.nowMillis(), LIST_LIMIT).map { it.wordId }
+                .fragileWords(planId, null, time.nowMillis(), LIST_LIMIT).map { it.wordId }
 
             MistakeCategory.FAVORITES -> db.progressDao().favorites(planId).map { it.wordId }
 

@@ -76,7 +76,7 @@ ToneUp_word/
 - 根 `build.gradle.kts` 故意不应用 `org.jetbrains.kotlin.android`（AGP 9 内置 Kotlin）——**勿"修复"**。
 
 ## ANTI-PATTERNS (THIS PROJECT)
-- **联网仅限两处**：`INTERNET` 权限允许且仅允许用于 ① 自建释义补全网关（ECDICT/FreeDict/LLM 转发，蓝图 `docs/dev/PLAN_CUSTOM_PACKS_GATEWAY.md`）；② 应用内版本更新（固定 `version.json` + APK 断点续传 + SHA-256 校验，`data/update/`，`REQUEST_INSTALL_PACKAGES` 仅用于把下载好的 APK 交给系统安装器，绝无静默安装）。其余联网能力（云同步、统计/埋点 SDK、远程音频下载、任何联网组件）仍**禁止**；剪贴板/分享的原始文本**永不出本地**（只上传待查询的单词 token + 可选 key），`lastClipboardHash` 只存哈希不存原文。
+- **联网仅限三处**：`INTERNET` 权限允许且仅允许用于 ① 自建释义补全网关（ECDICT/FreeDict/LLM 转发，蓝图 `docs/dev/PLAN_CUSTOM_PACKS_GATEWAY.md`）；② 应用内版本更新（固定 `version.json` + APK 断点续传 + SHA-256 校验，`data/update/`，`REQUEST_INSTALL_PACKAGES` 仅用于把下载好的 APK 交给系统安装器，绝无静默安装）；③ 可选的 Edge 在线朗读（`data/speech/EdgeTtsPlayer.kt`，只发送当前要朗读的单词/释义/例句文本，不落盘、不发送学习记录，失败静默回退系统 TTS）。其余联网能力（云同步、统计/埋点 SDK、远程音频下载、任何联网组件）仍**禁止**；剪贴板/分享的原始文本**永不出本地**（只上传待查询的单词 token + 可选 key），`lastClipboardHash` 只存哈希不存原文。
 - **`ACCESS_NETWORK_STATE` 仍不声明**：只由 androidx.work 合并带入，app 不读连接状态；WorkManager `NetworkType` 约束（联网/仅 Wi-Fi）不需要我们声明该权限。
 - **禁止在本机引入/编译 ktlint、detekt、spotless 等格式化检查**（不加相关依赖与 Gradle 任务）；验证一律 = `.\gradlew.bat :app:testDebugUnitTest` + `.\gradlew.bat :app:assembleDebug`（文件自验证，见 `docs/dev/PLAN_CUSTOM_PACKS_GATEWAY.md` §11/§13-R1）。
 - **禁止**对 `word` 表用 `Insert(REPLACE)`：会删行重建、CASCADE 连带清空 progress/事件/错题/考试快照。用 `@Update` 或身份映射 insert-then-update。行的唯一身份是 `(pack_id, normalized_word)`（同词可入多包，进度**按 plan 可见**：视图在 `(plan_id, normalized_word)` 内只投影一行，优先有进度者）。
