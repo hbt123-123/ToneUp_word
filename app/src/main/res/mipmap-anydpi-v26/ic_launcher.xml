@@ -1,10 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   自适应图标（API 26+；本应用 minSdk 26，所以所有设备都走这条路径）。
-  前景是「上岸水环」整幅作品，自带圆角透明边，铺满 108dp 画布：水环与 ToneUp 字标都落在
-  可见区的中心圆内，圆形 / 圆角方形遮罩下均不会被裁切；透明圆角处透出同为深蓝紫色的背景色，
-  两者同色，不会出现接缝。单色层供 Android 13+ 主题图标使用，由同一作品按与背景色的色差
-  提取亮部轮廓生成，颜色交给系统着色。位图按 mdpi–xxxhdpi 五档密度提供，见 res/mipmap-*。
+  前景是「上岸水环」整幅作品，缩放到 72dp（= 启动器可见视口宽度，画布 108dp）居中放置：
+  水环与 ToneUp 字标完整落在可见区内（字标占视口宽度约 63%，与阅读端图标一致），
+  圆形 / 圆角方形遮罩下均不会被裁切；作品边缘外透出同为深蓝紫色的背景色，两者同色，
+  不会出现接缝。切勿把作品铺满 108dp 画布——启动器只显示中心 72dp，字标会被裁掉。
+  单色层供 Android 13+ 主题图标使用，由重排后的前景按与背景色的色差提取亮部轮廓生成
+  （跳过作品边缘的半透明 AA 像素，避免出现描边），颜色交给系统着色。
+  位图按 mdpi–xxxhdpi 五档密度提供，见 res/mipmap-*。
 -->
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
     <background android:drawable="@color/ic_launcher_background" />
