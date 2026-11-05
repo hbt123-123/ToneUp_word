@@ -30,8 +30,14 @@ fail() { log "ERROR: $*"; exit 1; }
 PERSIST="$ROOT/.ci-cache"
 if [ -d "$PERSIST/ci-jdk" ]; then
   export JAVA_HOME="${JAVA_HOME:-$PERSIST/ci-jdk}"
-elif [ -d /root/.local/share/mise/installs/java/17.0.20+101 ]; then
-  export JAVA_HOME="${JAVA_HOME:-/root/.local/share/mise/installs/java/17.0.20+101}"
+else
+  # Robolectric's API 36 runtime needs Java 21+, so a plain JDK 17 install is not enough.
+  for candidate in /root/.local/share/mise/installs/java/21* /root/.local/share/mise/installs/java/25*; do
+    if [ -d "$candidate" ]; then
+      export JAVA_HOME="${JAVA_HOME:-$candidate}"
+      break
+    fi
+  done
 fi
 export PATH="$JAVA_HOME/bin:$PATH"
 
@@ -100,6 +106,22 @@ settingsEvaluated {
         clear()
         maven { url = uri("https://maven.aliyun.com/repository/google") }
         maven { url = uri("https://maven.aliyun.com/repository/public") }
+    }
+}
+KTS
+fi
+
+# Robolectric's API 36 runtime patches java.io.FileDescriptor through
+# jdk.internal.access, which is not exported to the unnamed module on Java 21+.
+ROBO_INIT_SCRIPT="$GRADLE_USER_HOME/init.d/robolectric-jvmargs.gradle.kts"
+if [ ! -f "$ROBO_INIT_SCRIPT" ]; then
+  cat > "$ROBO_INIT_SCRIPT" <<'KTS'
+allprojects {
+    tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
+        jvmArgs(
+            "--add-exports=java.base/jdk.internal.access=ALL-UNNAMED",
+            "--add-opens=java.base/java.io=ALL-UNNAMED",
+        )
     }
 }
 KTS

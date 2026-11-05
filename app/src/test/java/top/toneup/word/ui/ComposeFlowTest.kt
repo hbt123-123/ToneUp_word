@@ -1,6 +1,8 @@
 package top.toneup.word.ui
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsOff
+import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
@@ -118,6 +120,20 @@ class ComposeFlowTest {
 
     private fun awaitTag(tag: String) = awaitCondition {
         composeRule.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty()
+    }
+
+    /**
+     * Waits until a switch's drawn state matches.
+     *
+     * The screen's state flow reaches composition slightly after the DataStore write, so clicking
+     * again as soon as the persisted value changed can hit a switch that still renders the old
+     * value — the tap then writes the old value back and the toggle looks stuck.
+     */
+    private fun awaitToggle(tag: String, on: Boolean) = awaitCondition {
+        runCatching {
+            val node = composeRule.onNodeWithTag(tag)
+            if (on) node.assertIsOn() else node.assertIsOff()
+        }.isSuccess
     }
 
     private fun awaitText(text: String, substring: Boolean = false) = awaitCondition {
@@ -416,11 +432,13 @@ class ComposeFlowTest {
         assertFalse(readSettings().shuffleWords)
 
         composeRule.onNodeWithTag("settings_shuffle_switch").performScrollTo().performClick()
+        awaitToggle("settings_shuffle_switch", on = true)
         awaitCondition { readSettings().shuffleWords }
         assertTrue(readSettings().shuffleWords)
 
         // Toggling back must restore the fixed order, not leave the setting stuck on.
         composeRule.onNodeWithTag("settings_shuffle_switch").performScrollTo().performClick()
+        awaitToggle("settings_shuffle_switch", on = false)
         awaitCondition { !readSettings().shuffleWords }
         assertFalse(readSettings().shuffleWords)
     }
