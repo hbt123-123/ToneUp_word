@@ -13,6 +13,7 @@ import okhttp3.Request
 import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
+import okio.ByteString
 import java.io.ByteArrayOutputStream
 import java.util.UUID
 import kotlin.coroutines.resume
@@ -100,7 +101,7 @@ class EdgeTtsPlayer(
                     }
                 }
 
-                override fun onMessage(webSocket: WebSocket, bytes: okhttp3.ByteString) {
+                override fun onMessage(webSocket: WebSocket, bytes: ByteString) {
                     EdgeTtsProtocol.audioFromFrame(bytes.toByteArray())?.let { chunks.write(it) }
                 }
 
@@ -208,7 +209,7 @@ class EdgeTtsPlayer(
 
     /** Exposes the in-memory MP3 to `MediaPlayer` without touching the filesystem. */
     private class BytesMediaSource(private val data: ByteArray) : MediaDataSource() {
-        override fun read(position: Long, buffer: ByteArray?, offset: Int, size: Int): Int {
+        override fun readAt(position: Long, buffer: ByteArray?, offset: Int, size: Int): Int {
             if (buffer == null || position >= data.size) return -1
             val count = minOf(size, data.size - position.toInt())
             System.arraycopy(data, position.toInt(), buffer, offset, count)
