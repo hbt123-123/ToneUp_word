@@ -56,6 +56,16 @@ interface StudyRepository {
     /** The unfinished session of a plan, if any, rebuilt from the database. */
     suspend fun resumeActiveSession(planId: String): StudySessionState?
 
+    /**
+     * The id of a genuinely resumable session of [planId], or null.
+     *
+     * Reactive so the home prompt appears the moment a session is paused and disappears the
+     * moment it is finished. Exhausted `ACTIVE` rows (process death between the last answer and
+     * the summary write) are not offered: resuming them would open the study screen on its
+     * summary screen — see [resumeActiveSession], which closes them instead.
+     */
+    fun observeResumableSessionId(planId: String): Flow<Long?>
+
     suspend fun createSession(state: StudySessionState): StudySessionState
 
     /** Persists the whole session state (queue, cursor, counters). */
@@ -85,8 +95,8 @@ interface StudyRepository {
         finishedAtMillis: Long,
     ): SessionSummary
 
-    /** Abandons every active session (used by "清空学习进度" and by the resume dialog). */
-    suspend fun abandonActiveSessions()
+    /** Abandons the active session of [planId] (the home screen's "放弃"). */
+    suspend fun abandonActiveSession(planId: String)
 }
 
 class DefaultStudyRepository(
@@ -171,8 +181,36 @@ class DefaultStudyRepository(
             closeSessionEntity(entity.id, SessionStatus.ABANDONED)
             return null
         }
+        // A row can be stored as ACTIVE even though its cursor already sits past the end: the
+        // process may die between the last answer (persisted at position == queue.size) and the
+        // summary write, and leaving the summary via system back used to re-persist the closed
+        // session as ACTIVE. Resuming it would show an instantly "finished" session on every later
+        // day, so close it and let the caller build today's queue instead.
+        //
+        // This is a raw close on purpose: the session may already have added its study duration,
+        // and closing a second time through `closeSession` would count it twice. A session that
+        // died before the summary therefore never contributes its duration — accepted trade-off.
+        if (entity.queuePosition >= wordIds.size) {
+            closeSessionEntity(entity.id, SessionStatus.COMPLETED)
+            return null
+        }
         val cards = loadCards(wordIds, QueueReason.DUE)
-        val reasons = wordIds.associateWith { id ->
+        // Words can disappear while a session is paused (their pack was deleted). Keeping them in
+        // the queue parks the learner on a card that no longer exists — the study screen can only
+        // offer 「返回首页」, and every later 「继续学习」 lands on that same empty state. Drop them
+        // and shift the cursor accordingly; if nothing survives, close the session so the caller
+        // builds today's queue instead.
+        val presentIds = wordIds.filter { it in cards }
+        if (presentIds.isEmpty()) {
+            closeSessionEntity(entity.id, SessionStatus.ABANDONED)
+            return null
+        }
+        val position = wordIds.take(entity.queuePosition).count { it in cards }
+        if (position >= presentIds.size) {
+            closeSessionEntity(entity.id, SessionStatus.ABANDONED)
+            return null
+        }
+        val reasons = presentIds.associateWith { id ->
             val card = cards[id]
             when {
                 card == null || card.isNew -> QueueReason.NEW
@@ -185,10 +223,10 @@ class DefaultStudyRepository(
             sessionId = entity.id,
             // Carries the plan id (schema v4); see `Mappers.StudySessionEntity.toState`.
             levelId = entity.planId,
-            queue = wordIds,
+            queue = presentIds,
             reasons = reasons,
             newWordIds = newIds,
-            position = entity.queuePosition.coerceIn(0, wordIds.size),
+            position = position,
             repeatCounts = JsonCodec.decodeIntCounts(entity.immediateRepeatCounts),
             answered = entity.answeredCount,
             masteredCount = entity.masteredCount,
@@ -200,6 +238,16 @@ class DefaultStudyRepository(
             updatedAt = entity.updatedAt,
         )
     }
+
+    override fun observeResumableSessionId(planId: String): Flow<Long?> =
+        db.studySessionDao().observeActiveForPlan(planId).map { entity ->
+            entity?.let { session ->
+                val size = JsonCodec.decodeLongs(session.queue).size
+                // Only a session with cards left is offered: an exhausted row must not promise
+                // 「继续学习」, it would open the study screen straight on its summary.
+                session.id.takeIf { size > 0 && session.queuePosition < size }
+            }
+        }
 
     override suspend fun createSession(state: StudySessionState): StudySessionState {
         val id = db.studySessionDao().insert(state.toEntity(SessionStatus.ACTIVE, time.nowMillis()))
@@ -287,8 +335,8 @@ class DefaultStudyRepository(
         )
     }
 
-    override suspend fun abandonActiveSessions() {
-        db.studySessionDao().abandonActive(time.nowMillis())
+    override suspend fun abandonActiveSession(planId: String) {
+        db.studySessionDao().abandonActive(planId, time.nowMillis())
     }
 
     private suspend fun closeSessionEntity(id: Long, status: String) {

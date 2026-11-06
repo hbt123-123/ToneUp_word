@@ -20,12 +20,6 @@ interface StudySessionDao {
     @Query("SELECT * FROM study_session WHERE id = :id")
     suspend fun byId(id: Long): StudySessionEntity?
 
-    @Query("SELECT * FROM study_session WHERE status = 'ACTIVE' ORDER BY updated_at DESC LIMIT 1")
-    fun observeActive(): Flow<StudySessionEntity?>
-
-    @Query("SELECT * FROM study_session WHERE status = 'ACTIVE' ORDER BY updated_at DESC LIMIT 1")
-    suspend fun active(): StudySessionEntity?
-
     @Query(
         """
         SELECT * FROM study_session
@@ -35,11 +29,26 @@ interface StudySessionDao {
     )
     suspend fun activeForPlan(planId: String): StudySessionEntity?
 
+    /** Reactive version of [activeForPlan], used by the home screen's "继续学习" prompt. */
+    @Query(
+        """
+        SELECT * FROM study_session
+        WHERE plan_id = :planId AND status = 'ACTIVE'
+        ORDER BY updated_at DESC LIMIT 1
+        """,
+    )
+    fun observeActiveForPlan(planId: String): Flow<StudySessionEntity?>
+
     @Query("UPDATE study_session SET status = :status, ended_at = :endedAt, updated_at = :endedAt WHERE id = :id")
     suspend fun close(id: Long, status: String, endedAt: Long)
 
-    @Query("UPDATE study_session SET status = 'ABANDONED', ended_at = :now, updated_at = :now WHERE status = 'ACTIVE'")
-    suspend fun abandonActive(now: Long)
+    @Query(
+        """
+        UPDATE study_session SET status = 'ABANDONED', ended_at = :now, updated_at = :now
+        WHERE plan_id = :planId AND status = 'ACTIVE'
+        """,
+    )
+    suspend fun abandonActive(planId: String, now: Long)
 
     @Query("SELECT COUNT(*) FROM study_session WHERE status = 'COMPLETED'")
     suspend fun completedCount(): Int

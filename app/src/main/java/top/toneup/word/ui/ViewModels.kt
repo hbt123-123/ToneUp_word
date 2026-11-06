@@ -528,8 +528,6 @@ internal object HomeDateFormatter {
  */
 class HomeViewModel(private val container: AppContainer) : ViewModel() {
 
-    private val resumable = MutableStateFlow<Long?>(null)
-
     /**
      * The signals, insights and motivation are computed from the statistics snapshot rather than
      * fetched separately, so the dashboard and the statistics screen can never disagree about the
@@ -551,7 +549,9 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
         // Two more signals folded into one source: `combine` has no typed overload past five
         // flows, and pairing them keeps the snapshot lambda readable.
         combine(
-            resumable,
+            container.settingsRepository.settings.flatMapLatest { settings ->
+                container.studyRepository.observeResumableSessionId(settings.effectivePlanId)
+            },
             container.settingsRepository.settings.flatMapLatest { settings ->
                 container.mistakeRepository.observeOverview(settings.effectivePlanId)
             },
@@ -695,15 +695,11 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
         return java.time.temporal.ChronoUnit.DAYS.between(lastActive, today).toInt().coerceAtLeast(0)
     }
 
-    /** Called when the learner chooses "继续上次学习" or dismisses the prompt. */
-    fun clearResumableSession() {
-        resumable.value = null
-    }
-
+    /** Called when the learner dismisses the "继续上次学习" prompt with 放弃. */
     fun abandonResumableSession() {
         viewModelScope.launch {
-            container.studyRepository.abandonActiveSessions()
-            resumable.value = null
+            val planId = container.settingsRepository.current().effectivePlanId
+            runCatching { container.studyRepository.abandonActiveSession(planId) }
         }
     }
 
@@ -827,19 +823,27 @@ class StudyViewModel(private val container: AppContainer) : ViewModel() {
         val settings = container.settingsRepository.current()
         val card = loadCard(session)
         cardStartedAt = container.timeProvider.nowMillis()
+        // `card == null` has two meanings: the queue is really exhausted, or the current word row
+        // disappeared (e.g. its pack was deleted). Only the former is a completed session; treating
+        // a missing row as "finished" showed 「本次学习完成」 with an empty summary.
+        val exhausted = session.isFinished
         _state.update {
             it.copy(
                 loading = false,
                 session = session,
                 card = card,
                 revealed = false,
-                finished = card == null,
+                finished = card == null && exhausted,
                 errorMessage = null,
                 speechRateMode = settings.speechRateMode,
                 speechEngineMode = settings.speechEngineMode,
                 readExampleSentences = settings.readExampleSentences,
                 autoPlayPronunciation = settings.autoPlayPronunciation,
-                emptyMessage = if (card == null) "这个队列里的单词已不存在，请重新开始。" else null,
+                emptyMessage = if (card == null && !exhausted) {
+                    "这个队列里的单词已不存在，请重新开始。"
+                } else {
+                    null
+                },
             )
         }
     }
@@ -989,7 +993,13 @@ class StudyViewModel(private val container: AppContainer) : ViewModel() {
 
     /** Leaves the session, keeping the progress already written. */
     fun pauseAndExit() {
-        val session = _state.value.session ?: return
+        val snapshot = _state.value
+        val session = snapshot.session ?: return
+        // A finished session is already closed as COMPLETED/ABANDONED by the repository. Persisting
+        // it here would overwrite that with ACTIVE — and its cursor sits at the end of the queue,
+        // so the next "开始复习" would resume a session that is instantly finished. Leaving the
+        // summary screen (system back / top-bar arrow) must therefore not write anything.
+        if (snapshot.finished) return
         viewModelScope.launch {
             runCatching { container.studyRepository.persist(session) }
         }
