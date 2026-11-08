@@ -1,2 +1,4 @@
 [ci-release 2026-11-09 04:00:33] Android SDK missing; installing platform 36 / build-tools 36
 Picked up JAVA_TOOL_OPTIONS: -Dhttp.proxyHost=127.0.0.1 -Dhttp.proxyPort=18080 -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=18080 -Dhttp.nonProxyHosts=localhost|127.0.0.1 -Drobolectric.dependency.repo.url=https://maven.aliyun.com/repository/public
+
+[ci-release 2026-11-09 04:00:51] ERROR: keystore not found in /workspace/.git/ci-secrets or .uploads
