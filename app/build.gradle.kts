@@ -73,8 +73,8 @@ android {
         // 1.0.3 新增应用内自动更新（version.json + SHA-256 + 断点续传）。
         // versionCode 自 1.0.3 起按 major*100 + minor*10 + patch 计算，与 Release tag v<versionName>
         // 和 version.json 对齐，tool/release.ps1 会校验三者一致，不要单独手改其中之一。
-        versionCode = 105
-        versionName = "1.0.5"
+        versionCode = 106
+        versionName = "1.0.6"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
     }
