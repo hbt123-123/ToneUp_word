@@ -128,9 +128,16 @@ KTS
 fi
 
 # ------------------------------------------------------------------ secrets ---
-if [ ! -f "$KEYSTORE" ] || [ ! -f "$KEYINFO" ]; then
+# Preferred CI form: ANDROID_KEYSTORE_B64 + ANDROID_KEY_ALIAS/_PASSWORD.
+# Fallback: a local .git/ci-secrets directory or a zipped upload.
+if [ ! -f "$KEYSTORE" ] && [ -n "${ANDROID_KEYSTORE_B64:-}" ]; then
+  mkdir -p "$SECRETS_DIR"
+  printf '%s' "$ANDROID_KEYSTORE_B64" | base64 -d > "$KEYSTORE" \
+    || fail "ANDROID_KEYSTORE_B64 is not valid base64"
+fi
+if [ ! -f "$KEYSTORE" ]; then
   zip_file="$(ls -t "$ROOT"/.uploads/*toneup-release.jks.zip 2>/dev/null | head -1 || true)"
-  [ -n "$zip_file" ] || fail "keystore not found in $SECRETS_DIR or .uploads"
+  [ -n "$zip_file" ] || fail "keystore not found in $SECRETS_DIR, .uploads or ANDROID_KEYSTORE_B64"
   mkdir -p "$SECRETS_DIR"
   unzip -q -o "$zip_file" -d "$SECRETS_DIR"
   if [ -f "$SECRETS_DIR/toneup-release.jks/toneup-release.jks" ]; then
@@ -141,18 +148,27 @@ if [ ! -f "$KEYSTORE" ] || [ ! -f "$KEYINFO" ]; then
 fi
 chmod 600 "$KEYSTORE" "$KEYINFO" 2>/dev/null || true
 
-ALIAS="$(grep -oE '别名（alias）.*' "$KEYINFO" | grep -oE '`[^`]+`' | head -1 | tr -d '`' || true)"
-PASSWORD="$(grep -oE '密钥库口令.*' "$KEYINFO" | grep -oE '`[^`]+`' | head -1 | tr -d '`' || true)"
-[ -n "$ALIAS" ] || fail "cannot read key alias from key.txt"
-[ -n "$PASSWORD" ] || fail "cannot read keystore password from key.txt"
+ALIAS="${ANDROID_KEY_ALIAS:-}"
+PASSWORD="${ANDROID_KEYSTORE_PASSWORD:-}"
+if [ -z "$ALIAS" ] && [ -f "$KEYINFO" ]; then
+  ALIAS="$(grep -oE '别名（alias）.*' "$KEYINFO" | grep -oE '`[^`]+`' | head -1 | tr -d '`' || true)"
+fi
+if [ -z "$PASSWORD" ] && [ -f "$KEYINFO" ]; then
+  PASSWORD="$(grep -oE '密钥库口令.*' "$KEYINFO" | grep -oE '`[^`]+`' | head -1 | tr -d '`' || true)"
+fi
+KEY_PASSWORD="${ANDROID_KEY_PASSWORD:-$PASSWORD}"
+[ -n "$ALIAS" ] || fail "cannot read key alias (ANDROID_KEY_ALIAS or key.txt)"
+[ -n "$PASSWORD" ] || fail "cannot read keystore password (ANDROID_KEYSTORE_PASSWORD or key.txt)"
 export TONEUP_KEYSTORE_FILE="$KEYSTORE"
 export TONEUP_KEYSTORE_PASSWORD="$PASSWORD"
 export TONEUP_KEY_ALIAS="$ALIAS"
-export TONEUP_KEY_PASSWORD="$PASSWORD"
+export TONEUP_KEY_PASSWORD="$KEY_PASSWORD"
 
 # --------------------------------------------------------------- git + gh ---
-GITHUB_TOKEN="$(printf 'protocol=https\nhost=github.com\n\n' | git credential fill 2>/dev/null \
-  | sed -n 's/^password=//p' | head -1)"
+if [ -z "${GITHUB_TOKEN:-}" ]; then
+  GITHUB_TOKEN="${GH_TOKEN:-$(printf 'protocol=https\nhost=github.com\n\n' | git credential fill 2>/dev/null \
+    | sed -n 's/^password=//p' | head -1)}"
+fi
 [ -n "$GITHUB_TOKEN" ] || fail "no GitHub credential available for push/release"
 export GH_TOKEN="$GITHUB_TOKEN"
 
@@ -170,9 +186,11 @@ git -C "$ROOT" worktree add -f -B ci-release "$WORKTREE" origin/main
 cd "$WORKTREE"
 echo "sdk.dir=$ANDROID_HOME" > local.properties
 
-# The sandbox has ~6 GB RAM; R8 needs more than the project's default 2 GB heap.
-sed -i -E 's/^org.gradle.jvmargs=.*/org.gradle.jvmargs=-Xmx3g -XX:MaxMetaspaceSize=768m -Dfile.encoding=UTF-8/' gradle.properties
-sed -i -E 's/^kotlin.daemon.jvmargs=.*/kotlin.daemon.jvmargs=-Xmx1024m/' gradle.properties
+# The sandbox RAM budget varies; allow the caller to cap the daemons.
+GRADLE_JVMARGS="${CI_GRADLE_JVMARGS:--Xmx3g -XX:MaxMetaspaceSize=768m -Dfile.encoding=UTF-8}"
+KOTLIN_DAEMON_JVMARGS="${CI_KOTLIN_DAEMON_JVMARGS:--Xmx1024m}"
+sed -i -E "s|^org.gradle.jvmargs=.*|org.gradle.jvmargs=$GRADLE_JVMARGS|" gradle.properties
+sed -i -E "s|^kotlin.daemon.jvmargs=.*|kotlin.daemon.jvmargs=$KOTLIN_DAEMON_JVMARGS|" gradle.properties
 
 # ------------------------------------------------------- last published tag ---
 release_tags="$(gh release list --repo "$REPO" --limit 50 \

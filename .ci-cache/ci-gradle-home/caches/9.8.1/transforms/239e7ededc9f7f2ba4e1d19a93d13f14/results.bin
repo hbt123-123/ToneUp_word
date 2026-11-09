@@ -1,0 +1,4 @@
+o/.gradle-instrumented-classpath.marker
+o/.gradle-agent-instrumented-external.marker
+o/instrumented/instrumented-httpclient-4.5.14.jar
+i/

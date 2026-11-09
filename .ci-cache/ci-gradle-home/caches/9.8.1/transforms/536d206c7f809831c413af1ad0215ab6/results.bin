@@ -1,0 +1,4 @@
+o/.gradle-instrumented-classpath.marker
+o/.gradle-agent-instrumented-external.marker
+o/instrumented/instrumented-dagger-2.28.3.jar
+i/

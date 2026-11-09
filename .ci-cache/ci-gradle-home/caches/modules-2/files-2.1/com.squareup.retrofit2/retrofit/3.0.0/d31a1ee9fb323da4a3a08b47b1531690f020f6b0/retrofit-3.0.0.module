@@ -1,0 +1,116 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "com.squareup.retrofit2",
+    "module": "retrofit",
+    "version": "3.0.0",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "8.14"
+    }
+  },
+  "variants": [
+    {
+      "name": "apiElements",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.jvm.environment": "standard-jvm",
+        "org.gradle.jvm.version": 8,
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-api",
+        "org.jetbrains.kotlin.platform.type": "jvm"
+      },
+      "dependencies": [
+        {
+          "group": "com.squareup.okhttp3",
+          "module": "okhttp",
+          "version": {
+            "requires": "4.12.0"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.1.21"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "retrofit-3.0.0.jar",
+          "url": "retrofit-3.0.0.jar",
+          "size": 131218,
+          "sha512": "f000f00a4d3fb63f9cc06491c10e279e235e206c4fc0297a36caacfee12c026664047646702a464e06245614a7717c5e2223c9568b082530c8560348961b24e6",
+          "sha256": "69c6a2d3451b6df9549a93fab744094ebf07a4b0ce4f453d6c8f575ef0fec9a1",
+          "sha1": "c0cdf6d243c5187732134129fda05a74f9197874",
+          "md5": "624b533e1f8ab3e8c52646e89a0503f5"
+        }
+      ]
+    },
+    {
+      "name": "runtimeElements",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.jvm.environment": "standard-jvm",
+        "org.gradle.jvm.version": 8,
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "jvm"
+      },
+      "dependencies": [
+        {
+          "group": "com.squareup.okhttp3",
+          "module": "okhttp",
+          "version": {
+            "requires": "4.12.0"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.1.21"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "retrofit-3.0.0.jar",
+          "url": "retrofit-3.0.0.jar",
+          "size": 131218,
+          "sha512": "f000f00a4d3fb63f9cc06491c10e279e235e206c4fc0297a36caacfee12c026664047646702a464e06245614a7717c5e2223c9568b082530c8560348961b24e6",
+          "sha256": "69c6a2d3451b6df9549a93fab744094ebf07a4b0ce4f453d6c8f575ef0fec9a1",
+          "sha1": "c0cdf6d243c5187732134129fda05a74f9197874",
+          "md5": "624b533e1f8ab3e8c52646e89a0503f5"
+        }
+      ]
+    },
+    {
+      "name": "sourcesElements",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.usage": "java-runtime"
+      },
+      "files": [
+        {
+          "name": "retrofit-3.0.0-sources.jar",
+          "url": "retrofit-3.0.0-sources.jar",
+          "size": 81070,
+          "sha512": "30bc44c32d436fc5dd87e586fe09c3deead5c43a15baf4a794a3a63911f4e53c7d20d377c1fc5244d83f5c0ec550444533be93c04f8941d5ad2778ab4592e254",
+          "sha256": "4fc0497f1f810bf0bfdeecce7e397b088079004804cab66ccf99d36fe8887589",
+          "sha1": "d39133d8cc5f510f52bece57c890f7f4eb935401",
+          "md5": "532d856c39c4fb7dc8cd695a753557aa"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,158 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "com.squareup.okhttp3",
+    "module": "mockwebserver",
+    "version": "5.4.0",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "9.5.1"
+    }
+  },
+  "variants": [
+    {
+      "name": "apiElements",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.jvm.environment": "standard-jvm",
+        "org.gradle.jvm.version": 8,
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-api",
+        "org.jetbrains.kotlin.platform.type": "jvm"
+      },
+      "dependencies": [
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.1.21"
+          }
+        },
+        {
+          "group": "com.squareup.okhttp3",
+          "module": "mockwebserver3",
+          "version": {
+            "requires": "5.4.0"
+          }
+        },
+        {
+          "group": "junit",
+          "module": "junit",
+          "version": {
+            "requires": "4.13.2"
+          }
+        },
+        {
+          "group": "com.squareup.okio",
+          "module": "okio",
+          "version": {
+            "requires": "3.17.0"
+          }
+        },
+        {
+          "group": "com.squareup.okhttp3",
+          "module": "okhttp",
+          "version": {
+            "requires": "5.4.0"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "mockwebserver-5.4.0.jar",
+          "url": "mockwebserver-5.4.0.jar",
+          "size": 28775,
+          "sha512": "8cad4cf476f9d300b5651c48e1606011aa196dc9bf979a4fc46d7f7ee38d6217ee1df50c2bbaed7851b4f6124c100859022c4443aaa1697954306b69d66b78ae",
+          "sha256": "64bcf0a79c42213bb3380939727d3cd6028ba3dbfcb9df14019650107e60a87f",
+          "sha1": "a54f047a793c0d613ab89f6463d6c4642a641770",
+          "md5": "fddae2a0631539032759a65d7dca66db"
+        }
+      ]
+    },
+    {
+      "name": "runtimeElements",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.jvm.environment": "standard-jvm",
+        "org.gradle.jvm.version": 8,
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "jvm"
+      },
+      "dependencies": [
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.1.21"
+          }
+        },
+        {
+          "group": "com.squareup.okhttp3",
+          "module": "mockwebserver3",
+          "version": {
+            "requires": "5.4.0"
+          }
+        },
+        {
+          "group": "junit",
+          "module": "junit",
+          "version": {
+            "requires": "4.13.2"
+          }
+        },
+        {
+          "group": "com.squareup.okio",
+          "module": "okio",
+          "version": {
+            "requires": "3.17.0"
+          }
+        },
+        {
+          "group": "com.squareup.okhttp3",
+          "module": "okhttp",
+          "version": {
+            "requires": "5.4.0"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "mockwebserver-5.4.0.jar",
+          "url": "mockwebserver-5.4.0.jar",
+          "size": 28775,
+          "sha512": "8cad4cf476f9d300b5651c48e1606011aa196dc9bf979a4fc46d7f7ee38d6217ee1df50c2bbaed7851b4f6124c100859022c4443aaa1697954306b69d66b78ae",
+          "sha256": "64bcf0a79c42213bb3380939727d3cd6028ba3dbfcb9df14019650107e60a87f",
+          "sha1": "a54f047a793c0d613ab89f6463d6c4642a641770",
+          "md5": "fddae2a0631539032759a65d7dca66db"
+        }
+      ]
+    },
+    {
+      "name": "sourcesElements",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.usage": "java-runtime"
+      },
+      "files": [
+        {
+          "name": "mockwebserver-5.4.0-sources.jar",
+          "url": "mockwebserver-5.4.0-sources.jar",
+          "size": 10661,
+          "sha512": "7956ccfc91933cbfdda3ed6b2554907a06d32a355a2f62a6f76b1ef1ecf5810e1e62847fff49cab1248cb5838f56e10f82d5f3d613aabb1726b8412e1696c91d",
+          "sha256": "2ce69b4327634d3dfe3860a5cb06be6fb6b46ee758e12b4212ba1cecc575d93c",
+          "sha1": "849e478283b690baf76c9189159697b8177c5937",
+          "md5": "0a85e1acb36e8865c696c42e0bac1deb"
+        }
+      ]
+    }
+  ]
+}

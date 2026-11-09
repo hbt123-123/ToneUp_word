@@ -1,0 +1,4 @@
+o/.gradle-instrumented-classpath.marker
+o/.gradle-agent-instrumented-external.marker
+o/instrumented/instrumented-kotlinx-coroutines-core-jvm-1.9.0.jar
+i/

@@ -1,0 +1,4 @@
+o/.gradle-instrumented-classpath.marker
+o/.gradle-agent-instrumented-external.marker
+o/instrumented/instrumented-flatbuffers-java-1.12.0.jar
+i/

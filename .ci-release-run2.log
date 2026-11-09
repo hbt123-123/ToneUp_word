@@ -1,0 +1,68 @@
+[ci-release 2026-11-09 09:37:21] Android SDK missing; installing platform 36 / build-tools 36
+Picked up JAVA_TOOL_OPTIONS: -Dhttp.proxyHost=127.0.0.1 -Dhttp.proxyPort=18080 -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=18080 -Dhttp.nonProxyHosts=localhost|127.0.0.1 -Drobolectric.dependency.repo.url=https://maven.aliyun.com/repository/public
+
+From https://github.com/hbt123-123/ToneUp_word
+ * branch            main       -> FETCH_HEAD
+ * [new tag]         v0.1       -> v0.1
+ * [new tag]         v0.2       -> v0.2
+ * [new tag]         v0.3       -> v0.3
+ * [new tag]         v1.0.4     -> v1.0.4
+ * [new tag]         v1.0.5     -> v1.0.5
+Preparing worktree (new branch 'ci-release')
+branch 'ci-release' set up to track 'origin/main'.
+HEAD is now at 08eb2f9 Merge branch 'main' of https://github.com/hbt123-123/ToneUp_word
+[ci-release 2026-11-09 09:37:43] last published release: v1.0.5
+[ci-release 2026-11-09 09:37:44] bumped to 1.0.6 (106)
+[ci-release 2026-11-09 09:37:44] running unit tests
+Picked up JAVA_TOOL_OPTIONS: -Dhttp.proxyHost=127.0.0.1 -Dhttp.proxyPort=18080 -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=18080 -Dhttp.nonProxyHosts=localhost|127.0.0.1 -Drobolectric.dependency.repo.url=https://maven.aliyun.com/repository/public
+Fetching distribution.
+Downloading https://services.gradle.org/distributions/gradle-9.8.1-bin.zip
+..............10%..............20%...............30%..............40%...............50%..............60%...............70%..............80%...............90%..............100%
+
+Welcome to Gradle 9.8.1!
+
+Here are the highlights of this release:
+ - Java 27 support
+ - Maven mirror settings reuse
+ - Linked problem locations in build output
+
+For more details see https://docs.gradle.org/9.8.1/release-notes.html
+
+Starting a Gradle Daemon (subsequent builds will be faster)
+Calculating task graph as no cached configuration is available for tasks: :app:testDebugUnitTest
+
+> Configure project :app
+w: file:///workspace/.git/ci-worktree/app/build.gradle.kts:211:45: 'fun srcDir(srcDir: Any): Any' is deprecated. Use `directories` mutable set instead.
+Picked up JAVA_TOOL_OPTIONS: -Dhttp.proxyHost=127.0.0.1 -Dhttp.proxyPort=18080 -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=18080 -Dhttp.nonProxyHosts=localhost|127.0.0.1 -Drobolectric.dependency.repo.url=https://maven.aliyun.com/repository/public
+
+Picked up JAVA_TOOL_OPTIONS: -Dhttp.proxyHost=127.0.0.1 -Dhttp.proxyPort=18080 -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=18080 -Dhttp.nonProxyHosts=localhost|127.0.0.1 -Drobolectric.dependency.repo.url=https://maven.aliyun.com/repository/public
+
+Picked up JAVA_TOOL_OPTIONS: -Dhttp.proxyHost=127.0.0.1 -Dhttp.proxyPort=18080 -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=18080 -Dhttp.nonProxyHosts=localhost|127.0.0.1 -Drobolectric.dependency.repo.url=https://maven.aliyun.com/repository/public
+
+
+> Task :app:generateDebugAssets UP-TO-DATE
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preDebugBuild UP-TO-DATE
+> Task :app:preDebugUnitTestBuild UP-TO-DATE
+> Task :app:generateDebugResources
+> Task :app:packageDebugResources
+> Task :app:javaPreCompileDebug
+> Task :app:processDebugNavigationResources
+> Task :app:checkDebugAarMetadata
+> Task :app:mapDebugSourceSetPaths
+> Task :app:parseDebugLocalResources
+> Task :app:generateDebugRFile
+> Task :app:compileDebugNavigationResources
+> Task :app:mergeDebugResources
+> Task :app:createDebugCompatibleScreenManifests
+> Task :app:extractDeepLinksDebug
+> Task :app:processDebugMainManifest
+> Task :app:processDebugManifest
+> Task :app:processDebugManifestForPackage
+> Task :app:processDebugResources
+> Task :app:javaPreCompileDebugUnitTest
+> Task :app:mergeDebugAssets
+> Task :app:packageDebugUnitTestForUnitTest
+> Task :app:mergeDebugUnitTestManifest
+> Task :app:processDebugUnitTestManifest
+> Task :app:generateDebugUnitTestConfig
