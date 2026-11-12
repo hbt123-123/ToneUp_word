@@ -9,7 +9,9 @@
 #   5. writes dist/ToneUpWord.apk + dist/version.json (fixed names);
 #   6. commits the version bump, pushes main + tag, publishes the GitHub Release.
 #
-# Contract: docs/UPDATE_PROTOCOL.md. Secrets live in .git/ci-secrets (never committed).
+# Contract: docs/UPDATE_PROTOCOL.md. All credentials come from environment
+# variables (ANDROID_KEYSTORE_B64 / ANDROID_KEY_ALIAS / ANDROID_KEYSTORE_PASSWORD /
+# ANDROID_KEY_PASSWORD / GH_TOKEN); no keystore file is kept on disk.
 #
 # Exit codes: 0 = released or nothing to do; 1 = failed before publishing.
 
@@ -17,9 +19,6 @@ set -euo pipefail
 
 REPO="hbt123-123/ToneUp_word"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SECRETS_DIR="$ROOT/.git/ci-secrets"
-KEYSTORE="$SECRETS_DIR/toneup-release.jks"
-KEYINFO="$SECRETS_DIR/key.txt"
 WORKTREE="$ROOT/.git/ci-worktree"
 CODE_PATHS=(app gradle build.gradle.kts settings.gradle.kts gradle.properties)
 
@@ -128,41 +127,36 @@ KTS
 fi
 
 # ------------------------------------------------------------------ secrets ---
-# Two supported sources: files in $SECRETS_DIR (maintainer PC) or environment
-# variables (CI runner): ANDROID_KEYSTORE_B64 (base64 PKCS#12), ANDROID_KEY_ALIAS,
-# ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_PASSWORD.
-if [ ! -f "$KEYSTORE" ] && [ -n "${ANDROID_KEYSTORE_B64:-}" ]; then
-  log "decoding keystore from ANDROID_KEYSTORE_B64"
-  mkdir -p "$SECRETS_DIR"
-  printf '%s' "$ANDROID_KEYSTORE_B64" | base64 -d > "$KEYSTORE" \
-    || fail "cannot decode ANDROID_KEYSTORE_B64"
+# All release credentials come from environment variables (repo-level secrets),
+# so no keystore file has to be kept on disk: the PKCS#12 is decoded into a temp
+# dir that is removed when the script exits.
+#   ANDROID_KEYSTORE_B64       base64 of the release PKCS#12 keystore
+#   ANDROID_KEY_ALIAS          key alias inside the keystore
+#   ANDROID_KEYSTORE_PASSWORD  keystore password
+#   ANDROID_KEY_PASSWORD       key password (defaults to the keystore password)
+#   GH_TOKEN / GITHUB_TOKEN    GitHub token for push + release
+# Non-interactive shells do not read ~/.profile, so load the optional env file.
+TONEUP_ENV_FILE="${TONEUP_ENV_FILE:-$HOME/.toneup-release-env.sh}"
+if [ -f "$TONEUP_ENV_FILE" ]; then
+  # shellcheck disable=SC1090
+  . "$TONEUP_ENV_FILE"
 fi
-if [ ! -f "$KEYSTORE" ]; then
-  zip_file="$(ls -t "$ROOT"/.uploads/*toneup-release.jks.zip 2>/dev/null | head -1 || true)"
-  if [ -n "$zip_file" ]; then
-    mkdir -p "$SECRETS_DIR"
-    unzip -q -o "$zip_file" -d "$SECRETS_DIR"
-    if [ -f "$SECRETS_DIR/toneup-release.jks/toneup-release.jks" ]; then
-      mv "$SECRETS_DIR/toneup-release.jks/toneup-release.jks" "$KEYSTORE"
-      mv "$SECRETS_DIR/toneup-release.jks/key.txt" "$KEYINFO"
-      rmdir "$SECRETS_DIR/toneup-release.jks" 2>/dev/null || true
-    fi
-  fi
-fi
-[ -f "$KEYSTORE" ] || fail "keystore not found in $SECRETS_DIR, .uploads or ANDROID_KEYSTORE_B64"
-chmod 600 "$KEYSTORE" "$KEYINFO" 2>/dev/null || true
+[ -n "${ANDROID_KEYSTORE_B64:-}" ] || fail "ANDROID_KEYSTORE_B64 is not set"
+[ -n "${ANDROID_KEY_ALIAS:-}" ] || fail "ANDROID_KEY_ALIAS is not set"
+[ -n "${ANDROID_KEYSTORE_PASSWORD:-}" ] || fail "ANDROID_KEYSTORE_PASSWORD is not set"
 
-ALIAS="${ANDROID_KEY_ALIAS:-}"
-PASSWORD="${ANDROID_KEYSTORE_PASSWORD:-}"
-if [ -f "$KEYINFO" ]; then
-  [ -n "$ALIAS" ] || ALIAS="$(grep -oE '别名（alias）.*' "$KEYINFO" | grep -oE '`[^`]+`' | head -1 | tr -d '`' || true)"
-  if [ -z "$PASSWORD" ]; then
-    PASSWORD="$(grep -oE '密钥库口令.*' "$KEYINFO" | grep -oE '`[^`]+`' | head -1 | tr -d '`' || true)"
-  fi
-fi
+KEYSTORE_DIR="$(mktemp -d)"
+trap 'rm -rf "$KEYSTORE_DIR"' EXIT
+KEYSTORE="$KEYSTORE_DIR/toneup-release.jks"
+printf '%s' "$ANDROID_KEYSTORE_B64" | base64 -d > "$KEYSTORE" 2>/dev/null \
+  || fail "cannot decode ANDROID_KEYSTORE_B64"
+[ -s "$KEYSTORE" ] || fail "decoded keystore is empty"
+chmod 600 "$KEYSTORE"
+log "decoded keystore from ANDROID_KEYSTORE_B64 (temporary, removed on exit)"
+
+ALIAS="$ANDROID_KEY_ALIAS"
+PASSWORD="$ANDROID_KEYSTORE_PASSWORD"
 KEY_PASSWORD="${ANDROID_KEY_PASSWORD:-$PASSWORD}"
-[ -n "$ALIAS" ] || fail "cannot read key alias (ANDROID_KEY_ALIAS or key.txt)"
-[ -n "$PASSWORD" ] || fail "cannot read keystore password (ANDROID_KEYSTORE_PASSWORD or key.txt)"
 export TONEUP_KEYSTORE_FILE="$KEYSTORE"
 export TONEUP_KEYSTORE_PASSWORD="$PASSWORD"
 export TONEUP_KEY_ALIAS="$ALIAS"
@@ -296,11 +290,9 @@ bash ./gradlew :app:assembleRelease -x lintVitalRelease --console=plain
 APK="app/build/outputs/apk/release/app-release.apk"
 [ -f "$APK" ] || fail "release APK missing (unsigned build?)"
 APKSIGNER="$ANDROID_HOME/build-tools/36.0.0/apksigner"
-EXPECTED_CERT="$(sed -n 's/.*SHA-256：`\([0-9a-f]*\)`.*/\1/p' "$KEYINFO" | head -1)"
-"$APKSIGNER" verify --print-certs "$APK" > /tmp/toneup-apk-certs.txt
-if [ -n "$EXPECTED_CERT" ] && ! grep -qi "$EXPECTED_CERT" /tmp/toneup-apk-certs.txt; then
-  fail "APK certificate does not match the expected release key"
-fi
+"$APKSIGNER" verify --print-certs "$APK" > /tmp/toneup-apk-certs.txt \
+  || fail "APK is not signed (check ANDROID_KEYSTORE_* / ANDROID_KEY_*)"
+log "APK signer: $(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' /tmp/toneup-apk-certs.txt | head -1)"
 
 cp "$APK" dist/ToneUpWord.apk
 SHA256="$(sha256sum dist/ToneUpWord.apk | awk '{print $1}')"
