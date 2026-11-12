@@ -128,31 +128,52 @@ KTS
 fi
 
 # ------------------------------------------------------------------ secrets ---
-if [ ! -f "$KEYSTORE" ] || [ ! -f "$KEYINFO" ]; then
-  zip_file="$(ls -t "$ROOT"/.uploads/*toneup-release.jks.zip 2>/dev/null | head -1 || true)"
-  [ -n "$zip_file" ] || fail "keystore not found in $SECRETS_DIR or .uploads"
+# Two supported sources: files in $SECRETS_DIR (maintainer PC) or environment
+# variables (CI runner): ANDROID_KEYSTORE_B64 (base64 PKCS#12), ANDROID_KEY_ALIAS,
+# ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_PASSWORD.
+if [ ! -f "$KEYSTORE" ] && [ -n "${ANDROID_KEYSTORE_B64:-}" ]; then
+  log "decoding keystore from ANDROID_KEYSTORE_B64"
   mkdir -p "$SECRETS_DIR"
-  unzip -q -o "$zip_file" -d "$SECRETS_DIR"
-  if [ -f "$SECRETS_DIR/toneup-release.jks/toneup-release.jks" ]; then
-    mv "$SECRETS_DIR/toneup-release.jks/toneup-release.jks" "$KEYSTORE"
-    mv "$SECRETS_DIR/toneup-release.jks/key.txt" "$KEYINFO"
-    rmdir "$SECRETS_DIR/toneup-release.jks" 2>/dev/null || true
+  printf '%s' "$ANDROID_KEYSTORE_B64" | base64 -d > "$KEYSTORE" \
+    || fail "cannot decode ANDROID_KEYSTORE_B64"
+fi
+if [ ! -f "$KEYSTORE" ]; then
+  zip_file="$(ls -t "$ROOT"/.uploads/*toneup-release.jks.zip 2>/dev/null | head -1 || true)"
+  if [ -n "$zip_file" ]; then
+    mkdir -p "$SECRETS_DIR"
+    unzip -q -o "$zip_file" -d "$SECRETS_DIR"
+    if [ -f "$SECRETS_DIR/toneup-release.jks/toneup-release.jks" ]; then
+      mv "$SECRETS_DIR/toneup-release.jks/toneup-release.jks" "$KEYSTORE"
+      mv "$SECRETS_DIR/toneup-release.jks/key.txt" "$KEYINFO"
+      rmdir "$SECRETS_DIR/toneup-release.jks" 2>/dev/null || true
+    fi
   fi
 fi
+[ -f "$KEYSTORE" ] || fail "keystore not found in $SECRETS_DIR, .uploads or ANDROID_KEYSTORE_B64"
 chmod 600 "$KEYSTORE" "$KEYINFO" 2>/dev/null || true
 
-ALIAS="$(grep -oE '别名（alias）.*' "$KEYINFO" | grep -oE '`[^`]+`' | head -1 | tr -d '`' || true)"
-PASSWORD="$(grep -oE '密钥库口令.*' "$KEYINFO" | grep -oE '`[^`]+`' | head -1 | tr -d '`' || true)"
-[ -n "$ALIAS" ] || fail "cannot read key alias from key.txt"
-[ -n "$PASSWORD" ] || fail "cannot read keystore password from key.txt"
+ALIAS="${ANDROID_KEY_ALIAS:-}"
+PASSWORD="${ANDROID_KEYSTORE_PASSWORD:-}"
+if [ -f "$KEYINFO" ]; then
+  [ -n "$ALIAS" ] || ALIAS="$(grep -oE '别名（alias）.*' "$KEYINFO" | grep -oE '`[^`]+`' | head -1 | tr -d '`' || true)"
+  if [ -z "$PASSWORD" ]; then
+    PASSWORD="$(grep -oE '密钥库口令.*' "$KEYINFO" | grep -oE '`[^`]+`' | head -1 | tr -d '`' || true)"
+  fi
+fi
+KEY_PASSWORD="${ANDROID_KEY_PASSWORD:-$PASSWORD}"
+[ -n "$ALIAS" ] || fail "cannot read key alias (ANDROID_KEY_ALIAS or key.txt)"
+[ -n "$PASSWORD" ] || fail "cannot read keystore password (ANDROID_KEYSTORE_PASSWORD or key.txt)"
 export TONEUP_KEYSTORE_FILE="$KEYSTORE"
 export TONEUP_KEYSTORE_PASSWORD="$PASSWORD"
 export TONEUP_KEY_ALIAS="$ALIAS"
-export TONEUP_KEY_PASSWORD="$PASSWORD"
+export TONEUP_KEY_PASSWORD="$KEY_PASSWORD"
 
 # --------------------------------------------------------------- git + gh ---
-GITHUB_TOKEN="$(printf 'protocol=https\nhost=github.com\n\n' | git credential fill 2>/dev/null \
-  | sed -n 's/^password=//p' | head -1)"
+GITHUB_TOKEN="${GH_TOKEN:-${GITHUB_TOKEN:-}}"
+if [ -z "$GITHUB_TOKEN" ]; then
+  GITHUB_TOKEN="$(printf 'protocol=https\nhost=github.com\n\n' | git credential fill 2>/dev/null \
+    | sed -n 's/^password=//p' | head -1)"
+fi
 [ -n "$GITHUB_TOKEN" ] || fail "no GitHub credential available for push/release"
 export GH_TOKEN="$GITHUB_TOKEN"
 
