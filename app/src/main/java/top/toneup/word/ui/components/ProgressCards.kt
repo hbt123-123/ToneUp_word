@@ -29,7 +29,6 @@ import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import top.toneup.word.domain.stats.StageGoal
 import top.toneup.word.domain.study.NextStep
@@ -87,7 +86,7 @@ fun TodayProgressCard(
                 Text(
                     text = "今日没有待办，可以休息一下。",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = AppTheme.colors.mutedText,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             } else {
                 val remaining = plan.plannedCards - plan.doneCards
@@ -98,12 +97,11 @@ fun TodayProgressCard(
                     Text(
                         text = "${plan.doneCards}",
                         style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.SemiBold,
                     )
                     Text(
                         text = "/ ${plan.plannedCards}",
                         style = MaterialTheme.typography.titleMedium,
-                        color = AppTheme.colors.mutedText,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
                 LinearProgressIndicator(
@@ -126,13 +124,13 @@ fun TodayProgressCard(
                     Text(
                         text = "已学 ${plan.doneCards} 词",
                         style = MaterialTheme.typography.bodySmall,
-                        color = AppTheme.colors.mutedText,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Text(
                         // doneCards is capped at plannedCards, so this is never negative.
                         text = "剩余 $remaining 词",
                         style = MaterialTheme.typography.bodySmall,
-                        color = AppTheme.colors.mutedText,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
@@ -174,14 +172,13 @@ fun NextStepCard(
             Text(
                 text = NextStepPlanner.headline(step),
                 style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.testTag("home_next_step_text"),
             )
             NextStepPlanner.subline(step)?.let { subline ->
                 Text(
                     text = subline,
                     style = MaterialTheme.typography.bodySmall,
-                    color = AppTheme.colors.mutedText,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             when (step) {
@@ -244,7 +241,7 @@ fun WordStatusCard(
                 Text(
                     text = "词库还没有加载完成。",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = AppTheme.colors.mutedText,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 return@Column
             }
@@ -252,7 +249,7 @@ fun WordStatusCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(12.dp)
-                    .clip(RoundedCornerShape(6.dp))
+                    .clip(RoundedCornerShape(percent = 50))
                     .semantics {
                         contentDescription = "已掌握 $mastered 个，学习中 $learning 个，待学习 $untouched 个"
                     },
@@ -282,7 +279,7 @@ fun WordStatusCard(
                         "下一个目标：${goal.label} · ${goal.current} / ${goal.target} 词"
                     },
                     style = MaterialTheme.typography.bodySmall,
-                    color = AppTheme.colors.mutedText,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
@@ -313,7 +310,7 @@ private fun LegendItem(color: androidx.compose.ui.graphics.Color, label: String,
         Text(
             text = "$label $count",
             style = MaterialTheme.typography.labelSmall,
-            color = AppTheme.colors.mutedText,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }

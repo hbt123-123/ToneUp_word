@@ -52,6 +52,7 @@ import top.toneup.word.ui.screens.StudyScreen
 import top.toneup.word.ui.screens.WordBrowserScreen
 import top.toneup.word.ui.screens.WordDetailScreen
 import top.toneup.word.ui.screens.WriteWordScreen
+import top.toneup.word.ui.theme.AppMotion
 import top.toneup.word.ui.theme.AppTheme
 
 /**
@@ -91,7 +92,7 @@ fun ToneUpWordNavHost(
     // keep a real transition (fade + a small shared-axis slide, both on the graphics layer) at the
     // app's own motion duration, and they honour the in-app animation switch.
     val motion = AppTheme.motion
-    val transitionMillis = motion.durationMillis(NAV_TRANSITION_MILLIS)
+    val transitionMillis = motion.durationMillis(AppMotion.NAV)
     val enterTransition = fadeIn(tween(transitionMillis)) +
         slideInHorizontally(tween(transitionMillis), initialOffsetX = { it / 16 })
     val exitTransition = fadeOut(tween(transitionMillis)) +
@@ -354,12 +355,3 @@ fun ToneUpWordNavHost(
         }
     }
 }
-
-/**
- * Screen transition duration.
- *
- * Material 3's "medium 2" duration, matching the rest of the app's motion. Long enough to read
- * as a transition, short enough that two screens are not drawn simultaneously for most of a
- * second; the in-app animation switch still collapses it to zero.
- */
-private const val NAV_TRANSITION_MILLIS = 300

@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -35,12 +36,11 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import top.toneup.word.ui.theme.AppMotion
 import top.toneup.word.ui.theme.AppTheme
-import top.toneup.word.ui.theme.CardCorner
 import top.toneup.word.ui.theme.ToneUpWordTheme
 import top.toneup.word.ui.theme.Spacing
 
@@ -52,7 +52,7 @@ fun AppCard(
     content: @Composable () -> Unit,
 ) {
     val shape = MaterialTheme.shapes.large
-    val border = AppTheme.colors.hairline
+    val border = MaterialTheme.colorScheme.outline
     Surface(
         modifier = modifier
             .clip(shape)
@@ -79,7 +79,8 @@ fun ReviewBadge(
         modifier = modifier,
         color = container,
         contentColor = contentColor,
-        shape = CircleShape,
+        // Stadium pill — same construction as every other capsule label in the app.
+        shape = RoundedCornerShape(percent = 50),
     ) {
         Text(
             text = text,
@@ -116,7 +117,7 @@ fun ProgressRing(
     val animatedFraction by animateFloatAsState(
         targetValue = safeFraction,
         animationSpec = tween(
-            durationMillis = AppTheme.motion.durationMillis(RING_ANIMATION_MILLIS),
+            durationMillis = AppTheme.motion.durationMillis(AppMotion.SLOW),
             easing = FastOutSlowInEasing,
         ),
         label = "ring-sweep",
@@ -161,7 +162,7 @@ fun ProgressRing(
                 Text(
                     text = caption,
                     style = MaterialTheme.typography.labelMedium,
-                    color = AppTheme.colors.mutedText,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
@@ -170,9 +171,6 @@ fun ProgressRing(
 
 /** Diameter of the ring; a fixed square keeps the arc independent of the card width. */
 private const val RING_SIZE_DP = 156
-
-/** Material 3 "long" duration for a progress change; still respects the reduce-motion switch. */
-private const val RING_ANIMATION_MILLIS = 520
 
 /** Linear variant of the same idea, used inside lists and the study screen. */
 @Composable
@@ -199,7 +197,7 @@ fun StudyProgressIndicator(
             Text(
                 text = "$current / $safeTotal",
                 style = MaterialTheme.typography.labelLarge,
-                color = AppTheme.colors.mutedText,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
         LinearProgressIndicator(
@@ -233,7 +231,7 @@ fun StatCard(
             Text(
                 text = label,
                 style = MaterialTheme.typography.labelMedium,
-                color = AppTheme.colors.mutedText,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -241,13 +239,12 @@ fun StatCard(
                 text = value,
                 style = MaterialTheme.typography.titleLarge,
                 color = accent,
-                fontWeight = FontWeight.SemiBold,
             )
             if (caption != null) {
                 Text(
                     text = caption,
                     style = MaterialTheme.typography.bodySmall,
-                    color = AppTheme.colors.mutedText,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -274,7 +271,7 @@ fun ProgressCard(
                 Text(
                     text = subtitle,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = AppTheme.colors.mutedText,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             ProgressRing(

@@ -15,15 +15,21 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Color
 import top.toneup.word.data.settings.ThemeMode
 
-/** Extra, project specific design tokens that Material 3 has no slot for. */
+/**
+ * Extra, project specific design tokens for the semantics Material 3 has no slot for.
+ *
+ * These two pairs deliberately live outside [androidx.compose.material3.ColorScheme]: enabling
+ * dynamic colour (Material You) recolours `secondary`/`tertiary` to the wallpaper hue, which
+ * would silently hijack the fixed learn-state semantics (已掌握=绿、待巩固=黄). `error` keeps its
+ * M3 slot — destructive semantics are allowed to follow the scheme, including dynamic colour.
+ * Everything else (muted text → `onSurfaceVariant`, hairline → `outline`) reads the scheme.
+ */
 @Immutable
 data class AppColors(
     val successGreen: Color,
     val successContainer: Color,
     val warning: Color,
     val warningContainer: Color,
-    val mutedText: Color,
-    val hairline: Color,
 )
 
 val LocalAppColors = staticCompositionLocalOf {
@@ -32,8 +38,6 @@ val LocalAppColors = staticCompositionLocalOf {
         successContainer = SuccessContainer,
         warning = ApricotWarning,
         warningContainer = ApricotContainer,
-        mutedText = InkMuted,
-        hairline = Hairline,
     )
 }
 
@@ -45,6 +49,21 @@ val LocalAppColors = staticCompositionLocalOf {
 @Immutable
 data class AppMotion(val enabled: Boolean) {
     fun durationMillis(normal: Int): Int = if (enabled) normal else 0
+
+    /** The four-step duration ladder — new animations must pick one of these, no new values. */
+    companion object {
+        /** Quick feedback: reveal exit fade, small element fades. */
+        const val FAST = 120
+
+        /** Standard transition: card reveal, tip fade, dialog glyph. */
+        const val STANDARD = 240
+
+        /** Navigation transition between screens. */
+        const val NAV = 300
+
+        /** Large value animations (progress ring). */
+        const val SLOW = 520
+    }
 }
 
 val LocalAppMotion = staticCompositionLocalOf { AppMotion(enabled = true) }
@@ -104,8 +123,6 @@ fun ToneUpWordTheme(
             successContainer = DarkSuccessContainer,
             warning = DarkWarning,
             warningContainer = DarkWarningContainer,
-            mutedText = DarkOnSurfaceMuted,
-            hairline = DarkHairline,
         )
     } else {
         AppColors(
@@ -113,8 +130,6 @@ fun ToneUpWordTheme(
             successContainer = SuccessContainer,
             warning = ApricotWarning,
             warningContainer = ApricotContainer,
-            mutedText = InkMuted,
-            hairline = Hairline,
         )
     }
 

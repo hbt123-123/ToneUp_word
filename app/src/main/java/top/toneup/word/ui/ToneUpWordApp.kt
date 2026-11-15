@@ -22,6 +22,7 @@ import top.toneup.word.ui.components.LoadingState
 import top.toneup.word.ui.navigation.Routes
 import top.toneup.word.ui.navigation.ToneUpWordNavHost
 import top.toneup.word.ui.screens.StartupTipScreen
+import top.toneup.word.ui.theme.AppMotion
 import top.toneup.word.ui.theme.AppTheme
 import top.toneup.word.ui.theme.ToneUpWordTheme
 
@@ -100,10 +101,13 @@ fun ToneUpWordApp(
                     } ?: "正在准备词库…")
                 }
 
+                // Start-up line fade: short on purpose — the line sits on top of a screen that is
+                // already drawn, so the transition only has to look deliberate, not cover loading.
+                // The in-app animation switch (and the system reduce-motion flag) collapses it to 0.
                 AnimatedVisibility(
                     visible = state.startupTipVisible,
-                    enter = fadeIn(tween(AppTheme.motion.durationMillis(STARTUP_TIP_FADE_MILLIS))),
-                    exit = fadeOut(tween(AppTheme.motion.durationMillis(STARTUP_TIP_FADE_MILLIS))),
+                    enter = fadeIn(tween(AppTheme.motion.durationMillis(AppMotion.STANDARD))),
+                    exit = fadeOut(tween(AppTheme.motion.durationMillis(AppMotion.STANDARD))),
                 ) {
                     StartupTipScreen(
                         tip = state.startupTip,
@@ -147,12 +151,3 @@ fun ToneUpWordApp(
         }
     }
 }
-
-/**
- * Fade of the start-up line.
- *
- * Short on purpose: the line sits on top of a screen that is already drawn, so the transition only
- * has to look deliberate, not to cover any loading. The in-app animation switch collapses it to
- * zero.
- */
-private const val STARTUP_TIP_FADE_MILLIS = 220

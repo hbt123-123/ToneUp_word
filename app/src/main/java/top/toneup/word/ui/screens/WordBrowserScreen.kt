@@ -1,5 +1,6 @@
 package top.toneup.word.ui.screens
 
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -10,7 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -65,6 +66,8 @@ fun WordBrowserScreen(
 ) {
     val viewModel: WordBrowserViewModel = viewModel(factory = ViewModelFactories.wordBrowser(container))
     val state by viewModel.state.collectAsStateWithLifecycle()
+    // List item animations collapse to 0ms when the user (or the system) turns animations off.
+    val motion = AppTheme.motion
 
     Scaffold(
         topBar = {
@@ -74,7 +77,7 @@ fun WordBrowserScreen(
                     IconButton(
                         onClick = onBack,
                         modifier = Modifier.semantics { contentDescription = "返回" },
-                    ) { Icon(Icons.Filled.ArrowBack, contentDescription = null) }
+                    ) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null) }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background,
@@ -108,7 +111,7 @@ fun WordBrowserScreen(
                 Text(
                     text = state.resultSummary,
                     style = MaterialTheme.typography.bodySmall,
-                    color = AppTheme.colors.mutedText,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.testTag("browser_summary"),
                 )
             }
@@ -141,7 +144,11 @@ fun WordBrowserScreen(
                         WordBrowserRow(
                             item = item,
                             onClick = { onOpenWord(item.word.id) },
-                            modifier = Modifier.animateItem(),
+                            modifier = Modifier.animateItem(
+                                fadeInSpec = if (motion.enabled) null else tween(0),
+                                placementSpec = if (motion.enabled) null else tween(0),
+                                fadeOutSpec = if (motion.enabled) null else tween(0),
+                            ),
                         )
                     }
 
@@ -161,7 +168,7 @@ fun WordBrowserScreen(
                                     text = "下面这些是拼写最接近的词条，请确认是不是你要找的词；" +
                                         "结果与本地词库一一对应，不存在词库以外的词。",
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = AppTheme.colors.mutedText,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.testTag("browser_approximation_note"),
                                 )
                             }
@@ -174,7 +181,11 @@ fun WordBrowserScreen(
                                 item = item,
                                 isApproximation = true,
                                 onClick = { onOpenWord(item.word.id) },
-                                modifier = Modifier.animateItem(),
+                                modifier = Modifier.animateItem(
+                                    fadeInSpec = if (motion.enabled) null else tween(0),
+                                    placementSpec = if (motion.enabled) null else tween(0),
+                                    fadeOutSpec = if (motion.enabled) null else tween(0),
+                                ),
                             )
                         }
                     }
@@ -212,21 +223,24 @@ private fun WordBrowserRow(
                         Text(
                             text = "  ${item.word.phonetic}",
                             style = MaterialTheme.typography.bodySmall,
-                            color = AppTheme.colors.mutedText,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                     if (item.word.partOfSpeech.isNotBlank()) {
                         Text(
                             text = "  ${item.word.partOfSpeech}",
                             style = MaterialTheme.typography.bodySmall,
-                            color = AppTheme.colors.mutedText,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                     if (isApproximation) {
-                        Text(
-                            text = "  拼写相近",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = AppTheme.colors.warning,
+                        // A container-backed badge instead of raw warning-coloured text: the apricot
+                        // accent never carries body text on a light surface (≈2.2:1), the container
+                        // pair does (dark text on the soft apricot ground).
+                        ReviewBadge(
+                            text = "拼写相近",
+                            container = AppTheme.colors.warningContainer,
+                            contentColor = MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier.testTag("browser_approximation_badge"),
                         )
                     }
@@ -246,7 +260,7 @@ private fun WordBrowserRow(
                     Text(
                         text = item.word.exampleSentence,
                         style = MaterialTheme.typography.bodySmall,
-                        color = AppTheme.colors.mutedText,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )

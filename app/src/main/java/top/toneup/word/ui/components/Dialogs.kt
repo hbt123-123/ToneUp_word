@@ -19,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import top.toneup.word.ui.theme.AppMotion
 import top.toneup.word.ui.theme.AppTheme
 import top.toneup.word.ui.theme.ToneUpWordTheme
 import top.toneup.word.ui.theme.Spacing
@@ -47,7 +48,7 @@ fun ConfirmDialog(
     val transition = updateTransition(targetState = destructive, label = "confirm-dialog")
     val glyphAlpha by transition.animateFloat(
         transitionSpec = {
-            tween(durationMillis = AppTheme.motion.durationMillis(180))
+            tween(durationMillis = AppTheme.motion.durationMillis(AppMotion.STANDARD))
         },
         label = "confirm-dialog-glyph-alpha",
     ) { isDestructive -> if (isDestructive) 1f else 0f }
@@ -76,7 +77,7 @@ fun ConfirmDialog(
             Text(
                 text = message,
                 style = MaterialTheme.typography.bodyMedium,
-                color = AppTheme.colors.mutedText,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = if (destructive) Spacing.sm else 0.dp),
             )
         },
@@ -99,7 +100,7 @@ fun ConfirmDialog(
                 Text(
                     text = dismissLabel,
                     style = MaterialTheme.typography.labelLarge,
-                    color = AppTheme.colors.mutedText,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         },

@@ -19,7 +19,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
 import top.toneup.word.data.update.AppUpdateUiState
 import top.toneup.word.data.update.UpdatePhase
-import top.toneup.word.ui.theme.AppTheme
 import top.toneup.word.ui.theme.Spacing
 
 /**
@@ -59,13 +58,13 @@ fun AppUpdateDialog(
                     UpdatePhase.Checking -> Text(
                         text = "正在连接更新服务器…",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = AppTheme.colors.mutedText,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
 
                     UpdatePhase.Latest -> Text(
                         text = "当前版本 v${state.installedVersion} 已是最新。",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = AppTheme.colors.mutedText,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
 
                     UpdatePhase.Available -> AvailableBody(state)
@@ -73,7 +72,7 @@ fun AppUpdateDialog(
                     UpdatePhase.Dismissed -> Text(
                         text = "v${state.version} 已跳过。之后发布更高版本时会再次提示。",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = AppTheme.colors.mutedText,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
 
                     UpdatePhase.Downloading,
@@ -91,7 +90,7 @@ fun AppUpdateDialog(
                     UpdatePhase.Idle -> Text(
                         text = "点击检查更新。",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = AppTheme.colors.mutedText,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
@@ -144,7 +143,7 @@ private fun AvailableBody(state: AppUpdateUiState) {
         Text(
             text = state.notes,
             style = MaterialTheme.typography.bodySmall,
-            color = AppTheme.colors.mutedText,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 8,
             overflow = TextOverflow.Ellipsis,
         )
@@ -153,7 +152,7 @@ private fun AvailableBody(state: AppUpdateUiState) {
         Text(
             text = "安装包 ${formatMb(state.size)} MB",
             style = MaterialTheme.typography.bodySmall,
-            color = AppTheme.colors.mutedText,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
@@ -173,12 +172,12 @@ private fun DownloadBody(state: AppUpdateUiState) {
                 "${formatMb(state.received)} / ${formatMb(state.total)} MB"
         },
         style = MaterialTheme.typography.bodySmall,
-        color = AppTheme.colors.mutedText,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
     Text(
         text = "可以关闭此窗口继续使用，下载会在后台完成。",
         style = MaterialTheme.typography.bodySmall,
-        color = AppTheme.colors.mutedText,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
 }
 
@@ -201,7 +200,7 @@ private fun ReadyBody(state: AppUpdateUiState) {
         Text(
             text = state.notes,
             style = MaterialTheme.typography.bodySmall,
-            color = AppTheme.colors.mutedText,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 8,
             overflow = TextOverflow.Ellipsis,
         )
@@ -209,7 +208,7 @@ private fun ReadyBody(state: AppUpdateUiState) {
     Text(
         text = "安装时应用会短暂关闭，学习进度不会丢失。",
         style = MaterialTheme.typography.bodySmall,
-        color = AppTheme.colors.mutedText,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
 }
 

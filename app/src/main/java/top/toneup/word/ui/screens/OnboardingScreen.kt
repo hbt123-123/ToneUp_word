@@ -44,7 +44,6 @@ import top.toneup.word.ui.components.FilterChipGroup
 import top.toneup.word.ui.components.PrimaryButton
 import top.toneup.word.ui.components.SecondaryButton
 import top.toneup.word.ui.components.SectionHeader
-import top.toneup.word.ui.theme.AppTheme
 import top.toneup.word.ui.theme.ToneUpWordTheme
 import top.toneup.word.ui.theme.Spacing
 
@@ -105,7 +104,7 @@ fun OnboardingScreen(
                         text = "专注 CET-6 与自建词库的单词记忆、间隔重复与闭卷自测。学习与考试功能全部离线可用，" +
                             "数据只保存在本机（仅发音音频需要联网下载）。",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = AppTheme.colors.mutedText,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
@@ -123,7 +122,7 @@ fun OnboardingScreen(
                     Text(
                         text = "内置为自建演示词条，正式备考可导入你拥有使用权的 JSON / CSV 词库。",
                         style = MaterialTheme.typography.bodySmall,
-                        color = AppTheme.colors.mutedText,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
@@ -148,7 +147,7 @@ fun OnboardingScreen(
                     Text(
                         text = "目标可以随时在「我的 - 学习设置」里调整。",
                         style = MaterialTheme.typography.bodySmall,
-                        color = AppTheme.colors.mutedText,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
@@ -165,7 +164,7 @@ fun OnboardingScreen(
                             Text(
                                 text = "每天固定时间提醒复习，可在系统设置中关闭通知。",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = AppTheme.colors.mutedText,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
                         Switch(
@@ -198,7 +197,7 @@ fun OnboardingScreen(
                         text = "朗读使用系统自带的文字转语音服务，语言、声音、语速和音调都跟随系统设置，" +
                             "不需要联网，也不会额外申请权限。",
                         style = MaterialTheme.typography.bodySmall,
-                        color = AppTheme.colors.mutedText,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     FilterChipGroup(
                         options = SpeechRateMode.entries.toList(),

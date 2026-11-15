@@ -24,7 +24,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import top.toneup.word.data.speech.SpeechRecovery
 import top.toneup.word.ui.speech.SpeechUiState
-import top.toneup.word.ui.theme.AppTheme
 import top.toneup.word.ui.theme.Spacing
 
 /** testTags used by the UI tests; kept as constants so the tests cannot drift from the UI. */
@@ -101,7 +100,7 @@ fun SpeakButton(
             Text(
                 text = label,
                 style = MaterialTheme.typography.labelMedium,
-                color = AppTheme.colors.mutedText,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }

@@ -10,11 +10,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -29,8 +28,6 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import top.toneup.word.ui.theme.AppTheme
-import top.toneup.word.ui.theme.CardCorner
 import top.toneup.word.ui.theme.ToneUpWordTheme
 import top.toneup.word.ui.theme.Spacing
 
@@ -93,7 +90,7 @@ fun EmptyState(
         Text(
             text = description,
             style = MaterialTheme.typography.bodyMedium,
-            color = AppTheme.colors.mutedText,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
         )
 
@@ -124,7 +121,7 @@ fun LoadingState(
         Text(
             text = text,
             style = MaterialTheme.typography.bodyMedium,
-            color = AppTheme.colors.mutedText,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
         )
     }
@@ -141,7 +138,7 @@ fun ErrorState(
 ) {
     Surface(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(CardCorner),
+        shape = MaterialTheme.shapes.large,
         color = MaterialTheme.colorScheme.errorContainer,
         contentColor = MaterialTheme.colorScheme.onErrorContainer,
     ) {
@@ -151,7 +148,7 @@ fun ErrorState(
             verticalArrangement = Arrangement.spacedBy(Spacing.sm),
         ) {
             Icon(
-                imageVector = Icons.Outlined.Info,
+                imageVector = Icons.Filled.Info,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.error,
                 modifier = Modifier.size(28.dp),

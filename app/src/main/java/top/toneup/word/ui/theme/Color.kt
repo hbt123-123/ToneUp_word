@@ -34,8 +34,8 @@ val CardWhite = Color(0xFFFFFFFF)
 /** 主文字：深灰黑。 */
 val Ink = Color(0xFF26332F)
 
-/** 次级文字：柔和灰色。 */
-val InkMuted = Color(0xFF89948F)
+/** 次级文字：灰绿。在暖白/卡片白底上对比度 ≥ 4.5:1（WCAG AA 正文达标）。 */
+val InkMuted = Color(0xFF5D6A64)
 
 /** 分隔线与细边框。 */
 val Hairline = Color(0xFFE4EBE6)
@@ -49,7 +49,7 @@ val SuccessContainer = Color(0xFFE4F6EC)
 val CoralError = Color(0xFFD9705C)
 val CoralContainer = Color(0xFFFBE9E5)
 
-/** 重点提醒：柔和杏黄色。 */
+/** 重点提醒：柔和杏黄色。浅底上 ≈2.2:1 —— 只用于图标与容器底色，不作正文文字色。 */
 val ApricotWarning = Color(0xFFE0A34E)
 val ApricotContainer = Color(0xFFFDF2DF)
 
@@ -66,6 +66,9 @@ val DarkSuccessGreen = Color(0xFF7ED3AC)
 val DarkSuccessContainer = Color(0xFF21402F)
 val DarkWarning = Color(0xFFF0C079)
 val DarkWarningContainer = Color(0xFF4A3A17)
+
+/** Deep-mint "on" colour shared by the primary/secondary containers in dark mode. */
+val DarkOnMintContainer = Color(0xFFD3F5E7)
 
 /** Light scheme used on every Android version unless the user opts into dynamic colour. */
 val LightColors: ColorScheme = lightColorScheme(
@@ -102,19 +105,24 @@ val LightColors: ColorScheme = lightColorScheme(
     inverseOnSurface = WarmWhite,
 )
 
-/** Dark scheme — the structure is complete so the app stays readable in dark mode. */
+/**
+ * Dark scheme — the structure is complete so the app stays readable in dark mode.
+ * Success/warning slots intentionally reuse the [DarkSuccessGreen]/[DarkWarning] constants:
+ * one definition per colour, never a duplicated literal (see [AppColors] in Theme.kt for why
+ * the learn-state semantics live outside the scheme).
+ */
 val DarkColors: ColorScheme = darkColorScheme(
     primary = MintLight,
     onPrimary = Color(0xFF05372A),
     primaryContainer = Color(0xFF1E4A3C),
-    onPrimaryContainer = Color(0xFFD3F5E7),
-    secondary = Color(0xFF7ED3AC),
+    onPrimaryContainer = DarkOnMintContainer,
+    secondary = DarkSuccessGreen,
     onSecondary = Color(0xFF04301F),
-    secondaryContainer = Color(0xFF21402F),
-    onSecondaryContainer = Color(0xFFD3F5E7),
-    tertiary = Color(0xFFF0C079),
+    secondaryContainer = DarkSuccessContainer,
+    onSecondaryContainer = DarkOnMintContainer,
+    tertiary = DarkWarning,
     onTertiary = Color(0xFF3B2A05),
-    tertiaryContainer = Color(0xFF4A3A17),
+    tertiaryContainer = DarkWarningContainer,
     onTertiaryContainer = Color(0xFFFBE7C2),
     error = Color(0xFFE9A091),
     onError = Color(0xFF3D150D),

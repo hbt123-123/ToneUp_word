@@ -1,29 +1,7 @@
 package top.toneup.word.ui.screens
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Surface
-import androidx.compose.material3.TextButton
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import top.toneup.word.ui.components.InsightCard
-import top.toneup.word.ui.components.MotivationLine
-import top.toneup.word.ui.components.NextStepCard
-import top.toneup.word.ui.components.StatDefinition
-import top.toneup.word.ui.components.TodayProgressCard
-import top.toneup.word.ui.components.WordStatusCard
-
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -35,20 +13,36 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -63,14 +57,20 @@ import top.toneup.word.ui.ViewModelFactories
 import top.toneup.word.ui.components.AppCard
 import top.toneup.word.ui.components.EmptyState
 import top.toneup.word.ui.components.ErrorState
+import top.toneup.word.ui.components.InsightCard
 import top.toneup.word.ui.components.LoadingState
+import top.toneup.word.ui.components.MotivationLine
+import top.toneup.word.ui.components.NextStepCard
 import top.toneup.word.ui.components.PrimaryButton
 import top.toneup.word.ui.components.ReviewBadge
 import top.toneup.word.ui.components.SecondaryButton
 import top.toneup.word.ui.components.SectionHeader
+import top.toneup.word.ui.components.StatDefinition
+import top.toneup.word.ui.components.TodayProgressCard
+import top.toneup.word.ui.components.WordStatusCard
 import top.toneup.word.ui.theme.AppTheme
-import top.toneup.word.ui.theme.ToneUpWordTheme
 import top.toneup.word.ui.theme.Spacing
+import top.toneup.word.ui.theme.ToneUpWordTheme
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -127,7 +127,7 @@ fun HomeScreen(
                             Text(
                                 text = state.dateLabel,
                                 style = MaterialTheme.typography.bodySmall,
-                                color = AppTheme.colors.mutedText,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
@@ -246,7 +246,7 @@ fun HomeScreen(
                                 Text(
                                     text = "可以继续上次的进度，也可以放弃这次会话重新开始。",
                                     style = MaterialTheme.typography.bodyMedium,
-                                    color = AppTheme.colors.mutedText,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                                 Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                                     PrimaryButton(
@@ -333,12 +333,12 @@ fun HomeScreen(
                                 Text(
                                     text = summary,
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = AppTheme.colors.mutedText,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                                 Icon(
                                     imageVector = Icons.Filled.KeyboardArrowRight,
                                     contentDescription = null,
-                                    tint = AppTheme.colors.mutedText,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.size(18.dp),
                                 )
                             }
@@ -380,7 +380,7 @@ fun HomeScreen(
                                 Text(
                                     text = "还没有学习记录，完成第一组单词后这里会显示最近的作答。",
                                     style = MaterialTheme.typography.bodyMedium,
-                                    color = AppTheme.colors.mutedText,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             } else {
                                 state.recentEvents.forEach { event -> RecentEventRow(event) }
@@ -428,7 +428,7 @@ private fun RecentEventRow(event: RecentEvent) {
             Text(
                 text = event.meaning,
                 style = MaterialTheme.typography.bodySmall,
-                color = AppTheme.colors.mutedText,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
         ReviewBadge(
@@ -481,14 +481,14 @@ fun WeeklyTrendChart(
                 Text(
                     text = if (point.reviewEvents > 0) "${point.reviewEvents}" else "",
                     style = MaterialTheme.typography.labelSmall,
-                    color = AppTheme.colors.mutedText,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Box(
                     modifier = Modifier
                         .padding(horizontal = 3.dp)
                         .height((8 + 56 * fraction).dp)
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(6.dp))
+                        .clip(RoundedCornerShape(percent = 50))
                         .background(
                             if (point.hasActivity) {
                                 MaterialTheme.colorScheme.primary
@@ -500,7 +500,7 @@ fun WeeklyTrendChart(
                 Text(
                     text = WEEKDAY_FORMATTER.format(point.date),
                     style = MaterialTheme.typography.labelSmall,
-                    color = AppTheme.colors.mutedText,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
@@ -538,7 +538,7 @@ fun KeyValueRow(label: String, value: String, modifier: Modifier = Modifier) {
         Text(
             text = label,
             style = MaterialTheme.typography.bodyMedium,
-            color = AppTheme.colors.mutedText,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Text(
             text = value,
@@ -574,7 +574,7 @@ private fun StatisticsDefinitionsDialog(onDismiss: () -> Unit) {
                     text = "所有统计都只保存在本机，不会上传。分母为 0 时一律显示「暂无数据」，" +
                         "而不是 0%，避免把「还没学」显示成「学得很差」。",
                     style = MaterialTheme.typography.bodySmall,
-                    color = AppTheme.colors.mutedText,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 StatDefinition.entries.forEach { definition ->
                     androidx.compose.foundation.layout.Column(
@@ -584,7 +584,7 @@ private fun StatisticsDefinitionsDialog(onDismiss: () -> Unit) {
                         Text(
                             text = definition.body,
                             style = MaterialTheme.typography.bodySmall,
-                            color = AppTheme.colors.mutedText,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                 }

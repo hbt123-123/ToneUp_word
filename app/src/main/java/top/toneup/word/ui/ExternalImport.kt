@@ -41,7 +41,6 @@ import top.toneup.word.ui.components.AccentPanel
 import top.toneup.word.ui.components.FilterChipGroup
 import top.toneup.word.ui.components.PrimaryButton
 import top.toneup.word.ui.components.SecondaryButton
-import top.toneup.word.ui.theme.AppTheme
 import top.toneup.word.ui.theme.Spacing
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -455,7 +454,7 @@ private fun DetectContent(
         Text(
             text = "可导入 ${preview.importableCount} · 过滤 ${preview.dropped} · 重复 ${preview.duplicates}",
             style = MaterialTheme.typography.bodyMedium,
-            color = AppTheme.colors.mutedText,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.testTag("ext_import_stats"),
         )
     }
@@ -529,7 +528,7 @@ private fun DoneContent(
     Text(
         text = "单词已入库，释义与音标稍后自动补全。",
         style = MaterialTheme.typography.bodySmall,
-        color = AppTheme.colors.mutedText,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
     PrimaryButton(
         text = "完成",
@@ -553,7 +552,7 @@ private fun ErrorContent(
     Text(
         text = state.error ?: "没有可导入的单词。",
         style = MaterialTheme.typography.bodyMedium,
-        color = AppTheme.colors.mutedText,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.testTag("ext_import_error_message"),
     )
     SecondaryButton(

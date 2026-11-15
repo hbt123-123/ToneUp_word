@@ -14,7 +14,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
-import top.toneup.word.ui.theme.AppTheme
 import top.toneup.word.ui.theme.Spacing
 
 /**
@@ -60,7 +59,7 @@ fun SettingToggleRow(
                 Text(
                     text = description,
                     style = MaterialTheme.typography.bodySmall,
-                    color = AppTheme.colors.mutedText,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }

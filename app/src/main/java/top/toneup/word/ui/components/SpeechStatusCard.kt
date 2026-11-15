@@ -13,7 +13,6 @@ import androidx.compose.ui.platform.testTag
 import top.toneup.word.data.speech.SpeechDiagnostics
 import top.toneup.word.data.speech.SpeechRecovery
 import top.toneup.word.data.speech.SpeechStatus
-import top.toneup.word.ui.theme.AppTheme
 import top.toneup.word.ui.theme.Spacing
 
 /**
@@ -56,7 +55,7 @@ fun SpeechStatusCard(
             Text(
                 text = detail,
                 style = MaterialTheme.typography.bodySmall,
-                color = AppTheme.colors.mutedText,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
 
@@ -99,14 +98,14 @@ fun SpeechStatusCard(
         Text(
             text = diagnostics.summary,
             style = MaterialTheme.typography.labelSmall,
-            color = AppTheme.colors.mutedText,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.testTag("speech_success_summary"),
         )
         diagnostics.successPercent?.let { percent ->
             Text(
                 text = "朗读成功率 $percent%（本机统计，仅本次运行，不会上传）",
                 style = MaterialTheme.typography.labelSmall,
-                color = AppTheme.colors.mutedText,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.testTag("speech_success_percent"),
             )
         }

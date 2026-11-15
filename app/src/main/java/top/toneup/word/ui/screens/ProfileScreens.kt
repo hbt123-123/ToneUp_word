@@ -26,7 +26,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -77,7 +77,6 @@ import top.toneup.word.ui.components.SecondaryButton
 import top.toneup.word.ui.components.SectionHeader
 import top.toneup.word.ui.components.SettingToggleRow
 import top.toneup.word.ui.components.StatCard
-import top.toneup.word.ui.theme.AppTheme
 import top.toneup.word.ui.theme.ToneUpWordTheme
 import top.toneup.word.ui.theme.Spacing
 
@@ -191,7 +190,7 @@ fun ProfileScreen(
                             Text(
                                 text = "还没有词库。内置演示词库会在首次启动时自动创建。",
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = AppTheme.colors.mutedText,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         } else {
                             state.packs.forEach { pack ->
@@ -211,13 +210,13 @@ fun ProfileScreen(
                                         Text(
                                             text = if (pack.isBuiltIn) "内置" else "已导入",
                                             style = MaterialTheme.typography.labelMedium,
-                                            color = AppTheme.colors.mutedText,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         )
                                     }
                                     Text(
                                         text = "${CetLevel.fromId(pack.level).label} · ${pack.wordCount} 词 · ${pack.license}",
                                         style = MaterialTheme.typography.bodySmall,
-                                        color = AppTheme.colors.mutedText,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
                                 }
                             }
@@ -234,7 +233,7 @@ fun ProfileScreen(
                             Text(
                                 text = "还没有导入或导出记录。",
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = AppTheme.colors.mutedText,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         } else {
                             state.importHistory.take(5).forEach { record ->
@@ -251,7 +250,7 @@ fun ProfileScreen(
                                         },
                                         style = MaterialTheme.typography.bodySmall,
                                         color = if (record.status == "SUCCESS") {
-                                            AppTheme.colors.mutedText
+                                            MaterialTheme.colorScheme.onSurfaceVariant
                                         } else {
                                             MaterialTheme.colorScheme.error
                                         },
@@ -295,7 +294,7 @@ private fun SettingsEntry(
             Text(
                 text = subtitle,
                 style = MaterialTheme.typography.bodySmall,
-                color = AppTheme.colors.mutedText,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
@@ -354,7 +353,7 @@ fun SettingsScreen(
                     IconButton(
                         onClick = onBack,
                         modifier = Modifier.semantics { contentDescription = "返回" },
-                    ) { Icon(Icons.Filled.ArrowBack, contentDescription = null) }
+                    ) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null) }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background,
@@ -420,7 +419,7 @@ fun SettingsScreen(
                         text = "「全部词库」按整个计划排课；选中某个词库后，每日新词与复习都只从该词库取词。" +
                             "切换计划会自动回到「全部词库」。",
                         style = MaterialTheme.typography.bodySmall,
-                        color = AppTheme.colors.mutedText,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
@@ -525,7 +524,7 @@ fun SettingsScreen(
                             "系统语音完全离线，使用手机自带的文字转语音服务。"
                         },
                         style = MaterialTheme.typography.bodySmall,
-                        color = AppTheme.colors.mutedText,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Text(
                         text = "朗读速度",
@@ -542,7 +541,7 @@ fun SettingsScreen(
                         text = "选择「跟随系统」时，语速与音调由系统的文字转语音设置决定，" +
                             "应用不会覆盖它们。",
                         style = MaterialTheme.typography.bodySmall,
-                        color = AppTheme.colors.mutedText,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     SettingToggleRow(
                         label = "卡片出现时自动朗读",
@@ -561,7 +560,7 @@ fun SettingsScreen(
                             "「跟随系统」时语速与音调由系统的文字转语音设置决定。" +
                             "如果系统没有安装语音引擎或缺少英语语音包，朗读会给出提示并提供设置入口。",
                         style = MaterialTheme.typography.bodySmall,
-                        color = AppTheme.colors.mutedText,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
@@ -588,7 +587,7 @@ fun SettingsScreen(
                         Text(
                             text = "动态颜色需要 Android 12 及以上，本机使用薄荷绿品牌配色。",
                             style = MaterialTheme.typography.bodySmall,
-                            color = AppTheme.colors.mutedText,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                     SettingToggleRow(
@@ -644,7 +643,7 @@ fun SettingsScreen(
                         text = "「清空学习进度」会删除掌握状态、错题、答题日志与统计；" +
                             "「重置全部数据」还会删除所有已导入词库（内置演示词库会恢复）。",
                         style = MaterialTheme.typography.bodySmall,
-                        color = AppTheme.colors.mutedText,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
@@ -743,7 +742,7 @@ private fun GatewaySettingsSection(
                 text = "导入单词后，应用可通过自建网关补全释义、音标与词性；" +
                     "联网只用于释义补全，上传内容仅为待查询的单词本身。",
                 style = MaterialTheme.typography.bodySmall,
-                color = AppTheme.colors.mutedText,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
             OutlinedTextField(
@@ -905,7 +904,7 @@ private fun GatewaySettingsSection(
                             else -> "$count 个单词待补充"
                         },
                         style = MaterialTheme.typography.bodySmall,
-                        color = AppTheme.colors.mutedText,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.testTag("settings_gateway_pending_count"),
                     )
                 }
@@ -918,7 +917,7 @@ private fun GatewaySettingsSection(
             Text(
                 text = "需联网；仅 Wi-Fi 可在开关中设置。",
                 style = MaterialTheme.typography.bodySmall,
-                color = AppTheme.colors.mutedText,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
             Row(
@@ -951,7 +950,7 @@ private fun GatewaySettingsSection(
                     color = if (message == "密钥错误") {
                         MaterialTheme.colorScheme.error
                     } else {
-                        AppTheme.colors.mutedText
+                        MaterialTheme.colorScheme.onSurfaceVariant
                     },
                     modifier = Modifier.testTag("settings_gateway_test_result"),
                 )

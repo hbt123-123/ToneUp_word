@@ -34,7 +34,6 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import top.toneup.word.ui.theme.AppTheme
 import top.toneup.word.ui.theme.ToneUpWordTheme
 import top.toneup.word.ui.theme.MinTouchTarget
 import top.toneup.word.ui.theme.Spacing
@@ -69,7 +68,7 @@ fun WordSearchBar(
             Text(
                 text = placeholder,
                 style = MaterialTheme.typography.bodyMedium,
-                color = AppTheme.colors.mutedText,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         },
         leadingIcon = {
@@ -77,7 +76,7 @@ fun WordSearchBar(
                 imageVector = Icons.Filled.Search,
                 // Decorative: the placeholder already says what the field is for.
                 contentDescription = null,
-                tint = AppTheme.colors.mutedText,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         },
         trailingIcon = {
@@ -96,7 +95,7 @@ fun WordSearchBar(
                     Icon(
                         imageVector = Icons.Filled.Close,
                         contentDescription = null,
-                        tint = AppTheme.colors.mutedText,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
@@ -105,7 +104,7 @@ fun WordSearchBar(
         keyboardActions = KeyboardActions(onSearch = { keyboard?.hide() }),
         colors = OutlinedTextFieldDefaults.colors(
             focusedBorderColor = MaterialTheme.colorScheme.primary,
-            unfocusedBorderColor = AppTheme.colors.hairline,
+            unfocusedBorderColor = MaterialTheme.colorScheme.outline,
             focusedContainerColor = MaterialTheme.colorScheme.surface,
             unfocusedContainerColor = MaterialTheme.colorScheme.surface,
             cursorColor = MaterialTheme.colorScheme.primary,
@@ -174,7 +173,7 @@ fun <T> FilterChipGroup(
                     color = if (isSelected) {
                         MaterialTheme.colorScheme.primary
                     } else {
-                        AppTheme.colors.hairline
+                        MaterialTheme.colorScheme.outline
                     },
                 ),
             )

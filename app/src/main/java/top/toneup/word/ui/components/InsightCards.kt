@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -20,7 +19,6 @@ import top.toneup.word.domain.insight.Insight
 import top.toneup.word.domain.insight.InsightKind
 import top.toneup.word.domain.motivation.MotivationMessage
 import top.toneup.word.domain.motivation.MotivationSource
-import top.toneup.word.ui.theme.AppTheme
 import top.toneup.word.ui.theme.Spacing
 
 /**
@@ -46,7 +44,7 @@ fun InsightCard(
             Text(
                 text = insight.detail,
                 style = MaterialTheme.typography.bodyMedium,
-                color = AppTheme.colors.mutedText,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             if (insight.actionLabel != null && insight.kind != InsightKind.INSUFFICIENT_DATA) {
                 Row(
@@ -82,9 +80,9 @@ fun MotivationLine(
         modifier = modifier
             .fillMaxWidth()
             .testTag("motivation_line"),
-        shape = RoundedCornerShape(12.dp),
+        shape = MaterialTheme.shapes.small,
         color = MaterialTheme.colorScheme.surfaceContainerLow,
-        border = BorderStroke(1.dp, AppTheme.colors.hairline),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
     ) {
         Column(
             modifier = Modifier.padding(horizontal = Spacing.md, vertical = Spacing.sm),
@@ -102,7 +100,7 @@ fun MotivationLine(
                 Text(
                     text = "—— ${message.attribution}",
                     style = MaterialTheme.typography.labelSmall,
-                    color = AppTheme.colors.mutedText,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }

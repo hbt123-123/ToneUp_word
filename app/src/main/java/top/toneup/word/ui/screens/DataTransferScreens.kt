@@ -14,7 +14,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -47,7 +47,6 @@ import top.toneup.word.ui.components.PrimaryButton
 import top.toneup.word.ui.components.ReviewBadge
 import top.toneup.word.ui.components.SecondaryButton
 import top.toneup.word.ui.components.SectionHeader
-import top.toneup.word.ui.theme.AppTheme
 import top.toneup.word.ui.theme.ToneUpWordTheme
 import top.toneup.word.ui.theme.Spacing
 
@@ -94,7 +93,7 @@ fun DataTransferScreen(
                     IconButton(
                         onClick = onBack,
                         modifier = Modifier.semantics { contentDescription = "返回" },
-                    ) { Icon(Icons.Filled.ArrowBack, contentDescription = null) }
+                    ) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null) }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background,
@@ -128,7 +127,7 @@ fun DataTransferScreen(
                         Text(
                             text = "同名单词保留了原有的学习进度，只更新了词条内容。",
                             style = MaterialTheme.typography.bodySmall,
-                            color = AppTheme.colors.mutedText,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                 }
@@ -151,7 +150,7 @@ fun DataTransferScreen(
                             "exampleSentence、exampleTranslation、collocations、level、source、license）。" +
                             "文件最大 8 MB / 20000 条记录。",
                         style = MaterialTheme.typography.bodySmall,
-                        color = AppTheme.colors.mutedText,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     PrimaryButton(
                         text = "选择 JSON / CSV 文件",
@@ -189,7 +188,7 @@ fun DataTransferScreen(
                         text = (ExportScope.entries.firstOrNull { it.name == exportScopeName[0] }
                             ?: ExportScope.WORD_LIST).description,
                         style = MaterialTheme.typography.bodySmall,
-                        color = AppTheme.colors.mutedText,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     PrimaryButton(
                         text = "选择保存位置并导出",
@@ -208,7 +207,7 @@ fun DataTransferScreen(
                     Text(
                         text = "导出的 JSON 包含版本号、导出时间与数据格式说明，可直接用于恢复。",
                         style = MaterialTheme.typography.bodySmall,
-                        color = AppTheme.colors.mutedText,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
@@ -219,7 +218,7 @@ fun DataTransferScreen(
                     Text(
                         text = "恢复会替换备份中词库的学习数据（掌握状态、错题、统计），词库本身不会删除。",
                         style = MaterialTheme.typography.bodySmall,
-                        color = AppTheme.colors.mutedText,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     SecondaryButton(
                         text = "选择备份文件",
@@ -240,12 +239,12 @@ fun DataTransferScreen(
                         text = "内置演示词库：六级 ${BuiltInWordPacks.cet6.size} 词，" +
                             "许可 ${BuiltInWordPacks.LICENSE}。",
                         style = MaterialTheme.typography.bodySmall,
-                        color = AppTheme.colors.mutedText,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Text(
                         text = "导入的词库请在「我的 - 词库来源与许可」中核对来源与许可。",
                         style = MaterialTheme.typography.bodySmall,
-                        color = AppTheme.colors.mutedText,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
@@ -316,7 +315,7 @@ fun LicensesScreen(onBack: () -> Unit) {
                     text = "内置单词为项目自建的演示数据（自撰释义与例句），仅用于体验完整功能，" +
                         "并非任何官方或商业词库，也不代表考试范围。",
                     style = MaterialTheme.typography.bodySmall,
-                    color = AppTheme.colors.mutedText,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
@@ -332,7 +331,7 @@ fun LicensesScreen(onBack: () -> Unit) {
                 Text(
                     text = "本应用不捆绑来源不明的商业词库、音频或第三方内容，也不与任何考试机构存在合作关系。",
                     style = MaterialTheme.typography.bodySmall,
-                    color = AppTheme.colors.mutedText,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
@@ -364,7 +363,7 @@ fun AboutScreen(
                 Text(
                     text = "版本 ${container.appVersionName}",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = AppTheme.colors.mutedText,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Row {
                     ReviewBadge(text = "minSdk 26（Android 8.0）")
@@ -424,7 +423,7 @@ private fun InfoScaffold(
                     IconButton(
                         onClick = onBack,
                         modifier = Modifier.semantics { contentDescription = "返回" },
-                    ) { Icon(Icons.Filled.ArrowBack, contentDescription = null) }
+                    ) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null) }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background,

@@ -26,7 +26,6 @@ import kotlinx.coroutines.launch
 import top.toneup.word.core.result.Outcome
 import top.toneup.word.domain.model.CetLevel
 import top.toneup.word.domain.model.Word
-import top.toneup.word.ui.theme.AppTheme
 import top.toneup.word.ui.theme.ToneUpWordTheme
 import top.toneup.word.ui.theme.Spacing
 
@@ -117,7 +116,7 @@ fun WordEditDialog(
                 Text(
                     text = "笔记",
                     style = MaterialTheme.typography.labelLarge,
-                    color = AppTheme.colors.mutedText,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 OutlinedTextField(
                     value = noteText,
@@ -130,12 +129,12 @@ fun WordEditDialog(
                     shape = MaterialTheme.shapes.medium,
                 )
 
-                HorizontalDivider(color = AppTheme.colors.hairline)
+                HorizontalDivider(color = MaterialTheme.colorScheme.outline)
 
                 Text(
                     text = "释义",
                     style = MaterialTheme.typography.labelLarge,
-                    color = AppTheme.colors.mutedText,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 OutlinedTextField(
                     value = meaningText,
@@ -150,7 +149,7 @@ fun WordEditDialog(
                 Text(
                     text = "手动编辑后不再被自动补全覆盖。",
                     style = MaterialTheme.typography.bodySmall,
-                    color = AppTheme.colors.mutedText,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.testTag("edit_manual_hint"),
                 )
 
@@ -178,7 +177,7 @@ fun WordEditDialog(
                 Text(
                     text = "取消",
                     style = MaterialTheme.typography.labelLarge,
-                    color = AppTheme.colors.mutedText,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         },

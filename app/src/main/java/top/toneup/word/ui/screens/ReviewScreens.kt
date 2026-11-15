@@ -1,5 +1,6 @@
 package top.toneup.word.ui.screens
 
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import top.toneup.word.data.speech.SpeechEngineMode
 import top.toneup.word.data.speech.SpeechRateMode
@@ -15,8 +16,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material3.Checkbox
@@ -92,6 +93,10 @@ fun ReviewCenterScreen(
     val viewModel: ReviewCenterViewModel = viewModel(factory = ViewModelFactories.review(container))
     val state by viewModel.state.collectAsStateWithLifecycle()
     val scope = androidx.compose.runtime.rememberCoroutineScope()
+    // The item animations below are the one place outside the shared components that must
+    // respect the reduce-motion switch: `animateItem` gets null specs (platform defaults) when
+    // animations are on, and zero-duration tweens when they are off.
+    val motion = AppTheme.motion
 
     var batchMode by remember { mutableStateOf(false) }
     var pendingDelete by remember { mutableStateOf<List<Long>?>(null) }
@@ -198,8 +203,9 @@ fun ReviewCenterScreen(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     SecondaryButton(
-                        text = if (state.filter.favoritesOnly) "只看收藏 ✓" else "只看收藏",
+                        text = "只看收藏",
                         onClick = viewModel::toggleFavoritesOnly,
+                        leadingIcon = if (state.filter.favoritesOnly) Icons.Filled.Check else null,
                         modifier = Modifier
                             .weight(1f)
                             .testTag("review_favorites_filter"),
@@ -220,7 +226,7 @@ fun ReviewCenterScreen(
                 Text(
                     text = state.filter.category.description,
                     style = MaterialTheme.typography.bodySmall,
-                    color = AppTheme.colors.mutedText,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
 
@@ -263,8 +269,13 @@ fun ReviewCenterScreen(
                             },
                             // Animates insertion/removal/reordering caused by filtering, batch
                             // deletion and "mark as consolidated" — the item animation runs on
-                            // the graphics layer of the row only.
-                            modifier = Modifier.animateItem(),
+                            // the graphics layer of the row only, and collapses to 0ms when the
+                            // user turns animations off.
+                            modifier = Modifier.animateItem(
+                                fadeInSpec = if (motion.enabled) null else tween(0),
+                                placementSpec = if (motion.enabled) null else tween(0),
+                                fadeOutSpec = if (motion.enabled) null else tween(0),
+                            ),
                         )
                     }
                 }
@@ -308,7 +319,7 @@ private fun BatchActionBar(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(Spacing.lg),
+            .padding(horizontal = Spacing.lg, vertical = Spacing.sm),
         verticalArrangement = Arrangement.spacedBy(Spacing.sm),
     ) {
         PrimaryButton(
@@ -363,7 +374,7 @@ private fun MistakeRow(
                         Text(
                             text = "  ${item.word.phonetic}",
                             style = MaterialTheme.typography.bodySmall,
-                            color = AppTheme.colors.mutedText,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                 }
@@ -411,7 +422,7 @@ private fun MistakeRow(
                         )
                     },
                     style = MaterialTheme.typography.bodySmall,
-                    color = AppTheme.colors.mutedText,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             IconButton(
@@ -423,7 +434,7 @@ private fun MistakeRow(
                 Icon(
                     imageVector = if (item.isFavorite) Icons.Filled.Star else Icons.Outlined.Star,
                     contentDescription = null,
-                    tint = if (item.isFavorite) AppTheme.colors.warning else AppTheme.colors.mutedText,
+                    tint = if (item.isFavorite) AppTheme.colors.warning else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
@@ -494,7 +505,7 @@ fun WordDetailScreen(
                     IconButton(
                         onClick = onBack,
                         modifier = Modifier.semantics { contentDescription = "返回" },
-                    ) { Icon(Icons.Filled.ArrowBack, contentDescription = null) }
+                    ) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null) }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background,
@@ -614,7 +625,7 @@ fun WordDetailScreen(
                     text = message,
                     style = MaterialTheme.typography.bodySmall,
                     color = if (message == "释义已更新。") {
-                        AppTheme.colors.mutedText
+                        MaterialTheme.colorScheme.onSurfaceVariant
                     } else {
                         MaterialTheme.colorScheme.error
                     },

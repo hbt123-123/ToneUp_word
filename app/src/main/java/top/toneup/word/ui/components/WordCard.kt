@@ -1,6 +1,7 @@
 package top.toneup.word.ui.components
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -25,7 +26,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material3.CircularProgressIndicator
@@ -51,7 +51,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
@@ -62,6 +61,7 @@ import top.toneup.word.domain.model.CetLevel
 import top.toneup.word.domain.model.Word
 import top.toneup.word.domain.srs.WordProgress
 import top.toneup.word.ui.speech.SpeechUiState
+import top.toneup.word.ui.theme.AppMotion
 import top.toneup.word.ui.theme.AppTheme
 import top.toneup.word.ui.theme.ToneUpWordTheme
 import top.toneup.word.ui.theme.Spacing
@@ -139,7 +139,7 @@ fun WordCard(
                     Icon(
                         imageVector = if (isFavorite) Icons.Filled.Star else Icons.Outlined.Star,
                         contentDescription = null,
-                        tint = if (isFavorite) AppTheme.colors.warning else AppTheme.colors.mutedText,
+                        tint = if (isFavorite) AppTheme.colors.warning else MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
@@ -155,7 +155,7 @@ fun WordCard(
                     Text(
                         text = word.phonetic,
                         style = phoneticStyle,
-                        color = AppTheme.colors.mutedText,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
                 Spacer(Modifier.width(Spacing.sm))
@@ -186,7 +186,7 @@ fun WordCard(
                 onInstallVoiceData = onInstallVoiceData,
             )
 
-            HorizontalDivider(color = AppTheme.colors.hairline)
+            HorizontalDivider(color = MaterialTheme.colorScheme.outline)
 
             // The reveal is a real transition, but a cheap one: only the fade and a small rise
             // (both on the graphics layer) are animated, so the card's height changes once instead
@@ -195,14 +195,16 @@ fun WordCard(
             AnimatedContent(
                 targetState = revealed,
                 transitionSpec = {
+                    val standard = motion.durationMillis(AppMotion.STANDARD)
+                    val fast = motion.durationMillis(AppMotion.FAST)
                     if (targetState) {
-                        (fadeIn(tween(motion.durationMillis(REVEAL_MILLIS))) +
-                            slideInVertically(tween(motion.durationMillis(REVEAL_MILLIS))) { it / 8 })
-                            .togetherWith(fadeOut(tween(motion.durationMillis(REVEAL_MILLIS / 2))))
+                        (fadeIn(tween(standard, easing = FastOutSlowInEasing)) +
+                            slideInVertically(tween(standard, easing = FastOutSlowInEasing)) { it / 8 })
+                            .togetherWith(fadeOut(tween(fast, easing = FastOutSlowInEasing)))
                     } else {
-                        (fadeIn(tween(motion.durationMillis(REVEAL_MILLIS))) +
-                            slideInVertically(tween(motion.durationMillis(REVEAL_MILLIS))) { -it / 8 })
-                            .togetherWith(fadeOut(tween(motion.durationMillis(REVEAL_MILLIS / 2))))
+                        (fadeIn(tween(standard, easing = FastOutSlowInEasing)) +
+                            slideInVertically(tween(standard, easing = FastOutSlowInEasing)) { -it / 8 })
+                            .togetherWith(fadeOut(tween(fast, easing = FastOutSlowInEasing)))
                     }
                 },
                 label = "word-reveal",
@@ -222,7 +224,7 @@ fun WordCard(
                     Text(
                         text = "先回忆一下，再点击卡片查看释义",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = AppTheme.colors.mutedText,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
@@ -253,7 +255,7 @@ private fun ExampleHint(sentence: String) {
             Text(
                 text = "例句提示",
                 style = MaterialTheme.typography.labelMedium,
-                color = AppTheme.colors.mutedText,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Text(
                 text = sentence,
@@ -263,9 +265,6 @@ private fun ExampleHint(sentence: String) {
         }
     }
 }
-
-/** Reveal transition duration; short enough to feel instant, long enough to be perceived. */
-private const val REVEAL_MILLIS = 240
 
 /** Meanings, example sentence, translation and collocations. */
 @Composable
@@ -290,14 +289,14 @@ private fun WordMeaningBlock(word: Word, onEdit: (() -> Unit)? = null) {
                     IconButton(
                         onClick = onEdit,
                         modifier = Modifier
-                            .size(40.dp)
+                            .size(48.dp)
                             .testTag("word_card_edit")
                             .semantics { contentDescription = "编辑笔记与释义" },
                     ) {
                         Icon(
                             imageVector = Icons.Filled.Edit,
                             contentDescription = null,
-                            tint = AppTheme.colors.mutedText,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(20.dp),
                         )
                     }
@@ -312,7 +311,7 @@ private fun WordMeaningBlock(word: Word, onEdit: (() -> Unit)? = null) {
                 Text(
                     text = "我的释义",
                     style = MaterialTheme.typography.labelMedium,
-                    color = AppTheme.colors.mutedText,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Text(
                     text = word.userNote,
@@ -320,7 +319,7 @@ private fun WordMeaningBlock(word: Word, onEdit: (() -> Unit)? = null) {
                     color = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.testTag("word_user_note"),
                 )
-                HorizontalDivider(color = AppTheme.colors.hairline)
+                HorizontalDivider(color = MaterialTheme.colorScheme.outline)
             }
         }
         word.meanings.forEach { meaning ->
@@ -335,7 +334,7 @@ private fun WordMeaningBlock(word: Word, onEdit: (() -> Unit)? = null) {
             Text(
                 text = "释义待补全",
                 style = MaterialTheme.typography.bodyMedium,
-                color = AppTheme.colors.mutedText,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
         // Plan §9: the FreeDictionary English definition travels directly under the standard
@@ -350,7 +349,7 @@ private fun WordMeaningBlock(word: Word, onEdit: (() -> Unit)? = null) {
                 Text(
                     text = "例句",
                     style = MaterialTheme.typography.labelMedium,
-                    color = AppTheme.colors.mutedText,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Text(
                     text = word.exampleSentence,
@@ -361,7 +360,7 @@ private fun WordMeaningBlock(word: Word, onEdit: (() -> Unit)? = null) {
                     Text(
                         text = word.exampleTranslation,
                         style = MaterialTheme.typography.bodyMedium,
-                        color = AppTheme.colors.mutedText,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
@@ -371,7 +370,7 @@ private fun WordMeaningBlock(word: Word, onEdit: (() -> Unit)? = null) {
                 Text(
                     text = "常见搭配",
                     style = MaterialTheme.typography.labelMedium,
-                    color = AppTheme.colors.mutedText,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Text(
                     text = word.collocations.joinToString(" · "),
@@ -399,12 +398,12 @@ fun WordExtraInfo(word: Word, modifier: Modifier = Modifier) {
                 Text(
                     text = "英文释义",
                     style = MaterialTheme.typography.labelMedium,
-                    color = AppTheme.colors.mutedText,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Text(
                     text = word.enDefinition,
                     style = MaterialTheme.typography.bodySmall,
-                    color = AppTheme.colors.mutedText,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.testTag("word_en_definition"),
                 )
             }
@@ -470,18 +469,17 @@ private fun AnswerButton(
         modifier = modifier.heightIn(min = 52.dp),
         shape = MaterialTheme.shapes.medium,
         color = if (enabled) container else MaterialTheme.colorScheme.surfaceContainerHigh,
-        contentColor = if (enabled) content else AppTheme.colors.mutedText,
+        contentColor = if (enabled) content else MaterialTheme.colorScheme.onSurfaceVariant,
         onClick = onClick,
         enabled = enabled,
     ) {
         Box(
-            modifier = Modifier.padding(horizontal = Spacing.sm, vertical = Spacing.md),
+            modifier = Modifier.padding(Spacing.md),
             contentAlignment = Alignment.Center,
         ) {
             Text(
                 text = text,
                 style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.Medium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -523,7 +521,7 @@ fun ExamQuestionCard(
                         "请选择正确的答案"
                     },
                     style = MaterialTheme.typography.labelMedium,
-                    color = AppTheme.colors.mutedText,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Text(
                     text = question.prompt,
@@ -540,7 +538,7 @@ fun ExamQuestionCard(
                     Text(
                         text = question.promptPhonetic,
                         style = phoneticStyle,
-                        color = AppTheme.colors.mutedText,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
@@ -632,7 +630,7 @@ fun AnswerResultRow(
                 Text(
                     text = "正确答案：$correctAnswer",
                     style = MaterialTheme.typography.bodySmall,
-                    color = AppTheme.colors.mutedText,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 if (givenAnswer.isNullOrBlank()) {
                     Text(

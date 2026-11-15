@@ -224,7 +224,7 @@ fun StatsScreen(container: AppContainer) {
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(10.dp)
-                                    .clip(RoundedCornerShape(6.dp)),
+                                    .clip(RoundedCornerShape(percent = 50)),
                                 color = MaterialTheme.colorScheme.primary,
                                 trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
                                 drawStopIndicator = {},
@@ -233,7 +233,7 @@ fun StatsScreen(container: AppContainer) {
                                 text = "已完成 ${snapshot.stageGoal.current} / ${snapshot.stageGoal.target}，" +
                                     "还差 ${snapshot.stageGoal.remaining}",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = AppTheme.colors.mutedText,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
                     }
@@ -256,7 +256,7 @@ fun StatsScreen(container: AppContainer) {
                             Text(
                                 text = "颜色越深表示当天作答次数越多。空白只代表那天没有学习，不影响任何评价。",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = AppTheme.colors.mutedText,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
                     }
@@ -294,7 +294,7 @@ private fun ProgressLine(
             Text(
                 text = if (percent == null) "$current / $total" else "$current / $total（$percent%）",
                 style = MaterialTheme.typography.bodySmall,
-                color = AppTheme.colors.mutedText,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
         LinearProgressIndicator(
@@ -303,7 +303,7 @@ private fun ProgressLine(
                 .fillMaxWidth()
                 .padding(top = Spacing.xs)
                 .height(8.dp)
-                .clip(RoundedCornerShape(4.dp)),
+                .clip(RoundedCornerShape(percent = 50)),
             color = accent,
             trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
             drawStopIndicator = {},
@@ -338,6 +338,8 @@ fun CalendarHeatmap(
                         modifier = Modifier
                             .weight(1f)
                             .aspectRatio(1f)
+                            // Chart micro-detail, deliberately off the corner ladder: a capsule
+                            // would read as dots, the 8dp ladder slot is too round for a cell.
                             .clip(RoundedCornerShape(4.dp))
                             .background(heatColor(intensity, day.hasActivity)),
                     )
@@ -381,7 +383,7 @@ fun MonthlyBars(
                     modifier = Modifier
                         .weight(1f)
                         .height((4 + 64 * fraction).dp)
-                        .clip(RoundedCornerShape(2.dp))
+                        .clip(RoundedCornerShape(percent = 50))
                         .background(
                             if (point.hasActivity) {
                                 MaterialTheme.colorScheme.primary
@@ -396,7 +398,7 @@ fun MonthlyBars(
             text = "近 30 天共作答 ${points.sumOf { it.reviewEvents }} 次，" +
                 "日均 ${points.sumOf { it.reviewEvents } / points.size.coerceAtLeast(1)} 次",
             style = MaterialTheme.typography.bodySmall,
-            color = AppTheme.colors.mutedText,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = Spacing.sm),
         )
     }

@@ -16,12 +16,6 @@ val AppShapes = Shapes(
     extraLarge = RoundedCornerShape(28.dp),
 )
 
-/** Corner radius used by the app's own card container. */
-val CardCorner = 20.dp
-
-/** Corner radius of primary actions. */
-val ButtonCorner = 16.dp
-
 /** Minimum touch target enforced by Material 3; kept as a named constant for tests. */
 val MinTouchTarget = 48.dp
 

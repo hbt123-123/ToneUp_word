@@ -16,8 +16,8 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -111,7 +111,7 @@ fun ExamSetupScreen(
                         text = "考试过程中不会显示中文释义、例句、搭配或答案提示。题目在开始时会生成快照，" +
                             "中途退出可以保存草稿并继续。",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = AppTheme.colors.mutedText,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
@@ -131,7 +131,7 @@ fun ExamSetupScreen(
                         Text(
                             text = "可以继续上次的试卷与剩余时间，或直接开始一场新的考试（新考试会放弃旧草稿）。",
                             style = MaterialTheme.typography.bodyMedium,
-                            color = AppTheme.colors.mutedText,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         PrimaryButton(
                             text = "继续上次考试",
@@ -165,7 +165,7 @@ fun ExamSetupScreen(
                     Text(
                         text = "题型包含英译中、中译英、四选一与拼写填空，由程序随机组合。",
                         style = MaterialTheme.typography.bodySmall,
-                        color = AppTheme.colors.mutedText,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
@@ -225,7 +225,7 @@ fun ExamRunScreen(
                             color = if (state.remainingSeconds <= 60) {
                                 MaterialTheme.colorScheme.error
                             } else {
-                                AppTheme.colors.mutedText
+                                MaterialTheme.colorScheme.onSurfaceVariant
                             },
                         )
                     }
@@ -234,7 +234,7 @@ fun ExamRunScreen(
                     IconButton(
                         onClick = viewModel::requestExit,
                         modifier = Modifier.semantics { contentDescription = "退出考试" },
-                    ) { Icon(Icons.Filled.ArrowBack, contentDescription = null) }
+                    ) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null) }
                 },
                 actions = {
                     TextButton(
@@ -313,7 +313,7 @@ fun ExamRunScreen(
                         modifier = Modifier
                             .weight(1f)
                             .testTag("exam_previous"),
-                        leadingIcon = Icons.Filled.ArrowBack,
+                        leadingIcon = Icons.AutoMirrored.Filled.ArrowBack,
                     )
                     PrimaryButton(
                         text = "下一题",
@@ -321,7 +321,7 @@ fun ExamRunScreen(
                         modifier = Modifier
                             .weight(1f)
                             .testTag("exam_next"),
-                        trailingIcon = Icons.Filled.ArrowForward,
+                        trailingIcon = Icons.AutoMirrored.Filled.ArrowForward,
                     )
                 }
                 Spacer(Modifier.height(Spacing.lg))
@@ -397,7 +397,7 @@ fun ExamResultScreen(
             item {
                 AppCard {
                     Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                        Text("总分", style = MaterialTheme.typography.labelMedium, color = AppTheme.colors.mutedText)
+                        Text("总分", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(
                             text = "${score.score}",
                             style = MaterialTheme.typography.displaySmall,
@@ -410,13 +410,13 @@ fun ExamResultScreen(
                         Text(
                             text = "用时 ${(score.durationMillis / 60_000L)} 分 ${(score.durationMillis / 1000L) % 60} 秒",
                             style = MaterialTheme.typography.bodyMedium,
-                            color = AppTheme.colors.mutedText,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         if (score.unansweredCount > 0) {
                             Text(
                                 text = "未作答 ${score.unansweredCount} 题（计为错误，但不影响你的复习计划）",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = AppTheme.colors.mutedText,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
                     }
@@ -462,7 +462,7 @@ fun ExamResultScreen(
                         Text(
                             text = "答对 ${accuracy.correct} / ${accuracy.total}",
                             style = MaterialTheme.typography.bodySmall,
-                            color = AppTheme.colors.mutedText,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                 }
@@ -480,7 +480,7 @@ fun ExamResultScreen(
                             Text(
                                 text = "答错的单词已经加入错题本，会按复习计划再次出现。",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = AppTheme.colors.mutedText,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
                     }
@@ -493,7 +493,7 @@ fun ExamResultScreen(
                     Text(
                         text = "本次考试的错题已写入错题本，可在「错题本」中查看详情。",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = AppTheme.colors.mutedText,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             } else {

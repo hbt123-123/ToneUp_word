@@ -13,7 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -136,7 +136,7 @@ fun StudyScreen(
                         onClick = pauseAndLeave,
                         modifier = Modifier.semantics { contentDescription = "返回" },
                     ) {
-                        Icon(Icons.Filled.ArrowBack, contentDescription = null)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -262,7 +262,7 @@ fun StudyScreen(
                             Text(
                                 text = "左右滑动卡片可翻到释义或翻回正面；答题结果即时保存，中途退出不丢失进度",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = AppTheme.colors.mutedText,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.testTag("study_swipe_hint"),
                             )
                         }
@@ -340,7 +340,7 @@ private fun SummaryContent(
                     text = summary?.let { completionMessage(it) }
                         ?: "已完成本次学习",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = AppTheme.colors.mutedText,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.testTag("study_summary_motivation"),
                 )
                 summary?.let { finished ->
@@ -354,7 +354,7 @@ private fun SummaryContent(
                             "错题已加入错题本，稍后复习一遍会更牢。"
                         },
                         style = MaterialTheme.typography.bodySmall,
-                        color = AppTheme.colors.mutedText,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }

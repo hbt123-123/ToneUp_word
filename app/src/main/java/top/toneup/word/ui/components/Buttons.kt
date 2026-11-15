@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.Button
@@ -25,8 +24,6 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import top.toneup.word.ui.theme.AppTheme
-import top.toneup.word.ui.theme.ButtonCorner
 import top.toneup.word.ui.theme.ToneUpWordTheme
 import top.toneup.word.ui.theme.MinTouchTarget
 import top.toneup.word.ui.theme.Spacing
@@ -67,7 +64,7 @@ fun PrimaryButton(
                 if (loading) stateDescription = "正在处理"
             },
         enabled = interactive,
-        shape = RoundedCornerShape(ButtonCorner),
+        shape = MaterialTheme.shapes.medium,
         colors = ButtonDefaults.buttonColors(
             containerColor = MaterialTheme.colorScheme.primary,
             contentColor = MaterialTheme.colorScheme.onPrimary,
@@ -106,12 +103,12 @@ fun SecondaryButton(
         onClick = onClick,
         modifier = modifier.heightIn(min = MinTouchTarget),
         enabled = enabled,
-        shape = RoundedCornerShape(ButtonCorner),
+        shape = MaterialTheme.shapes.medium,
         colors = ButtonDefaults.outlinedButtonColors(
             containerColor = MaterialTheme.colorScheme.surface,
             contentColor = MaterialTheme.colorScheme.primary,
             disabledContainerColor = MaterialTheme.colorScheme.surface,
-            disabledContentColor = AppTheme.colors.mutedText,
+            disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
         ),
         contentPadding = ButtonDefaults.ContentPadding,
     ) {

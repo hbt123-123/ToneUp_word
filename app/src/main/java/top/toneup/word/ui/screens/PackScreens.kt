@@ -15,7 +15,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MoreVert
@@ -78,7 +78,6 @@ import top.toneup.word.ui.components.PrimaryButton
 import top.toneup.word.ui.components.ReviewBadge
 import top.toneup.word.ui.components.SecondaryButton
 import top.toneup.word.ui.components.SectionHeader
-import top.toneup.word.ui.theme.AppTheme
 import top.toneup.word.ui.theme.Spacing
 
 // ---------------------------------------------------------------------------------------------
@@ -123,7 +122,7 @@ fun PlanListScreen(
                     IconButton(
                         onClick = onBack,
                         modifier = Modifier.semantics { contentDescription = "返回" },
-                    ) { Icon(Icons.Filled.ArrowBack, contentDescription = null) }
+                    ) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null) }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background,
@@ -152,7 +151,7 @@ fun PlanListScreen(
                         Text(
                             text = "把一个用途的词库放进同一个计划，例如「外国文献单词计划」下放《时代周刊》《经济学人》词库。学习、复习、考试与统计都按当前计划合并汇总。",
                             style = MaterialTheme.typography.bodySmall,
-                            color = AppTheme.colors.mutedText,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         PrimaryButton(
                             text = "新建计划",
@@ -293,7 +292,7 @@ private fun PlanRow(
                         append("${row.packCount} 个词库")
                     },
                     style = MaterialTheme.typography.bodySmall,
-                    color = AppTheme.colors.mutedText,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
 
@@ -391,7 +390,7 @@ fun PlanDetailScreen(
                     IconButton(
                         onClick = onBack,
                         modifier = Modifier.semantics { contentDescription = "返回" },
-                    ) { Icon(Icons.Filled.ArrowBack, contentDescription = null) }
+                    ) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null) }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background,
@@ -431,7 +430,7 @@ fun PlanDetailScreen(
                         Text(
                             text = "本计划共 ${state.packs.size} 个词库。学习、复习、考试与统计按整个计划汇总，计划内重复的单词只算一次、共用一份进度。",
                             style = MaterialTheme.typography.bodySmall,
-                            color = AppTheme.colors.mutedText,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         if (state.planId != state.activePlanId) {
                             SecondaryButton(
@@ -453,7 +452,7 @@ fun PlanDetailScreen(
                         Text(
                             text = "在这个计划下新建一个词库，再粘贴或导入单词；词库只是内容来源，学习范围始终是整个计划。",
                             style = MaterialTheme.typography.bodySmall,
-                            color = AppTheme.colors.mutedText,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         PrimaryButton(
                             text = "新建词库",
@@ -596,7 +595,7 @@ private fun PackRow(
                         append(" · ${pack.wordCount} 词")
                     },
                     style = MaterialTheme.typography.bodySmall,
-                    color = AppTheme.colors.mutedText,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
 
@@ -671,13 +670,13 @@ private fun MovePackDialog(
                     Text(
                         text = "没有其他计划可以移动。先新建一个计划，再回来移动词库。",
                         style = MaterialTheme.typography.bodySmall,
-                        color = AppTheme.colors.mutedText,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 } else {
                     Text(
                         text = "选择目标计划：单词与学习进度会一起移动。",
                         style = MaterialTheme.typography.bodySmall,
-                        color = AppTheme.colors.mutedText,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     targets.forEach { target ->
                         TextButton(onClick = { onMove(target.id) }) {
@@ -779,7 +778,7 @@ fun ImportWordsScreen(
                     IconButton(
                         onClick = onBack,
                         modifier = Modifier.semantics { contentDescription = "返回" },
-                    ) { Icon(Icons.Filled.ArrowBack, contentDescription = null) }
+                    ) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null) }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background,
@@ -807,7 +806,7 @@ fun ImportWordsScreen(
                         Text(
                             text = "单词已入库，释义与音标稍后自动补全。",
                             style = MaterialTheme.typography.bodySmall,
-                            color = AppTheme.colors.mutedText,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                 }
@@ -862,14 +861,14 @@ fun ImportWordsScreen(
                     preview != null -> Text(
                         text = "可导入 ${preview.importableCount} · 过滤 ${preview.dropped} · 重复 ${preview.duplicates}",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = AppTheme.colors.mutedText,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.testTag("import_preview_counts"),
                     )
 
                     else -> Text(
                         text = "等待粘贴内容…",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = AppTheme.colors.mutedText,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
 
@@ -1095,7 +1094,7 @@ fun WriteWordScreen(
                                     color = if (state.messageIsError) {
                                         MaterialTheme.colorScheme.error
                                     } else {
-                                        AppTheme.colors.mutedText
+                                        MaterialTheme.colorScheme.onSurfaceVariant
                                     },
                                 )
                             }
@@ -1146,7 +1145,7 @@ private fun WrittenWordRow(
                 Text(
                     text = entry.note,
                     style = MaterialTheme.typography.bodySmall,
-                    color = AppTheme.colors.mutedText,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }

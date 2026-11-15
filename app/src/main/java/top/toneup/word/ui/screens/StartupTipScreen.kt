@@ -31,7 +31,6 @@ import top.toneup.word.R
 import top.toneup.word.data.repository.SeedProgress
 import top.toneup.word.domain.motivation.StartupTip
 import top.toneup.word.ui.components.ReviewBadge
-import top.toneup.word.ui.theme.AppTheme
 import top.toneup.word.ui.theme.ToneUpWordTheme
 import top.toneup.word.ui.theme.Spacing
 
@@ -104,7 +103,7 @@ fun StartupTipScreen(
                 Text(
                     text = "正在准备词库 ${seedProgress.packName}（${seedProgress.processed} / ${seedProgress.total}）",
                     style = MaterialTheme.typography.bodySmall,
-                    color = AppTheme.colors.mutedText,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center,
                     modifier = Modifier.testTag("startup_seed_progress"),
                 )
@@ -122,7 +121,7 @@ fun StartupTipScreen(
                 Text(
                     text = "轻触继续",
                     style = MaterialTheme.typography.bodySmall,
-                    color = AppTheme.colors.mutedText,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.testTag("startup_tip_continue"),
                 )
             }
