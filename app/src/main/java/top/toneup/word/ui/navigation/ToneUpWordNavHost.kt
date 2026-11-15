@@ -29,6 +29,8 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import top.toneup.word.AppContainer
 import top.toneup.word.data.update.AppUpdateUiState
+import top.toneup.word.domain.insight.InsightDestination
+import top.toneup.word.domain.insight.destination
 import top.toneup.word.ui.ExamViewModel
 import top.toneup.word.ui.ViewModelFactories
 import top.toneup.word.ui.screens.AboutScreen
@@ -164,6 +166,18 @@ fun ToneUpWordNavHost(
                     onStartMistakeDrill = { navController.navigate(Routes.REVIEW) },
                     onOpenReviewCenter = { navController.navigate(Routes.REVIEW) },
                     onOpenStats = { navController.navigate(Routes.STATS) },
+                    // Insight actions used to be a silent no-op: the callback existed on the
+                    // screen but was never wired. The kind → destination mapping lives in the
+                    // domain layer, so every caller of the same card navigates alike.
+                    onOpenInsightAction = { insight ->
+                        when (insight.destination()) {
+                            InsightDestination.STUDY_SESSION -> navController.navigate(Routes.studySession())
+                            InsightDestination.REVIEW -> navController.navigate(Routes.REVIEW)
+                            InsightDestination.EXAM_SETUP -> navController.navigate(Routes.EXAM_SETUP)
+                            InsightDestination.SETTINGS -> navController.navigate(Routes.SETTINGS)
+                            InsightDestination.NONE -> Unit
+                        }
+                    },
                     onOpenWordBrowser = { navController.navigate(Routes.WORD_BROWSER) },
                     onOpenPlans = { navController.navigate(Routes.PLANS) },
                 )

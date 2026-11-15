@@ -39,7 +39,7 @@ enum class MasteryStatus {
     /** Human readable Chinese label used across the UI. */
     val label: String
         get() = when (this) {
-            NEW -> "未学习"
+            NEW -> "待学习"
             LEARNING -> "学习中"
             RELEARNING -> "待巩固"
             REVIEW -> "复习中"

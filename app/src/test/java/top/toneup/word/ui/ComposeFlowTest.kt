@@ -211,18 +211,20 @@ class ComposeFlowTest {
             ToneUpWordTheme { HomeScreen(container, {}, {}, {}, {}, {}) }
         }
 
-        // The product requirement: on one screen, where I am, what is next, the word-status split,
-        // and the next milestone. The dashboard is a LazyColumn, so the lower sections have to be
-        // scrolled into composition before they can be asserted on — that is also what proves the
-        // scroll target actually exists.
+        // The product requirement: on one screen, where I am, what is next, the word-status split
+        // (with the next milestone folded in as one quiet line), and the mistake-book shortcut.
+        // The dashboard is a LazyColumn, so the lower sections have to be scrolled into
+        // composition before they can be asserted on — that is also what proves the scroll
+        // target actually exists.
         awaitTag("home_today_progress")
         composeRule.onNodeWithTag("home_next_step").assertExists()
         composeRule.onNodeWithTag("home_content")
             .performScrollToNode(hasTestTag("home_word_status"))
         composeRule.onNodeWithTag("home_word_status").assertExists()
+        composeRule.onNodeWithText("下一个目标", substring = true).assertExists()
         composeRule.onNodeWithTag("home_content")
-            .performScrollToNode(hasTestTag("home_stage_goal"))
-        composeRule.onNodeWithTag("home_stage_goal").assertExists()
+            .performScrollToNode(hasTestTag("home_mistake_entry"))
+        composeRule.onNodeWithTag("home_mistake_entry").assertExists()
         // ... and the next step must say something concrete, not just "继续学习".
         composeRule.onNodeWithTag("home_next_step_text").assertExists()
     }

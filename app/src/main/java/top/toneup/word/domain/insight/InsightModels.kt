@@ -68,6 +68,51 @@ data class ExamTypeAccuracy(
 )
 
 /**
+ * Where an insight's action button leads.
+ *
+ * Deliberately route-free: the domain layer names the *kind* of destination, and the UI turns
+ * it into navigation. That keeps domain free of `android.*` while the mapping stays testable.
+ */
+enum class InsightDestination {
+    /** Start a study session (its queue already reviews due words first). */
+    STUDY_SESSION,
+
+    /** Open the mistake book / review centre. */
+    REVIEW,
+
+    /** Open the exam setup screen (e.g. to drill one weak question type). */
+    EXAM_SETUP,
+
+    /** Open settings (e.g. to adjust a daily goal). */
+    SETTINGS,
+
+    /** No destination; cards of these kinds render no action button. */
+    NONE,
+}
+
+/**
+ * The single mapping from an insight's kind to the screen its action opens.
+ *
+ * Kept as a pure function next to [Insight] so the wiring cannot drift between callers: every
+ * screen that renders insight cards must navigate the same way for the same card. A kind maps
+ * to [InsightDestination.NONE] exactly when its rule produces no [Insight.actionLabel] — a
+ * rendered button with a NONE destination would be a silent no-op.
+ */
+fun Insight.destination(): InsightDestination = when (kind) {
+    InsightKind.NEW_WORDS_WITHOUT_REVIEW -> InsightDestination.STUDY_SESSION
+    InsightKind.ACCURACY_DROP,
+    InsightKind.MEMORY_LAPSE,
+    InsightKind.WEAK_WORD_GROUP,
+    -> InsightDestination.REVIEW
+    InsightKind.WEAK_QUESTION_TYPE -> InsightDestination.EXAM_SETUP
+    InsightKind.FREQUENCY_DROP -> InsightDestination.SETTINGS
+    // Habit advice with no matching screen: the rule ships no action label, so this must stay NONE.
+    InsightKind.SESSION_TOO_LONG,
+    InsightKind.INSUFFICIENT_DATA,
+    -> InsightDestination.NONE
+}
+
+/**
  * The weakest group of repeatedly-wrong words.
  *
  * [wordIds] exists so the action button can open exactly these words; the count is kept

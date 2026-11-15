@@ -436,7 +436,8 @@ class InsightEngineTest {
         assertThat(insight.detail).contains("45")
         assertThat(insight.detail).contains("50%")
         assertThat(insight.detail).contains("60%")
-        assertThat(insight.actionLabel).isNotNull()
+        // R6 is habit advice with no screen to act on: the card must ship without a button.
+        assertThat(insight.actionLabel).isNull()
         assertThat(insight.evidence["medianMinutesPerDayLast7Days"]).isEqualTo(45)
     }
 
@@ -645,5 +646,57 @@ class InsightEngineTest {
         // cap, and because the list is already severity-sorted the cap keeps the gravest ones.
         assertThat(insights.take(InsightEngine.MAX_STATS_INSIGHTS)).hasSize(5)
         assertThat(insights.first().kind).isEqualTo(InsightKind.NEW_WORDS_WITHOUT_REVIEW)
+    }
+
+    // --- Insight.destination() ----------------------------------------------------------------
+
+    private fun insightOf(kind: InsightKind) = Insight(
+        kind = kind,
+        title = "标题",
+        detail = "证据 1",
+        actionLabel = "去看看",
+        evidence = emptyMap(),
+        severity = 1,
+    )
+
+    /** Kinds whose rule ships no action label, so their card renders no button at all. */
+    private val buttonlessKinds = setOf(InsightKind.INSUFFICIENT_DATA, InsightKind.SESSION_TOO_LONG)
+
+    /**
+     * The action button's destination is a product decision pinned here: review-shaped advice
+     * opens the review centre or a session, rhythm advice opens settings, and the card kinds
+     * without a screen to act on must map to NONE instead of leaking a wrong route.
+     */
+    @Test
+    fun `every insight kind maps to exactly one destination`() {
+        assertThat(insightOf(InsightKind.NEW_WORDS_WITHOUT_REVIEW).destination())
+            .isEqualTo(InsightDestination.STUDY_SESSION)
+        assertThat(insightOf(InsightKind.ACCURACY_DROP).destination())
+            .isEqualTo(InsightDestination.REVIEW)
+        assertThat(insightOf(InsightKind.MEMORY_LAPSE).destination())
+            .isEqualTo(InsightDestination.REVIEW)
+        assertThat(insightOf(InsightKind.WEAK_WORD_GROUP).destination())
+            .isEqualTo(InsightDestination.REVIEW)
+        assertThat(insightOf(InsightKind.WEAK_QUESTION_TYPE).destination())
+            .isEqualTo(InsightDestination.EXAM_SETUP)
+        assertThat(insightOf(InsightKind.FREQUENCY_DROP).destination())
+            .isEqualTo(InsightDestination.SETTINGS)
+        assertThat(insightOf(InsightKind.SESSION_TOO_LONG).destination())
+            .isEqualTo(InsightDestination.NONE)
+        assertThat(insightOf(InsightKind.INSUFFICIENT_DATA).destination())
+            .isEqualTo(InsightDestination.NONE)
+    }
+
+    @Test
+    fun `a NONE destination exists exactly when the rule ships no action label`() {
+        // A rendered button with a NONE destination would be a silent no-op; a buttonless kind
+        // mapped anywhere else would imply the UI must invent a route the domain never chose.
+        InsightKind.entries.forEach { kind ->
+            if (kind in buttonlessKinds) {
+                assertThat(insightOf(kind).destination()).isEqualTo(InsightDestination.NONE)
+            } else {
+                assertThat(insightOf(kind).destination()).isNotEqualTo(InsightDestination.NONE)
+            }
+        }
     }
 }

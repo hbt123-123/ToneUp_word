@@ -103,6 +103,45 @@ object NextStepPlanner {
     private fun minutesFor(count: Int, secondsEach: Int): Int =
         ((count.toLong() * secondsEach + 59) / 60).toInt().coerceAtLeast(1)
 
+    /**
+     * Compact badge for the redesigned home card, e.g. 「优先复习」; null means no badge.
+     *
+     * Kept next to [describe] so all card wording stays in this testable place: the UI must
+     * not assemble Chinese sentences from step fields inline.
+     */
+    fun tag(step: NextStep): String? = when (step) {
+        is NextStep.Review -> "优先复习"
+        is NextStep.LearnNew -> "学习新词"
+        is NextStep.PracticeMistakes -> "巩固错题"
+        NextStep.AllDone, is NextStep.NoVocabulary -> null
+    }
+
+    /**
+     * The one concrete headline of the card, e.g. 「15 个待复习」.
+     *
+     * No singular branch on purpose: Chinese count nouns do not inflect, so "1 个待复习" and
+     * "15 个待复习" are the same template — unlike [describe], whose sentence shape really changes.
+     */
+    fun headline(step: NextStep): String = when (step) {
+        is NextStep.Review -> "${step.dueCount} 个待复习"
+        is NextStep.LearnNew -> "今天还可以学 ${step.newCount} 个新词"
+        is NextStep.PracticeMistakes -> "巩固 ${step.mistakeCount} 个错题"
+        NextStep.AllDone -> "今天的计划已完成"
+        is NextStep.NoVocabulary -> step.message
+    }
+
+    /**
+     * The supporting line under the headline, e.g. 「预计 5 分钟 · 优先巩固即将遗忘的单词」;
+     * null when there is nothing useful to add.
+     */
+    fun subline(step: NextStep): String? = when (step) {
+        is NextStep.Review -> "预计 ${step.estimatedMinutes} 分钟 · 优先巩固即将遗忘的单词"
+        is NextStep.LearnNew -> "预计 ${step.estimatedMinutes} 分钟 · 新词按每日目标安排"
+        is NextStep.PracticeMistakes -> "今天的计划已完成，巩固错题是最好的收尾"
+        NextStep.AllDone -> "明天继续保持"
+        is NextStep.NoVocabulary -> null
+    }
+
     /** Human sentence for the card, kept here so the wording is testable in one place. */
     fun describe(step: NextStep): String = when (step) {
         is NextStep.Review ->

@@ -334,7 +334,7 @@ class SpacedRepetitionTest {
         assertThat(MasteryStatus.LEARNING.isConsolidated).isFalse()
         assertThat(MasteryStatus.RELEARNING.isConsolidated).isFalse()
         assertThat(MasteryStatus.NEW.isConsolidated).isFalse()
-        assertThat(MasteryStatus.NEW.label).isEqualTo("未学习")
+        assertThat(MasteryStatus.NEW.label).isEqualTo("待学习")
         assertThat(MasteryStatus.MASTERED.label).isEqualTo("已掌握")
     }
 }

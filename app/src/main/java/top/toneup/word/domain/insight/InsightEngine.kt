@@ -372,6 +372,9 @@ object InsightEngine {
      * without getting more accurate. The rule additionally requires accuracy to be *falling*
      * week over week, because a long session that is going well is not a problem to fix — the
      * insight only fires when the extra time is not buying anything.
+     *
+     * Deliberately carries no [Insight.actionLabel]: "split your sessions" is a habit suggestion
+     * and the app has no session-length setting to act on, so a button here would lead nowhere.
      */
     private fun sessionTooLong(signals: LearningSignals): Insight? {
         if (signals.medianMinutesPerDayLast7Days < R6_MEDIAN_MINUTES_THRESHOLD) return null
@@ -387,7 +390,7 @@ object InsightEngine {
             detail = "最近 7 天每天中位学习 ${signals.medianMinutesPerDayLast7Days} 分钟，" +
                 "而正确率从 $previous% 变成 $current%（低 $drop 个百分点），" +
                 "分成每段 $suggestedChunk 分钟左右通常更轻松也更记得住。",
-            actionLabel = "改成每段 $suggestedChunk 分钟",
+            actionLabel = null,
             evidence = mapOf(
                 "medianMinutesPerDayLast7Days" to signals.medianMinutesPerDayLast7Days,
                 "accuracyLast7Days" to current,

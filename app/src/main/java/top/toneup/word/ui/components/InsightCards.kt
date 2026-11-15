@@ -139,7 +139,7 @@ enum class StatDefinition(val title: String, val body: String) {
         body = "已经开始复习但还没达到「已掌握」的单词，包含答错后正在巩固的词。",
     ),
     NOT_STARTED(
-        title = "未学习",
+        title = "待学习",
         body = "当前计划里从未作答过的单词。",
     ),
     STREAK(

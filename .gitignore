@@ -38,5 +38,6 @@ key.txt
 .codegraph/
 .omo/
 .trae/
+.zcode/
 .val/
 release-notes.md

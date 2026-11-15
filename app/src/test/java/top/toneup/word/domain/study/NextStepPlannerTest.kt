@@ -117,6 +117,41 @@ class NextStepPlannerTest {
     }
 
     @Test
+    fun `tag names the priority for each actionable state and stays empty otherwise`() {
+        assertThat(NextStepPlanner.tag(NextStep.Review(15, 5))).isEqualTo("优先复习")
+        assertThat(NextStepPlanner.tag(NextStep.LearnNew(15, 12))).isEqualTo("学习新词")
+        assertThat(NextStepPlanner.tag(NextStep.PracticeMistakes(7))).isEqualTo("巩固错题")
+        // Finished and "nothing loaded" promise no priority: a badge there would imply work.
+        assertThat(NextStepPlanner.tag(NextStep.AllDone)).isNull()
+        assertThat(NextStepPlanner.tag(NextStep.NoVocabulary("请导入词库"))).isNull()
+    }
+
+    @Test
+    fun `headline states the concrete count`() {
+        // Chinese count nouns do not inflect, so one template covers singular and plural alike.
+        assertThat(NextStepPlanner.headline(NextStep.Review(15, 5))).isEqualTo("15 个待复习")
+        assertThat(NextStepPlanner.headline(NextStep.Review(1, 1))).isEqualTo("1 个待复习")
+        assertThat(NextStepPlanner.headline(NextStep.LearnNew(15, 12))).isEqualTo("今天还可以学 15 个新词")
+        assertThat(NextStepPlanner.headline(NextStep.LearnNew(1, 1))).isEqualTo("今天还可以学 1 个新词")
+        assertThat(NextStepPlanner.headline(NextStep.PracticeMistakes(7))).isEqualTo("巩固 7 个错题")
+        assertThat(NextStepPlanner.headline(NextStep.AllDone)).isEqualTo("今天的计划已完成")
+        // A missing vocabulary passes the message through unchanged — it is the headline.
+        assertThat(NextStepPlanner.headline(NextStep.NoVocabulary("请导入词库"))).isEqualTo("请导入词库")
+    }
+
+    @Test
+    fun `subline explains time and intent, or is null when there is nothing to add`() {
+        assertThat(NextStepPlanner.subline(NextStep.Review(15, 5)))
+            .isEqualTo("预计 5 分钟 · 优先巩固即将遗忘的单词")
+        assertThat(NextStepPlanner.subline(NextStep.LearnNew(15, 12)))
+            .isEqualTo("预计 12 分钟 · 新词按每日目标安排")
+        assertThat(NextStepPlanner.subline(NextStep.PracticeMistakes(7)))
+            .isEqualTo("今天的计划已完成，巩固错题是最好的收尾")
+        assertThat(NextStepPlanner.subline(NextStep.AllDone)).isEqualTo("明天继续保持")
+        assertThat(NextStepPlanner.subline(NextStep.NoVocabulary("请导入词库"))).isNull()
+    }
+
+    @Test
     fun `negative counts never leak into the plan`() {
         // Defensive: TodayPlan is derived data and a repository bug must not produce "-3 个单词".
         val step = NextStepPlanner.plan(plan(dueCount = -5, newAvailableCount = -1, activeMistakeCount = -2))

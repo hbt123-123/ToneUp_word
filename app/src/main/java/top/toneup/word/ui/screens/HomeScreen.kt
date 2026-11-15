@@ -5,6 +5,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
@@ -18,7 +19,6 @@ import androidx.compose.runtime.setValue
 import top.toneup.word.ui.components.InsightCard
 import top.toneup.word.ui.components.MotivationLine
 import top.toneup.word.ui.components.NextStepCard
-import top.toneup.word.ui.components.StageGoalCard
 import top.toneup.word.ui.components.StatDefinition
 import top.toneup.word.ui.components.TodayProgressCard
 import top.toneup.word.ui.components.WordStatusCard
@@ -49,7 +49,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -59,7 +58,6 @@ import top.toneup.word.AppContainer
 import top.toneup.word.domain.srs.ReviewGrade
 import top.toneup.word.domain.stats.DailyStudyPoint
 import top.toneup.word.domain.study.RecentEvent
-import top.toneup.word.domain.study.TodayPlan
 import top.toneup.word.ui.HomeViewModel
 import top.toneup.word.ui.ViewModelFactories
 import top.toneup.word.ui.components.AppCard
@@ -67,11 +65,9 @@ import top.toneup.word.ui.components.EmptyState
 import top.toneup.word.ui.components.ErrorState
 import top.toneup.word.ui.components.LoadingState
 import top.toneup.word.ui.components.PrimaryButton
-import top.toneup.word.ui.components.ProgressCard
 import top.toneup.word.ui.components.ReviewBadge
 import top.toneup.word.ui.components.SecondaryButton
 import top.toneup.word.ui.components.SectionHeader
-import top.toneup.word.ui.components.StatCard
 import top.toneup.word.ui.theme.AppTheme
 import top.toneup.word.ui.theme.ToneUpWordTheme
 import top.toneup.word.ui.theme.Spacing
@@ -80,16 +76,17 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 /**
- * The learning dashboard.
+ * The learning entry point (not a dashboard).
  *
  * The order of the sections is the product decision on this screen, and it is fixed:
  *  1. an unfinished session (the only thing that must be resumed);
- *  2. **today's progress** — "where am I right now";
+ *  2. **today's progress** — "where am I right now", one big number and one bar;
  *  3. **the next action** — "what do I do next", visible without scrolling;
- *  4. the word-status distribution and the next milestone;
- *  5. at most two pieces of **advice**, each with its evidence;
- *  6. one line of encouragement, at most once a day;
- *  7. the weekly trend, then recent history last — both are "looking back", not decisions.
+ *  4. the word-status distribution with the next milestone folded in (context, not a task);
+ *  5. the mistake book as a one-row shortcut — reachable, not demanding;
+ *  6. at most two pieces of **advice**, each with its evidence;
+ *  7. the weekly trend, then recent history, then at most one line of encouragement —
+ *     all of it is "looking back", not decisions.
  *
  * Nothing on this screen is a placeholder: every number comes from the schedule, the answer log or
  * the analysis rules, and every number can be explained through 「统计口径」.
@@ -227,7 +224,7 @@ fun HomeScreen(
 
             // A LazyColumn instead of a vertical scroll: only the sections near the viewport are
             // composed and measured, which keeps the first frame short and the scroll smooth even
-            // though the dashboard has six sections and a chart.
+            // though the entry point has nine sections and a chart.
             else -> LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
@@ -274,7 +271,6 @@ fun HomeScreen(
                 item(key = "today") {
                     TodayProgressCard(
                         plan = plan,
-                        todayMinutes = state.stats?.todayMinutes ?: 0,
                         onShowDefinitions = { showDefinitions = true },
                     )
                 }
@@ -295,60 +291,58 @@ fun HomeScreen(
                     }
                 }
 
-                // 3b. The mistake book, folded in from the bottom bar (plan §C): its counts are
-                // visible without opening the full-screen review centre, and "复习错题" jumps
-                // straight into a drill.
-                item(key = "mistake_book") {
-                    val overview = state.mistakeOverview
-                    AppCard {
-                        Column(verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
-                            SectionHeader(
-                                title = "错题本",
-                                actionLabel = "进入错题本",
-                                onAction = onOpenReviewCenter,
-                            )
-                            // Due reviews can exist with no mistake row at all: keying the empty
-                            // state on mistakes alone would hide 复习错题 while a drill is still
-                            // useful. Both counts have to be zero for the book to be "empty".
-                            if (overview.activeCount == 0 && overview.dueTodayCount == 0) {
-                                Text(
-                                    text = "还没有错题记录。答错或标记为「模糊」的词会自动收进错题本。",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = AppTheme.colors.mutedText,
-                                )
-                            } else {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                ) {
-                                    MistakeStat(label = "今日待复习", value = overview.dueTodayCount)
-                                    MistakeStat(label = "未巩固", value = overview.unconsolidatedCount)
-                                    MistakeStat(label = "高错误", value = overview.highWrongCount)
-                                }
-                                SecondaryButton(
-                                    text = "复习错题",
-                                    onClick = onStartMistakeDrill,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .testTag("home_review_mistakes"),
-                                )
-                            }
-                        }
-                    }
-                }
-
-                // 4. Word status distribution — one bar, three numbers, no chart to interpret.
+                // 4. Word status distribution with the next milestone folded in — one bar, three
+                // numbers, one quiet goal line. Context for the decision above, not a decision.
                 state.stats?.let { stats ->
                     item(key = "word_status") {
                         WordStatusCard(
                             statusCounts = stats.statusCounts,
                             totalWords = stats.levelProgress.totalWords,
+                            stageGoal = stats.stageGoal,
                         )
                     }
+                }
 
-                    // 5. The next reachable milestone.
-                    item(key = "stage_goal") {
-                        StageGoalCard(goal = stats.stageGoal)
+                // 5. The mistake book as a one-row shortcut: it opens the full-screen review
+                // centre, where the drill itself lives. Due reviews can exist with no mistake row
+                // at all, so both counts have to be zero for the book to count as "empty".
+                item(key = "mistake_book") {
+                    val overview = state.mistakeOverview
+                    val summary = if (overview.activeCount == 0 && overview.dueTodayCount == 0) {
+                        "暂无错题"
+                    } else {
+                        buildList {
+                            if (overview.dueTodayCount > 0) add("今日待复习 ${overview.dueTodayCount}")
+                            if (overview.unconsolidatedCount > 0) add("未巩固 ${overview.unconsolidatedCount}")
+                        }.joinToString(" · ").ifEmpty { "查看全部" }
+                    }
+                    AppCard(
+                        onClick = onOpenReviewCenter,
+                        modifier = Modifier.testTag("home_mistake_entry"),
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text("错题本", style = MaterialTheme.typography.titleMedium)
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
+                            ) {
+                                Text(
+                                    text = summary,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = AppTheme.colors.mutedText,
+                                )
+                                Icon(
+                                    imageVector = Icons.Filled.KeyboardArrowRight,
+                                    contentDescription = null,
+                                    tint = AppTheme.colors.mutedText,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            }
+                        }
                     }
                 }
 
@@ -359,14 +353,7 @@ fun HomeScreen(
                     }
                 }
 
-                // 7. One line of encouragement, at most once a day, with no action attached.
-                state.motivation?.let { message ->
-                    item(key = "motivation") {
-                        MotivationLine(message = message)
-                    }
-                }
-
-                // 8. Weekly trend: the only chart, kept because it is the evidence behind the numbers
+                // 7. Weekly trend: the only chart, kept because it is the evidence behind the numbers
                 // above ("最近表现如何"). It is a compact bar row, not a full chart component.
                 if (state.weekTrend.isNotEmpty()) {
                     item(key = "trend") {
@@ -379,8 +366,8 @@ fun HomeScreen(
                     }
                 }
 
-                // 9. Recent activity stays last: it is history, not a decision, so it must not push
-                // the next action below the fold.
+                // 8. Recent activity: history, not a decision, so it never pushes the next action
+                // below the fold.
                 item(key = "recent") {
                     AppCard {
                         Column(verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
@@ -399,6 +386,14 @@ fun HomeScreen(
                                 state.recentEvents.forEach { event -> RecentEventRow(event) }
                             }
                         }
+                    }
+                }
+
+                // 9. One line of encouragement, at most once a day, with no action attached —
+                // the very last thing on the screen, never a task.
+                state.motivation?.let { message ->
+                    item(key = "motivation") {
+                        MotivationLine(message = message)
                     }
                 }
             }
@@ -420,37 +415,6 @@ private val PACK_CHIP_MAX_WIDTH = 140.dp
  */
 private val WEEKDAY_FORMATTER: DateTimeFormatter =
     DateTimeFormatter.ofPattern("E", Locale.CHINA)
-
-private fun TodayPlan.planSummary(): String {
-    val parts = buildList {
-        if (remainingNew > 0) add("新词 ${remainingNew}")
-        if (dueCount > 0) add("复习 ${dueCount.coerceAtMost(dailyReviewLimit)}")
-        if (fragileCount > 0) add("未巩固 ${fragileCount}")
-    }
-    return if (parts.isEmpty()) "今天没有待办，可以回顾错题" else parts.joinToString(" · ")
-}
-
-/**
- * One count in the home-screen mistake-book card: the number on top, the label underneath.
- *
- * Deliberately smaller than [StatCard] — this card is an overview, not a dashboard, and three
- * of these must fit on one row without wrapping.
- */
-@Composable
-private fun MistakeStat(label: String, value: Int) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(
-            text = value.toString(),
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.SemiBold,
-        )
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelSmall,
-            color = AppTheme.colors.mutedText,
-        )
-    }
-}
 
 @Composable
 private fun RecentEventRow(event: RecentEvent) {
