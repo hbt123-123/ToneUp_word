@@ -30,8 +30,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -72,6 +74,9 @@ import top.toneup.word.ui.theme.Spacing
  *  * every answer is written to the database immediately, so leaving the screen keeps progress;
  *  * the session row is persisted after each card, so a process restart resumes the same queue;
  *  * an answer in flight disables the three buttons, which is what prevents double recording;
+ *  * the grading area is pinned below the scrollable content, so a long revealed meaning never
+ *    pushes the buttons out of reach;
+ *  * the usage hints (swipe, save reassurance) show for the first two cards of a session only;
  *  * the system back gesture pauses (never loses) the session.
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -91,6 +96,7 @@ fun StudyScreen(
         edgeTts = container.edgeTts,
     )
     val speechState by speech.state.collectAsStateWithLifecycle()
+    val haptics = LocalHapticFeedback.current
     // Note/meaning editor (plan §9): the dialog writes through the repository, and the card is
     // re-read from the database when it closes so the reveal shows the text just saved.
     var showEdit by remember { mutableStateOf(false) }
@@ -104,6 +110,14 @@ fun StudyScreen(
         if (state.autoPlayPronunciation && word != null) {
             speech.speakWord(word)
         }
+    }
+
+    // One light haptic per graded answer: confirms "recorded" without becoming noise over a
+    // long session (view-level haptic — no permission, no sound). The write-through semantics
+    // of [StudyViewModel.answer] are untouched.
+    val answerWith: (ReviewGrade) -> Unit = { grade ->
+        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+        viewModel.answer(grade)
     }
 
     // Pausing persists the cursor; the session row stays ACTIVE so the home screen can resume it.
@@ -179,103 +193,104 @@ fun StudyScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(padding)
-                        .verticalScroll(scrollState)
-                        .padding(horizontal = Spacing.lg),
-                    verticalArrangement = Arrangement.spacedBy(Spacing.lg),
+                        .padding(padding),
                 ) {
-                    StudyProgressIndicator(
-                        current = (session?.position ?: 0) + 1,
-                        total = session?.totalCards ?: 0,
-                        reasonLabel = state.reasonLabel,
-                        modifier = Modifier.testTag("study_progress"),
-                    )
-
-                    // `key` scopes the card subtree to the word: a reveal animation from the
-                    // previous word cannot leak into the next card, which always starts collapsed.
-                    key(card.word.id) {
-                        WordCard(
-                            word = card.word,
-                            progress = card.progress,
-                            revealed = state.revealed,
-                            isFavorite = card.progress.isFavorite,
-                            onToggleReveal = viewModel::reveal,
-                            onToggleFavorite = viewModel::toggleFavorite,
-                            onSpeakWord = { speech.speakWord(card.word) },
-                            speechState = speechState,
-                            // Reading the example is offered only when the card actually has one.
-                            onSpeakExample = if (state.readExampleSentences) {
-                                { speech.speakExample(card.word) }
-                            } else {
-                                null
-                            },
-                            onRetrySpeech = speech::retry,
-                            onOpenSpeechSettings = speech::openSystemSpeechSettings,
-                            onInstallVoiceData = speech::installVoiceData,
-                            onEdit = { showEdit = true },
-                            modifier = Modifier
-                                // Swipe as page-turn: drag left pages to the meaning, drag right
-                                // pages back to the prompt. Tapping still works.
-                                .pointerInput(card.word.id) {
-                                    var dragged = 0f
-                                    detectHorizontalDragGestures(
-                                        onDragStart = { dragged = 0f },
-                                        onDragEnd = {
-                                            when {
-                                                dragged <= -swipeThreshold -> viewModel.reveal()
-                                                dragged >= swipeThreshold -> viewModel.hideReveal()
-                                            }
-                                        },
-                                        onHorizontalDrag = { change, amount ->
-                                            dragged += amount
-                                            change.consume()
-                                        },
-                                    )
-                                }
-                                .testTag("study_word_card"),
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .verticalScroll(scrollState)
+                            .padding(horizontal = Spacing.lg),
+                        verticalArrangement = Arrangement.spacedBy(Spacing.lg),
+                    ) {
+                        StudyProgressIndicator(
+                            current = (session?.position ?: 0) + 1,
+                            total = session?.totalCards ?: 0,
+                            reasonLabel = state.reasonLabel,
+                            modifier = Modifier.testTag("study_progress"),
                         )
-                    }
 
-                    Text(
-                        text = "左右滑动卡片可翻到释义或翻回正面",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = AppTheme.colors.mutedText,
-                        modifier = Modifier.testTag("study_swipe_hint"),
-                    )
-
-                    if (!state.revealed) {
-                        PrimaryButton(
-                            text = "显示释义",
-                            onClick = viewModel::reveal,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("study_reveal"),
-                        )
-                    } else {
-                        AnswerActionBar(
-                            onUnknown = { viewModel.answer(ReviewGrade.UNKNOWN) },
-                            onFuzzy = { viewModel.answer(ReviewGrade.FUZZY) },
-                            onMastered = { viewModel.answer(ReviewGrade.MASTERED) },
-                            enabled = !state.saving,
-                            modifier = Modifier.testTag("study_answer_bar"),
-                        )
-                    }
-
-                    AppCard {
-                        Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-                            Text(
-                                text = "本会话已作答 ${state.answeredCards} 次",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = AppTheme.colors.mutedText,
+                        // `key` scopes the card subtree to the word: a reveal animation from the
+                        // previous word cannot leak into the next card, which always starts collapsed.
+                        key(card.word.id) {
+                            WordCard(
+                                word = card.word,
+                                progress = card.progress,
+                                revealed = state.revealed,
+                                isFavorite = card.progress.isFavorite,
+                                onToggleReveal = viewModel::reveal,
+                                onToggleFavorite = viewModel::toggleFavorite,
+                                onSpeakWord = { speech.speakWord(card.word) },
+                                speechState = speechState,
+                                // Reading the example is offered only when the card actually has one.
+                                onSpeakExample = if (state.readExampleSentences) {
+                                    { speech.speakExample(card.word) }
+                                } else {
+                                    null
+                                },
+                                onRetrySpeech = speech::retry,
+                                onOpenSpeechSettings = speech::openSystemSpeechSettings,
+                                onInstallVoiceData = speech::installVoiceData,
+                                onEdit = { showEdit = true },
+                                modifier = Modifier
+                                    // Swipe as page-turn: drag left pages to the meaning, drag right
+                                    // pages back to the prompt. Tapping still works.
+                                    .pointerInput(card.word.id) {
+                                        var dragged = 0f
+                                        detectHorizontalDragGestures(
+                                            onDragStart = { dragged = 0f },
+                                            onDragEnd = {
+                                                when {
+                                                    dragged <= -swipeThreshold -> viewModel.reveal()
+                                                    dragged >= swipeThreshold -> viewModel.hideReveal()
+                                                }
+                                            },
+                                            onHorizontalDrag = { change, amount ->
+                                                dragged += amount
+                                                change.consume()
+                                            },
+                                        )
+                                    }
+                                    .testTag("study_word_card"),
                             )
+                        }
+
+                        // Session rhythm: repeating the same instructions on every card turns them
+                        // into noise after a few dozen words. They are shown for the first two cards
+                        // only; a resumed session (whose position has already advanced) never sees
+                        // them again.
+                        if ((session?.position ?: 0) < 2) {
                             Text(
-                                text = "答题后结果会立即保存；中途退出不会丢失进度。",
+                                text = "左右滑动卡片可翻到释义或翻回正面；答题结果即时保存，中途退出不丢失进度",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = AppTheme.colors.mutedText,
+                                modifier = Modifier.testTag("study_swipe_hint"),
                             )
                         }
                     }
-                    Spacer(Modifier.height(Spacing.lg))
+
+                    // The grading area lives below the scrollable content, pinned to the bottom:
+                    // a long revealed meaning must never push the buttons out of reach.
+                    Column(
+                        modifier = Modifier.padding(horizontal = Spacing.lg, vertical = Spacing.md),
+                    ) {
+                        if (!state.revealed) {
+                            PrimaryButton(
+                                text = "显示释义",
+                                onClick = viewModel::reveal,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("study_reveal"),
+                            )
+                        } else {
+                            AnswerActionBar(
+                                onUnknown = { answerWith(ReviewGrade.UNKNOWN) },
+                                onFuzzy = { answerWith(ReviewGrade.FUZZY) },
+                                onMastered = { answerWith(ReviewGrade.MASTERED) },
+                                enabled = !state.saving,
+                                modifier = Modifier.testTag("study_answer_bar"),
+                            )
+                        }
+                    }
                 }
             }
         }

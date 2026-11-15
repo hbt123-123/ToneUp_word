@@ -733,7 +733,6 @@ data class StudyUiState(
 ) {
     val progressLabel: String get() = session?.progressLabel.orEmpty()
     val totalCards: Int get() = session?.totalCards ?: 0
-    val answeredCards: Int get() = session?.answered ?: 0
     val reasonLabel: String? get() = session?.reason?.label
 }
 

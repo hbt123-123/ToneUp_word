@@ -264,14 +264,15 @@ class ComposeFlowTest {
         awaitTag("study_word_card")
         awaitTag("study_reveal")
 
-        // The meaning is hidden: only the reveal affordance is offered.
-        composeRule.onNodeWithTag("study_reveal").performScrollTo().assertIsDisplayed().performClick()
+        // The grading area is pinned below the scrollable content, so the reveal button is
+        // always on screen — no scrolling needed to reach it.
+        composeRule.onNodeWithTag("study_reveal").assertIsDisplayed().performClick()
         awaitText("已掌握")
 
         // After revealing, the three self-assessment actions appear.
         composeRule.onNodeWithText("不认识").assertExists()
         composeRule.onNodeWithText("模糊").assertExists()
-        composeRule.onNodeWithText("已掌握").performScrollTo().assertIsDisplayed().performClick()
+        composeRule.onNodeWithText("已掌握").assertIsDisplayed().performClick()
 
         // The answer must have been written to the database; the write happens on a background
         // dispatcher, so wait for it instead of reading once.
@@ -288,6 +289,35 @@ class ComposeFlowTest {
         }
         awaitTag("study_progress")
         composeRule.onNodeWithTag("study_progress").assertIsDisplayed()
+    }
+
+    @Test
+    fun `study instructions disappear after the first two cards`() {
+        composeRule.setContent {
+            ToneUpWordTheme {
+                StudyScreen(container, emptyList(), onExit = {}, onGoHome = {})
+            }
+        }
+        // The teaching phase: the combined swipe/save hint is on the first card.
+        awaitTag("study_word_card")
+        awaitTag("study_swipe_hint")
+
+        // Two graded answers advance past it — MASTERED never re-queues a card immediately,
+        // so the queue cursor simply moves on to the next word.
+        repeat(2) { index ->
+            composeRule.onNodeWithTag("study_reveal").performClick()
+            awaitText("已掌握")
+            composeRule.onNodeWithText("已掌握").performClick()
+            awaitCondition { reviewEventCount() >= index + 1 }
+            // Wait for the next card to be ready, so the next iteration never races the switch.
+            awaitTag("study_reveal")
+        }
+
+        // From the third card on, the guidance is gone: the session has moved past teaching.
+        awaitCondition {
+            composeRule.onAllNodesWithTag("study_swipe_hint").fetchSemanticsNodes().isEmpty()
+        }
+        composeRule.onNodeWithTag("study_word_card").assertIsDisplayed()
     }
 
     // --- Review centre ------------------------------------------------------------------

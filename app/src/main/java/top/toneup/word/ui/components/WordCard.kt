@@ -159,10 +159,13 @@ fun WordCard(
                     )
                 }
                 Spacer(Modifier.width(Spacing.sm))
+                // The word button carries no label: it sits right next to the phonetic it reads,
+                // so the play icon is self-explanatory, and two text labels made this row louder
+                // than the word itself. The example keeps its label because a card can show two
+                // play controls and they must stay distinguishable.
                 SpeakButton(
                     state = speechState,
                     onClick = onSpeakWord,
-                    label = "单词",
                 )
                 // The example button appears only when there is something to read: the shipped
                 // vocabulary has no example sentences, so this stays hidden rather than opening a
@@ -230,7 +233,9 @@ fun WordCard(
 /**
  * The pre-answer example sentence.
  *
- * Kept visually quieter than the revealed meaning block: it is a hint, not the answer.
+ * Kept visually quieter than the revealed meaning block: it is a hint, not the answer. The old
+ * per-card instruction line ("先读例句猜猜它的意思…") was removed: repeated on every card it became
+ * noise over a long session, and the example itself already implies the recall step.
  */
 @Composable
 private fun ExampleHint(sentence: String) {
@@ -254,11 +259,6 @@ private fun ExampleHint(sentence: String) {
                 text = sentence,
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurface,
-            )
-            Text(
-                text = "先读例句猜猜它的意思，再查看释义。",
-                style = MaterialTheme.typography.bodySmall,
-                color = AppTheme.colors.mutedText,
             )
         }
     }
@@ -324,7 +324,9 @@ private fun WordMeaningBlock(word: Word, onEdit: (() -> Unit)? = null) {
             }
         }
         word.meanings.forEach { meaning ->
-            Text(text = meaning, style = MaterialTheme.typography.titleSmall)
+            // The Chinese gloss is the answer the reveal exists for — the back side's protagonist —
+            // so it is typeset one step larger than the surrounding secondary info.
+            Text(text = meaning, style = MaterialTheme.typography.titleMedium)
         }
         // A word typed into 「写词库」 starts with no meanings; while the gateway is still working
         // (or the device is offline) the block would otherwise render nothing at all, which reads
@@ -342,7 +344,14 @@ private fun WordMeaningBlock(word: Word, onEdit: (() -> Unit)? = null) {
             WordExtraInfo(word = word)
         }
         if (word.exampleSentence.isNotBlank()) {
-            Column {
+            // Same quiet label style as 「英文释义」/「常见搭配」, so the back side reads as one
+            // consistent stack of labelled info blocks.
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                Text(
+                    text = "例句",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = AppTheme.colors.mutedText,
+                )
                 Text(
                     text = word.exampleSentence,
                     style = MaterialTheme.typography.bodyMedium,
@@ -358,7 +367,7 @@ private fun WordMeaningBlock(word: Word, onEdit: (() -> Unit)? = null) {
             }
         }
         if (word.collocations.isNotEmpty()) {
-            Column {
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
                 Text(
                     text = "常见搭配",
                     style = MaterialTheme.typography.labelMedium,
