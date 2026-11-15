@@ -8,6 +8,7 @@
 tools/
 ├── wordpack/      10 文件：词库生成/校验流水线 + 2 个一次性调研脚本
 ├── motivation/    build_tips.py + validate_tips.py + parts/part1,2.json（撰写稿）
+├── studymetrics/  学习记录离线分析（读完整备份 JSON → report.md/json，2026-11 起）
 └── pronunciation/ verify_audio.py(1411 行) + supplementary_uk_probe.py —— 历史证据，不产资产
 ```
 
@@ -23,6 +24,7 @@ tools/
 ```
 调研脚本（不入流水线）：`measure_sources.py`（选源对比）、`check_pos.py`（词性可提取率）。
 motivation：`build_tips.py`（parts→tips.json 398 条，<370 退出 1）→ `validate_tips.py`（数量/禁用词/长度/近重复≤0.60，与 StartupTipTest 同断言）。
+studymetrics：`analyze_records.py <完整备份.json> [--out DIR]`（读应用「数据传输 → 完整备份」导出的 JSON → cache/ 下 report.md + report.json；五项指标：间隔保持率/模糊词巩固/长期保持/新词量 vs 复习质量/队列疲劳；只报告不改算法，口径见其 README.md）。fixture 在 `fixtures/sample_backup.json`（合成数据，供冒烟回归）。
 
 ## WHERE TO LOOK
 | 任务 | 位置 |
@@ -32,6 +34,7 @@ motivation：`build_tips.py`（parts→tips.json 398 条，<370 退出 1）→ `
 | 改音标转写 | `wordpack/normalize_phonetics.py` |
 | 改提示语文案 | `motivation/parts/*.json` → `build_tips.py` |
 | 禁用词表 | `motivation/validate_tips.py:32-35`（与 StartupTipTest 一致，改一处须同步） |
+| 改记忆效果分析口径 | `studymetrics/core.py`（清洗口径与判读阈值集中在文件头常量） |
 
 ## CONVENTIONS
 - shebang + 模块 docstring（写清用途与规则）+ `if __name__ == "__main__"`；路径用 `__file__` 相对定位（老脚本 os.path / 新脚本 pathlib 并存）。

@@ -151,6 +151,32 @@ class StudySessionEngineTest {
     }
 
     @Test
+    fun `immediate repeats are tagged with the immediate reason`() {
+        val unknownSession = newSession(queue = listOf(1L) + others)
+
+        val afterUnknown = unknownSession.answer(ReviewGrade.UNKNOWN)
+
+        // The repeat card carries the "即时重复" badge, not the reason it entered the queue.
+        assertThat(afterUnknown.reasons[1L]).isEqualTo(QueueReason.IMMEDIATE)
+        assertThat(afterUnknown.reasons[2L]).isEqualTo(QueueReason.DUE)
+
+        // Walking to the repeat card: this reason is what the answer recorder maps to
+        // source=IMMEDIATE, and it is what the card badge shows.
+        var walk = afterUnknown
+        repeat(SrsConstants.IMMEDIATE_REPEAT_GAP) { walk = walk.answer(ReviewGrade.MASTERED) }
+        assertThat(walk.currentWordId).isEqualTo(1L)
+        assertThat(walk.reason).isEqualTo(QueueReason.IMMEDIATE)
+
+        // 模糊 repeats once too, and gets the same tag.
+        val afterFuzzy = newSession(queue = listOf(2L) + others).answer(ReviewGrade.FUZZY)
+        assertThat(afterFuzzy.reasons[2L]).isEqualTo(QueueReason.IMMEDIATE)
+
+        // A word that is not re-queued keeps its original reason.
+        val mastered = unknownSession.answer(ReviewGrade.MASTERED)
+        assertThat(mastered.reasons).isEqualTo(unknownSession.reasons)
+    }
+
+    @Test
     fun `a second unknown on the same word repeats it again`() {
         // The repeat lands at index 5, so answering the first five cards in order reaches it.
         var state = newSession(queue = listOf(1L) + others)

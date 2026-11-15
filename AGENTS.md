@@ -18,7 +18,7 @@ ToneUp_word/
 │       ├── ui/             # Compose 屏幕/组件/主题/导航 + ViewModels.kt 单文件 + ExternalImport/OptIns
 │       └── work/           # WorkManager：学习提醒 + 释义补全同步（MeaningSyncWorker）
 ├── tool/                   # 发布脚本（release.ps1：APK + version.json；非构建依赖）
-├── tools/                  # Python 流水线：wordpack 词库、motivation 提示语、pronunciation(历史)
+├── tools/                  # Python 流水线：wordpack 词库、motivation 提示语、studymetrics 学习记录分析、pronunciation(历史)
 ├── docs/                   # 文档树；dev/ 为迭代记录；SHARE_INTENT.md 外部调用文档
 ├── gradle/libs.versions.toml   # 依赖版本唯一来源（含网关 okhttp/retrofit）
 ├── build.gradle.kts        # 根脚本：仅声明插件 apply false（AGP 9 内置 Kotlin）
@@ -40,6 +40,7 @@ ToneUp_word/
 | 依赖装配 | 根 `AppContainer.kt` | 手写**构造器**注入，**无 Hilt** |
 | 词库资产生成 | `tools/wordpack/` → `app/src/main/assets/wordpacks/` | 流水线顺序见 tools/AGENTS.md |
 | 提示语资产 | `tools/motivation/` → `assets/motivation/tips.json` | 398 条，禁用词表在脚本内 |
+| 学习效果离线分析 | `tools/studymetrics/`（读完整备份 JSON → report.md/json） | 只报告不改算法；口径见 tools/studymetrics/README.md |
 | 测试写法/运行 | `app/src/test/` | 见 app/src/test/AGENTS.md |
 | 构建/签名/发布 | `gradle/libs.versions.toml`、`docs/RELEASE_SIGNING.md` | 命令见 COMMANDS |
 

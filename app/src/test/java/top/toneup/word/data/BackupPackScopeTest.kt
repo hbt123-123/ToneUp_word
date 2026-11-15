@@ -14,6 +14,7 @@ import top.toneup.word.core.result.AppError
 import top.toneup.word.core.result.Outcome
 import top.toneup.word.core.time.TimeProvider
 import top.toneup.word.data.local.ToneUpWordDatabase
+import top.toneup.word.data.local.entity.ReviewEventEntity
 import top.toneup.word.data.repository.DefaultBackupRepository
 import top.toneup.word.data.repository.DefaultWordRepository
 import top.toneup.word.data.repository.ExportScope
@@ -83,5 +84,50 @@ class BackupPackScopeTest {
 
         assertThat(json).contains("orphanword")
         assertThat(json).contains(packId)
+    }
+
+    @Test
+    fun `a full backup round-trips session id and response time`() = runTest {
+        words.ensureDefaultPlan()
+        val packId = requireNotNull(
+            words.createPack("会话包", PlanIds.DEFAULT_PLAN, now).getOrNull(),
+        )
+        assertThat(words.addWordsToPack(packId, listOf("sessionword"), now).isSuccess).isTrue()
+        val wordId = requireNotNull(
+            database.wordDao().idByNormalized(packId)
+                .firstOrNull { it.normalizedWord == "sessionword" }?.id,
+        )
+
+        database.reviewEventDao().insert(
+            ReviewEventEntity(
+                wordId = wordId,
+                sessionId = 42L,
+                grade = "FUZZY",
+                source = "STUDY",
+                answeredAt = now,
+                dayKey = "2026-11-14",
+                level = "CET4",
+                previousIntervalDays = 3,
+                newIntervalDays = 7,
+                responseTimeMs = 3_500L,
+                packId = packId,
+                planId = PlanIds.DEFAULT_PLAN,
+            ),
+        )
+
+        val exported = requireNotNull(
+            backup.export(ExportScope.FULL_BACKUP, PlanIds.DEFAULT_PLAN).getOrNull(),
+        )
+        assertThat(exported).contains("\"sessionId\": 42")
+        assertThat(exported).contains("\"responseTimeMillis\": 3500")
+
+        // Restore into the same database (replace-on-restore is idempotent) and export again:
+        // the fields must survive the round trip instead of being reset to null.
+        assertThat(backup.restore(exported).getOrNull()).isNotNull()
+        val roundTripped = requireNotNull(
+            backup.export(ExportScope.FULL_BACKUP, PlanIds.DEFAULT_PLAN).getOrNull(),
+        )
+        assertThat(roundTripped).contains("\"sessionId\": 42")
+        assertThat(roundTripped).contains("\"responseTimeMillis\": 3500")
     }
 }

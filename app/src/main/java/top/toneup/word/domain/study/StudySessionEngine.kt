@@ -176,6 +176,7 @@ object StudySessionEngine {
 
         var queue = state.queue
         var repeatCounts = state.repeatCounts
+        var reasons = state.reasons
 
         if (shouldRepeatImmediately(grade, state.repeatCounts[wordId] ?: 0)) {
             val insertAt = (state.position + 1 + SrsConstants.IMMEDIATE_REPEAT_GAP)
@@ -186,12 +187,17 @@ object StudySessionEngine {
             if (pendingAfterCursor.none { it == wordId }) {
                 queue = queue.toMutableList().apply { add(insertAt, wordId) }
                 repeatCounts = repeatCounts + (wordId to (repeatCounts[wordId] ?: 0) + 1)
+                // The repeat is an immediate consolidation, not the reason it entered the
+                // queue — tag it so the answer logs source=IMMEDIATE and the badge matches
+                // what actually happened.
+                reasons = reasons + (wordId to QueueReason.IMMEDIATE)
             }
         }
 
         return state.copy(
             queue = queue,
             repeatCounts = repeatCounts,
+            reasons = reasons,
             position = state.position + 1,
             answered = state.answered + 1,
             masteredCount = state.masteredCount + if (grade == ReviewGrade.MASTERED) 1 else 0,

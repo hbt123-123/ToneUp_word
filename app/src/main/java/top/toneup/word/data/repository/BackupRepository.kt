@@ -249,6 +249,8 @@ class DefaultBackupRepository(
                 dayKey = entity.dayKey,
                 previousIntervalDays = entity.previousIntervalDays,
                 newIntervalDays = entity.newIntervalDays,
+                sessionId = entity.sessionId,
+                responseTimeMillis = entity.responseTimeMs,
             )
         }
 
@@ -507,7 +509,7 @@ class DefaultBackupRepository(
                     db.reviewEventDao().insert(
                         top.toneup.word.data.local.entity.ReviewEventEntity(
                             wordId = wordId,
-                            sessionId = null,
+                            sessionId = event.sessionId,
                             grade = event.grade,
                             source = event.source,
                             answeredAt = event.answeredAt,
@@ -517,7 +519,7 @@ class DefaultBackupRepository(
                             planId = resolvedPlanId(event.planId, packId),
                             previousIntervalDays = event.previousIntervalDays,
                             newIntervalDays = event.newIntervalDays,
-                            responseTimeMs = null,
+                            responseTimeMs = event.responseTimeMillis,
                         ),
                     )
                     restoredEvents++
@@ -861,6 +863,10 @@ class DefaultBackupRepository(
         val dayKey: String,
         val previousIntervalDays: Int = 0,
         val newIntervalDays: Int = 0,
+        /** Absent in v1 backups written before the field was exported (restore keeps them null). */
+        val sessionId: Long? = null,
+        /** Absent in v1 backups; study-path answers only, exam answers stay null. */
+        val responseTimeMillis: Long? = null,
     )
 
     @Serializable

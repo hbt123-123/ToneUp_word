@@ -22,6 +22,8 @@ __pycache__/
 # Network responses cached by the verification scripts; reproducible by re-running them.
 /tools/pronunciation/cache/
 /tools/wordpack/cache/
+# Analysis reports from tools/studymetrics (regenerated from any full-backup export).
+/tools/studymetrics/cache/
 
 # Kotlin/Gradle local caches and compiler logs (machine specific, never source)
 .kotlin/
