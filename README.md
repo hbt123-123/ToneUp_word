@@ -85,12 +85,9 @@
 
 <!-- AUTO-CHANGELOG:START -->
 
-### [v1.0.7](https://github.com/hbt123-123/ToneUp_word/releases/tag/v1.0.7) · 2026-11-24
+### [v1.0.8](https://github.com/hbt123-123/ToneUp_word/releases/tag/v1.0.8) · 2026-11-24
 
-- feat: 学习界面交互与体验优化
-- feat: 首页重构为学习入口，优化卡片布局与交互逻辑
-- feat: 优化单词学习流程与体验完善
-- refactor: 替换自定义字体为 Material 3 字体系统排版
+- 维护性更新，无用户可见变化
 
 <!-- AUTO-CHANGELOG:END -->
 
