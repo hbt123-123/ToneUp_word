@@ -218,6 +218,10 @@ class ComposeFlowTest {
         // target actually exists.
         awaitTag("home_today_progress")
         composeRule.onNodeWithTag("home_next_step").assertExists()
+        // ... and the next step must say something concrete, not just "继续学习".
+        // Asserted before scrolling: the dashboard is a LazyColumn, so scrolling down
+        // disposes this card and the tag would no longer exist in the composition.
+        composeRule.onNodeWithTag("home_next_step_text").assertExists()
         composeRule.onNodeWithTag("home_content")
             .performScrollToNode(hasTestTag("home_word_status"))
         composeRule.onNodeWithTag("home_word_status").assertExists()
@@ -225,8 +229,6 @@ class ComposeFlowTest {
         composeRule.onNodeWithTag("home_content")
             .performScrollToNode(hasTestTag("home_mistake_entry"))
         composeRule.onNodeWithTag("home_mistake_entry").assertExists()
-        // ... and the next step must say something concrete, not just "继续学习".
-        composeRule.onNodeWithTag("home_next_step_text").assertExists()
     }
 
     @Test

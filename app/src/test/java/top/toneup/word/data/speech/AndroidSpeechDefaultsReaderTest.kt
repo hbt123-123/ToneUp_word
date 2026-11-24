@@ -7,6 +7,7 @@ import com.google.common.truth.Truth.assertThat
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 
 /**
  * Wiring test for [AndroidSpeechDefaultsReader]: the platform key names and the "unreadable means
@@ -17,6 +18,10 @@ import org.robolectric.RobolectricTestRunner
  * be modelled here.
  */
 @RunWith(RobolectricTestRunner::class)
+// Pinned to SDK 34: on SDK 36 Robolectric 4.17 routes Settings.Secure.putString through
+// NameValueCache reflection that throws IllegalAccessException on JDK 21. The key names and
+// parsing rules under test are identical across these SDK levels.
+@Config(sdk = [34])
 class AndroidSpeechDefaultsReaderTest {
 
     private val context: Context = ApplicationProvider.getApplicationContext()

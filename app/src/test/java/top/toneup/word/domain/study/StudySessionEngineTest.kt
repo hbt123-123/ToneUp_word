@@ -152,7 +152,10 @@ class StudySessionEngineTest {
 
     @Test
     fun `immediate repeats are tagged with the immediate reason`() {
-        val unknownSession = newSession(queue = listOf(1L) + others)
+        val unknownSession = newSession(
+            queue = listOf(1L) + others,
+            reasons = (listOf(1L) + others).associateWith { QueueReason.DUE },
+        )
 
         val afterUnknown = unknownSession.answer(ReviewGrade.UNKNOWN)
 
