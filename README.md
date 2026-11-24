@@ -79,6 +79,23 @@
 
 ---
 
+## 更新日志
+
+由 CI 在每次自动发布后追加（`auto-release` 工作流），只列用户可见的变化。
+
+<!-- AUTO-CHANGELOG:START -->
+
+### [v1.0.7](https://github.com/hbt123-123/ToneUp_word/releases/tag/v1.0.7) · 2026-11-24
+
+- feat: 学习界面交互与体验优化
+- feat: 首页重构为学习入口，优化卡片布局与交互逻辑
+- feat: 优化单词学习流程与体验完善
+- refactor: 替换自定义字体为 Material 3 字体系统排版
+
+<!-- AUTO-CHANGELOG:END -->
+
+---
+
 ## 验证状态
 
 以下结果都可以在本地原样复现（命令见 [如何运行](#如何运行)）：

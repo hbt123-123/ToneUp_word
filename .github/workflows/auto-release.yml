@@ -279,16 +279,64 @@ jobs:
             > dist/version.json
           cat dist/version.json
 
-      - name: Commit version bump
+      - name: Append changelog to README
+        if: steps.detect.outputs.changed == 'true'
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+          REPO_URL: https://github.com/${{ github.repository }}
+        run: |
+          python3 - <<'PY'
+          import datetime
+          import os
+          import pathlib
+          import re
+
+          tag = os.environ["TAG"]
+          repo = os.environ["REPO_URL"]
+          date = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
+
+          # 只把用户可见的提交写进 README（Release notes 里仍保留完整列表）。
+          lines = pathlib.Path("release-notes.md").read_text(encoding="utf-8").splitlines()
+          keep = [
+              line for line in lines[1:]
+              if line.strip() and not re.match(r"- (ci|test|chore\()", line.strip())
+          ]
+          if not keep:
+              keep = ["- 维护性更新，无用户可见变化"]
+          entry = f"### [{tag}]({repo}/releases/tag/{tag}) · {date}\n\n" + "\n".join(keep) + "\n\n"
+
+          start = "<!-- AUTO-CHANGELOG:START -->"
+          end = "<!-- AUTO-CHANGELOG:END -->"
+          readme = pathlib.Path("README.md")
+          text = readme.read_text(encoding="utf-8")
+
+          if f"### [{tag}]" in text:
+              print(f"{tag} 已在 README 更新日志中，跳过")
+          else:
+              if start in text and end in text:
+                  head, rest = text.split(start, 1)
+                  _, tail = rest.split(end, 1)
+                  text = f"{head}{start}\n\n{entry}{end}{tail}"
+              else:
+                  # 首次运行：插在“下载与版本”之后的章节前；找不到锚点就追加到末尾。
+                  block = f"## 更新日志\n\n{start}\n\n{entry}{end}\n\n"
+                  anchor = "\n## 验证状态"
+                  text = text.replace(anchor, f"\n{block}{anchor[1:]}", 1) if anchor in text else text.rstrip() + "\n\n" + block
+              readme.write_text(text, encoding="utf-8")
+              print(f"已把 {tag} 写入 README 更新日志")
+          PY
+          sed -n '/AUTO-CHANGELOG:START/,+8p' README.md
+
+      - name: Commit version bump and changelog
         if: steps.detect.outputs.changed == 'true'
         env:
           TAG: ${{ steps.version.outputs.tag }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add app/build.gradle.kts
+          git add app/build.gradle.kts README.md
           if git diff --cached --quiet; then
-            echo "版本号未变化，跳过提交。"
+            echo "版本号与 README 均未变化，跳过提交。"
           else
             # [skip ci] 防止版本号提交再次触发本工作流。
             git commit -m "chore(release): $TAG [skip ci]"
