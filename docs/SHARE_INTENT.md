@@ -16,7 +16,7 @@
 | 入口 Activity | `top.toneup.word.MainActivity` |
 | 启动模式 | `singleTop`（已在前后台时不会重开 Activity） |
 | 最低系统 | Android 8.0（API 26） |
-| 当前版本 | versionName `1.0.3` / versionCode `4` |
+| 当前版本 | versionName `1.0.6` / versionCode `106`（以 `app/build.gradle.kts` 为准） |
 
 ---
 

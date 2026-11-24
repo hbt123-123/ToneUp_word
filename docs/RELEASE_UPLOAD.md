@@ -5,6 +5,9 @@
 
 ## 0. 本次发布参数（先核对）
 
+> 下表为 v1.0.3 首发时的参数示例，仅展示各字段含义；**每次发布前以 `app/build.gradle.kts`
+> 当前的 versionName / versionCode 为准**，不要照抄历史数值。
+
 | 项目 | 值 |
 | --- | --- |
 | versionName | `1.0.3` |
@@ -34,8 +37,9 @@ https://github.com/hbt123-123/ToneUp_word/releases/latest/download/ToneUpWord.ap
    或设置 `TONEUP_KEYSTORE_FILE` / `TONEUP_KEYSTORE_PASSWORD` / `TONEUP_KEY_ALIAS` /
    `TONEUP_KEY_PASSWORD`。
    如果找不回原密钥，新包无法覆盖安装，用户只能卸载重装并丢本地数据。
-2. **版本号只改 `app/build.gradle.kts` 的 `versionName` / `versionCode`。** 当前必须是
-   `1.0.3 / 103`，且 `versionCode == major*100 + minor*10 + patch`；发布脚本会校验。
+2. **版本号只改 `app/build.gradle.kts` 的 `versionName` / `versionCode`。** 当前必须与
+   仓库中的值一致，且 `versionCode == major*100 + minor*10 + patch`；发布脚本会校验
+   `-AppVersion`、tag 与三者一致。
 3. **更新 `release-notes.md`。** 它会进入 `version.json` 的 `notes` 和更新对话框；
    每次发版替换成当前版本说明，不要把历史版本累计在里面。
 4. **提交并推送代码。** 发布脚本会用 `git tag` 给 HEAD 打 tag；工作区有未提交改动时，

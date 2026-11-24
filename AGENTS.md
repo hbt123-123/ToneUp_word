@@ -107,7 +107,7 @@ ToneUp_word/
 .\gradlew.bat :app:testDebugUnitTest --tests "*.SpacedRepetitionTest*"   # 单类
 .\gradlew.bat :app:assembleRelease -x lintVitalRelease   # R8 发布包（本机约定跳过 lint）
 .\gradlew.bat :app:lintVitalRelease       # Android Lint（唯一静态检查；低内存机会 OOM）
-powershell -ExecutionPolicy Bypass -File tool\release.ps1 -AppVersion 1.0.3 -Tag   # 出发布物 + 校验版本号
+powershell -ExecutionPolicy Bypass -File tool\release.ps1 -AppVersion 1.0.6 -Tag   # 出发布物 + 校验版本号（-AppVersion = 当前 versionName）
 python tools/motivation/validate_tips.py  # 提示语校验（纯标准库）
 python tools/wordpack/validate_packs.py   # 词库校验（依赖 cache/ecdict.csv）
 ```

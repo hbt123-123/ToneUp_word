@@ -67,7 +67,8 @@ APK 与 `version.json`：
 
 ```powershell
 # 先把 app/build.gradle.kts 的 versionName/versionCode 改好，并更新 release-notes.md
-powershell -ExecutionPolicy Bypass -File tool\release.ps1 -AppVersion 1.0.3 -Tag
+# -AppVersion 填当前 versionName（示例：1.0.6）
+powershell -ExecutionPolicy Bypass -File tool\release.ps1 -AppVersion 1.0.6 -Tag
 ```
 
 脚本会校验：
