@@ -171,8 +171,10 @@ class StudySessionEngineTest {
         assertThat(walk.reason).isEqualTo(QueueReason.IMMEDIATE)
 
         // 模糊 repeats once too, and gets the same tag.
-        val afterFuzzy = newSession(queue = listOf(2L) + others).answer(ReviewGrade.FUZZY)
-        assertThat(afterFuzzy.reasons[2L]).isEqualTo(QueueReason.IMMEDIATE)
+        // Word 1, not 2: `others` starts at 2, so a duplicate id would be caught by the
+        // "already pending later in the queue" guard and never re-queued.
+        val afterFuzzy = newSession(queue = listOf(1L) + others).answer(ReviewGrade.FUZZY)
+        assertThat(afterFuzzy.reasons[1L]).isEqualTo(QueueReason.IMMEDIATE)
 
         // A word that is not re-queued keeps its original reason.
         val mastered = unknownSession.answer(ReviewGrade.MASTERED)
