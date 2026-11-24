@@ -72,8 +72,9 @@ jobs:
             echo "还没有发布 tag，按首次发布处理。"
             exit 0
           fi
+          # 排除 Markdown：app/src 下的 AGENTS.md 这类说明文件不算源码变化。
           # shellcheck disable=SC2086
-          if git diff --quiet "$LAST_TAG"..HEAD -- $SOURCE_PATHS; then
+          if git diff --quiet "$LAST_TAG"..HEAD -- $SOURCE_PATHS ':(exclude)**/*.md'; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
             echo "自 $LAST_TAG 以来没有源码变化，跳过本次发布。"
           else
@@ -315,8 +316,11 @@ jobs:
           else:
               if start in text and end in text:
                   head, rest = text.split(start, 1)
-                  _, tail = rest.split(end, 1)
-                  text = f"{head}{start}\n\n{entry}{end}{tail}"
+                  old, tail = rest.split(end, 1)
+                  # 旧条目必须保留在下面（最初版本误写成覆盖，已由单测式模拟验证修复）。
+                  previous = old.strip()
+                  history = f"{previous}\n\n" if previous else ""
+                  text = f"{head}{start}\n\n{entry}{history}{end}{tail}"
               else:
                   # 首次运行：插在“下载与版本”之后的章节前；找不到锚点就追加到末尾。
                   block = f"## 更新日志\n\n{start}\n\n{entry}{end}\n\n"

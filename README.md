@@ -40,14 +40,16 @@
 
 | 版本 | versionName / Code | 对应提交 | 大小 | SHA-256 | 下载 |
 | --- | --- | --- | --- | --- | --- |
-| **v1.0.6**（最新） | 1.0.6 / 106 | [`d366284`](https://github.com/hbt123-123/ToneUp_word/commit/d3662844337b2af942c5c002cbed3028522404dd) | 3,170,518 B | `1EF095661BC895E8DCB4F91A11F103FDEF8B4990EF09526C21DEA95835CE326C` | [ToneUpWord.apk](https://github.com/hbt123-123/ToneUp_word/releases/download/v1.0.6/ToneUpWord.apk) |
+| **v1.0.8**（最新） | 1.0.8 / 108 | [`9a3e131`](https://github.com/hbt123-123/ToneUp_word/commit/9a3e131403841a1cf0c595a83d57ecf8418b41a9) | 3,170,519 B | `119559897FFD4D7E4C1945694D427CE737D36EA75DD86FB7F7A166AD82554BBA` | [ToneUpWord.apk](https://github.com/hbt123-123/ToneUp_word/releases/download/v1.0.8/ToneUpWord.apk) |
+| v1.0.7 | 1.0.7 / 107 | [`5a08131`](https://github.com/hbt123-123/ToneUp_word/commit/5a08131d0b284aad1bbb1c818ae5a328d846f3bc) | 3,170,532 B | `91C7CD3705945345CAD32BAC65F70172727DB280E92F7C85E155D87DA5D6ECF7` | [ToneUpWord.apk](https://github.com/hbt123-123/ToneUp_word/releases/download/v1.0.7/ToneUpWord.apk) |
+| v1.0.6 | 1.0.6 / 106 | [`d366284`](https://github.com/hbt123-123/ToneUp_word/commit/d3662844337b2af942c5c002cbed3028522404dd) | 3,170,518 B | `1EF095661BC895E8DCB4F91A11F103FDEF8B4990EF09526C21DEA95835CE326C` | [ToneUpWord.apk](https://github.com/hbt123-123/ToneUp_word/releases/download/v1.0.6/ToneUpWord.apk) |
 | v1.0.5 | 1.0.5 / 105 | [`904770c`](https://github.com/hbt123-123/ToneUp_word/commit/904770cea3f6628be7966cb439705aa7d81a1f29) | 3,170,521 B | `D7B7A12251670A75E97A004D10EC9A530DE344313CAF0374597D1F25702CB656` | [ToneUpWord.apk](https://github.com/hbt123-123/ToneUp_word/releases/download/v1.0.5/ToneUpWord.apk) |
 | v1.0.4 | 1.0.4 / 104 | [`8eafb6b`](https://github.com/hbt123-123/ToneUp_word/commit/8eafb6b7389b124fae7aa2ffcca5794f37f0e0f7) | 3,343,650 B | `616CC0D4784AFF1D5D4E7E51B5F11A55CBE2DCE1C457B16419185C13619FFCDA` | [ToneUpWord.apk](https://github.com/hbt123-123/ToneUp_word/releases/download/v1.0.4/ToneUpWord.apk) |
 | v0.3 | 0.3 / 3 | [`afb5943`](https://github.com/hbt123-123/ToneUp_word/commit/afb594304eac517efc90e3cf493d9a89c107f12b) | 3,310,817 B | `52BC35064F359DB5D5B28CCC22B2C6A7A06DE21D27AF69D9B4B00943C2BBBEC7` | [ToneUpWord.apk](https://github.com/hbt123-123/ToneUp_word/releases/download/v0.3/ToneUpWord.apk) |
 | v0.2 | 0.2 / 2 | [`a032432`](https://github.com/hbt123-123/ToneUp_word/commit/a0324320935e06603269c0c0b4f06f78f5ca680a) | 3,277,452 B | `CEC922255813F7DD9C8D1A81EE6E260A2F277A50B84D4CB98686C87E40455F18` | [ToneUpWord-v0.2.apk](https://github.com/hbt123-123/ToneUp_word/releases/download/v0.2/ToneUpWord-v0.2.apk) |
 | v0.1 | 0.1 / 1 | [`fbfeefe`](https://github.com/hbt123-123/ToneUp_word/commit/fbfeefe228218b69cee9b96d950a6ccab762189e) | 3,601,943 B | `4E9915F3D1610AC2E8F2969A12DF183AF7D74CDEAEA25C794ABD83EF18751828` | [ToneUpWord-v0.1.apk](https://github.com/hbt123-123/ToneUp_word/releases/download/v0.1/ToneUpWord-v0.1.apk) |
 
-* **v1.0.6**（最新，提交 [`d366284`](https://github.com/hbt123-123/ToneUp_word/compare/904770c...d366284)）：
+* **v1.0.6**（提交 [`d366284`](https://github.com/hbt123-123/ToneUp_word/compare/904770c...d366284)）：
   首页重构为学习入口，优化卡片布局与交互逻辑；学习界面交互与体验优化。
 * **v1.0.5**（提交 [`904770c`](https://github.com/hbt123-123/ToneUp_word/compare/8eafb6b...904770c)）：
   TTS 朗读新增 Edge 在线朗读（失败静默回退系统 TTS）；修复启动器图标字标被裁切；
@@ -88,6 +90,13 @@
 ### [v1.0.8](https://github.com/hbt123-123/ToneUp_word/releases/tag/v1.0.8) · 2026-11-24
 
 - 维护性更新，无用户可见变化
+
+### [v1.0.7](https://github.com/hbt123-123/ToneUp_word/releases/tag/v1.0.7) · 2026-11-24
+
+- feat: 学习界面交互与体验优化
+- feat: 首页重构为学习入口，优化卡片布局与交互逻辑
+- feat: 优化单词学习流程与体验完善
+- refactor: 替换自定义字体为 Material 3 字体系统排版
 
 <!-- AUTO-CHANGELOG:END -->
 
