@@ -1,7 +1,7 @@
 # app/src/test/ — JVM 单元测试（唯一测试层）
 
 ## OVERVIEW
-50 类 / 640 用例；镜像 main 包结构；无 androidTest——Compose/Room/网关测试全在 JVM（Robolectric）跑。**已知本机环境失败 2 例**：`AndroidSpeechDefaultsReaderTest`（Robolectric sdk=36 需 Java 21，本机 JDK 17）、`SystemSpeechDefaultsTest#junk is unreadable`（`Float.toFloatOrNull()` 接受 `1.0f` 后缀）——均与计划层级重构无关。
+50 类 / 667 用例（CI 实测）；镜像 main 包结构；无 androidTest——Compose/Room/网关测试全在 JVM（Robolectric）跑。`AndroidSpeechDefaultsReaderTest` 固定在 `@Config(sdk=[34])`：SDK 36 下 Robolectric 4.17 的 `Settings.Secure.putString` 走 `NameValueCache` 反射，在 JDK 21 上抛 `IllegalAccessException`（与 JDK 版本无关，是 SDK 36 的兼容问题）。
 
 ## STRUCTURE
 ```
